@@ -1,7 +1,7 @@
 # Spec Roadmap
 
 Status: Approved sequencing baseline  
-Last updated: 2026-09-01
+Last updated: 2026-09-02
 
 ## 1. Workflow
 
@@ -66,21 +66,23 @@ The current migration stop line is after 004 is accepted.
 
 ## 3. Correctness-critical rule foundation
 
-### 010 — Rule vocabulary and examples
+### 010 — Hand-pattern classification and comparison
 
-Turn every supported pattern and disputed edge case into a written canonical
-rule table. Resolve airplane wings, four-with-two, attachment reuse, sequence
-boundaries, ambiguous leading selections, bombs, and rocket before algorithms.
+Resolve every supported pattern and disputed edge case in a written canonical
+rule table, then implement deterministic classification and comparison. This
+feature covers selected physical cards only; it does not infer alternate
+intentions or validate a turn. Its active specification is
+`docs/specs/010-hand-pattern-classification-and-comparison/spec.md`.
 
-### 011 — Combination classification
+Acceptance: all 14 pattern kinds, stable errors, rare attachment boundaries,
+normalization invariants, comparison compatibility, and bomb/rocket precedence
+pass table-driven tests under the pure TypeScript core boundary.
 
-Implement the discriminated combination model and classify all valid/invalid
-card selections, including multiple interpretations where required.
+### 012 — Contextual play validation
 
-### 012 — Combination comparison and play validation
-
-Compare compatible shapes, bomb/rocket precedence, trick context, ownership,
-turn, and pass restrictions. Produce stable user-explainable error codes.
+Validate ownership, trick context, turn, lead/pass restrictions, and hand
+removal using the classified-play contract. Produce stable user-explainable
+context errors without duplicating pattern recognition.
 
 ### 013 — Legal move generation and hint primitive
 
