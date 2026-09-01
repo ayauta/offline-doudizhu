@@ -1,0 +1,26 @@
+/node_modules/
+/dist/
+/coverage/
+/.vitest/
+/test-results/
+/playwright-report/
+/.spike/
+*.tsbuildinfo
+
+# Private local developer configuration
+/.local/
+.env*
+
+# Keys, certificates, and signing material
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+
+# Tool and OS noise
+*.log
+.DS_Store
+Thumbs.db
+/.idea/

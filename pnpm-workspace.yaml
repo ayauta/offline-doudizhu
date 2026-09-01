@@ -1,0 +1,9 @@
+allowBuilds:
+  esbuild: true
+confirmModulesPurge: false
+engineStrict: true
+saveExact: true
+storeDir: .local/pnpm/store
+strictDepBuilds: true
+strictPeerDependencies: true
+verifyStoreIntegrity: true
