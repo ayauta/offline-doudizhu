@@ -11,3 +11,7 @@ export {
   type PlayingPlayerView,
   type RemainingCardCounts,
 } from "./ai.js";
+export {
+  CASUAL_AI_STRATEGY,
+  rankCasualPlayActions,
+} from "./casual-strategy.js";

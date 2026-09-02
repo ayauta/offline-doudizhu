@@ -126,7 +126,8 @@ active specification is `docs/specs/030-legal-baseline-ai/spec.md`.
 
 Add understandable bidding and playing heuristics, basic farmer cooperation,
 structure preservation, ordinary bomb restraint, and deterministic evaluation
-fixtures. No search, MCTS, neural model, or difficulty selector.
+fixtures. No search, MCTS, neural model, or difficulty selector. Its active
+specification is `docs/specs/031-casual-heuristic-ai/spec.md`.
 
 ## 6. First playable product
 
@@ -163,7 +164,10 @@ streaming, TTS service, background music, or network.
 ### 051 — Difficulty choices
 
 Add strategy profiles behind `AiStrategy`, with player-facing descriptions and
-evaluation fixtures. Difficulty must not change rules or expose hidden cards.
+evaluation fixtures. Begin with a bounded comparison of enhanced heuristics,
+fixed-budget information-set Monte Carlo search, and any feasible lightweight
+model before selecting the standard/challenge implementations. Difficulty must
+not change rules or expose hidden cards.
 
 ### 052 — Further AI evaluation
 
