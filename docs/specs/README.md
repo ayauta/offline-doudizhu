@@ -119,7 +119,8 @@ Its active specification is `docs/specs/022-game-result-and-restart/spec.md`.
 ### 030 — Legal baseline AI and safety contract
 
 Build deterministic test strategies and the legal-command safety wrapper.
-Prove redacted views contain no hidden hands and automated games terminate.
+Prove redacted views contain no hidden hands and automated games terminate. Its
+active specification is `docs/specs/030-legal-baseline-ai/spec.md`.
 
 ### 031 — Casual heuristic AI
 
