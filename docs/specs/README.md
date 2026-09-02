@@ -105,7 +105,8 @@ assignment, and all-pass redeal request. Its active specification is
 
 Implement current-turn validation, lead/play/pass transitions, turn rotation,
 two-pass trick reset, public history, hand removal, invariant checks, and
-finished-state detection.
+finished-state detection. Its active specification is
+`docs/specs/021-playing-state-machine/spec.md`.
 
 ### 022 — Game result and restart
 

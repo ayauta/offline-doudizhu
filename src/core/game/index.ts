@@ -11,7 +11,10 @@ export {
   type GameEvent,
   type GameState,
   type GameTransitionResult,
+  type FinishedState,
   type Hands,
+  type PlayHistoryEntry,
+  type PlayingState,
   type ReadyToPlayState,
   type Seat,
 } from "./game.js";
