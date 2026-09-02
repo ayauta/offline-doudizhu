@@ -53,6 +53,23 @@ real-phone review; build success alone is not playable acceptance.
 
 ## Commands
 
+The managed workspace includes the pinned Linux Node and pnpm toolchain under
+the ignored `.local/` directory. In every fresh shell, activate it before any
+`node`, `pnpm`, package-script, build, or test command, and keep activation and
+the project command in the same shell:
+
+```bash
+source scripts/activate-toolchain.sh
+pnpm check
+```
+
+The activation banner must report Node `v24.20.0` and pnpm `11.24.0`. When this
+project-local toolchain is present, do not use a system Node/Corepack, Windows
+PowerShell/Node, or download/install a replacement toolchain. If Playwright or
+Vite cannot bind localhost because the execution sandbox returns `listen
+EPERM`, rerun the same project-local Linux command with the required sandbox
+permission; do not change toolchains.
+
 - `pnpm dev` — start the Vite development server
 - `pnpm build` — generate the static PWA in `dist/`
 - `pnpm test` — run deterministic Vitest tests
