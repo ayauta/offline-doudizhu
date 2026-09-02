@@ -89,7 +89,8 @@ errors without duplicating pattern recognition. Its active specification is
 
 Generate complete legal actions for a hand/trick without duplicates. The hint
 feature and every AI strategy must consume this source rather than reimplement
-rules.
+rules. Its active specification is
+`docs/specs/013-legal-action-generation/spec.md`.
 
 ## 4. Deterministic game flow
 

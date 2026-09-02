@@ -1,5 +1,6 @@
 export { classifyPlay } from "./classify-play.js";
 export { comparePlays } from "./compare-plays.js";
+export { generateLegalActions } from "./generate-legal-actions.js";
 export {
   validatePlay,
   type PlayAction,
