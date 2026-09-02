@@ -98,7 +98,8 @@ rules. Its active specification is
 
 Implement 17/17/17 plus three bottom cards, human-first `叫地主 / 不叫`, AI
 decisions in order after a human pass, first call wins landlord, bottom-card
-assignment, and all-pass redeal request.
+assignment, and all-pass redeal request. Its active specification is
+`docs/specs/020-bidding-and-deal-state/spec.md`.
 
 ### 021 — Playing state machine
 
