@@ -80,9 +80,10 @@ pass table-driven tests under the pure TypeScript core boundary.
 
 ### 012 — Contextual play validation
 
-Validate ownership, trick context, turn, lead/pass restrictions, and hand
-removal using the classified-play contract. Produce stable user-explainable
-context errors without duplicating pattern recognition.
+Validate physical-card ownership, lead/pass restrictions, and response strength
+using the classified-play contract. Produce stable user-explainable context
+errors without duplicating pattern recognition. Its active specification is
+`docs/specs/012-contextual-play-validation/spec.md`.
 
 ### 013 — Legal move generation and hint primitive
 
@@ -100,8 +101,9 @@ assignment, and all-pass redeal request.
 
 ### 021 — Playing state machine
 
-Implement lead/play/pass, turn rotation, two-pass trick reset, public history,
-hand removal, invariant checks, and finished-state detection.
+Implement current-turn validation, lead/play/pass transitions, turn rotation,
+two-pass trick reset, public history, hand removal, invariant checks, and
+finished-state detection.
 
 ### 022 — Game result and restart
 
