@@ -112,6 +112,7 @@ finished-state detection. Its active specification is
 
 Implement landlord/farmer win presentation data and clean new-game/redeal
 boundaries. There are no points, multipliers, spring settlement, or statistics.
+Its active specification is `docs/specs/022-game-result-and-restart/spec.md`.
 
 ## 5. Local AI
 

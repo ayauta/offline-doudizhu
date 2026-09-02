@@ -53,12 +53,24 @@ export type PlayingState = Readonly<{
   history: readonly PlayHistoryEntry[];
 }>;
 
+export type WinningSide = "landlord" | "farmers";
+export type HumanRole = "landlord" | "farmer";
+export type HumanOutcome = "win" | "loss";
+
+export type GameResult = Readonly<{
+  winner: Seat;
+  winningSide: WinningSide;
+  humanRole: HumanRole;
+  humanOutcome: HumanOutcome;
+}>;
+
 export type FinishedState = Readonly<{
   phase: "finished";
   hands: Hands;
   bottomCards: readonly CardId[];
   landlord: Seat;
   winner: Seat;
+  result: GameResult;
   history: readonly PlayHistoryEntry[];
 }>;
 
@@ -89,6 +101,9 @@ export type GameCommand =
   | Readonly<{
       type: "pass";
       seat: Seat;
+    }>
+  | Readonly<{
+      type: "restart";
     }>;
 
 export type GameEvent =
@@ -124,6 +139,10 @@ export type GameEvent =
   | Readonly<{
       type: "game-finished";
       winner: Seat;
+      result: GameResult;
+    }>
+  | Readonly<{
+      type: "game-restarted";
     }>;
 
 export type GameErrorCode =
@@ -191,6 +210,17 @@ function nextSeat(seat: Seat): Seat {
   return SEAT_ORDER[(index + 1) % SEAT_ORDER.length] ?? "human";
 }
 
+function createGameResult(landlord: Seat, winner: Seat): GameResult {
+  const winningSide: WinningSide = winner === landlord ? "landlord" : "farmers";
+  const humanRole: HumanRole = landlord === "human" ? "landlord" : "farmer";
+  const humanOutcome: HumanOutcome =
+    (humanRole === "landlord" && winningSide === "landlord") ||
+    (humanRole === "farmer" && winningSide === "farmers")
+      ? "win"
+      : "loss";
+  return { winner, winningSide, humanRole, humanOutcome };
+}
+
 function isCanonicalDeck(deck: readonly CardId[]): boolean {
   return (
     deck.length === CARD_COUNT &&
@@ -205,6 +235,12 @@ export function transition(
   state: GameState,
   command: GameCommand,
 ): GameTransitionResult {
+  if (command.type === "restart") {
+    return state.phase === "finished"
+      ? success(INITIAL_GAME_STATE, [{ type: "game-restarted" }])
+      : failure(state, "command-not-allowed");
+  }
+
   if (command.type === "pass") {
     if (state.phase !== "ready-to-play" && state.phase !== "playing") {
       return failure(state, "command-not-allowed");
@@ -298,17 +334,19 @@ export function transition(
       remainingCardCount: nextHands[command.seat].length,
     };
     if (nextHands[command.seat].length === 0) {
+      const result = createGameResult(state.landlord, command.seat);
       const nextState: FinishedState = {
         phase: "finished",
         hands: nextHands,
         bottomCards: [...state.bottomCards],
         landlord: state.landlord,
         winner: command.seat,
+        result,
         history,
       };
       return success(nextState, [
         cardsPlayedEvent,
-        { type: "game-finished", winner: command.seat },
+        { type: "game-finished", winner: command.seat, result },
       ]);
     }
 

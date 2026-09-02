@@ -422,6 +422,12 @@ describe("playing state machine", () => {
         sequenceLength: 5,
       },
     };
+    const gameResult = {
+      winner: "human" as const,
+      winningSide: "landlord" as const,
+      humanRole: "landlord" as const,
+      humanOutcome: "win" as const,
+    };
 
     expect(result).toEqual({
       ok: true,
@@ -431,6 +437,7 @@ describe("playing state machine", () => {
         bottomCards: called.state.bottomCards,
         landlord: "human",
         winner: "human",
+        result: gameResult,
         history: [{ type: "play", seat: "human", play: finalPlay }],
       },
       events: [
@@ -440,7 +447,7 @@ describe("playing state machine", () => {
           play: finalPlay,
           remainingCardCount: 0,
         },
-        { type: "game-finished", winner: "human" },
+        { type: "game-finished", winner: "human", result: gameResult },
       ],
     });
     expectDeepFrozen(result);
