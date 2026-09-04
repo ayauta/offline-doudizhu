@@ -3,6 +3,10 @@
 Status: Accepted  
 Date: 2026-09-01
 
+Interaction update: ADR 0010 supersedes this record's requirement that
+keyboard input be a complete gameplay alternative. The remaining Web, DOM,
+PWA, pointer-selection, and semantic-control decisions stay accepted.
+
 ## Context
 
 The product remains a private, offline, accessible Dou Dizhu game for one

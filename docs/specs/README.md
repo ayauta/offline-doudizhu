@@ -1,7 +1,7 @@
 # Spec Roadmap
 
 Status: Approved sequencing baseline  
-Last updated: 2026-09-02
+Last updated: 2026-09-04
 
 ## 1. Workflow
 
@@ -136,6 +136,10 @@ specification is `docs/specs/031-casual-heuristic-ai/spec.md`.
 Replace the debug table with full bidding/playing/win states, readable cards,
 remaining counts, role/turn cues, forgiving hit regions, error messages, hint,
 restart, and layout fixtures for phone aspect ratios/safe areas.
+
+Its active specification is
+`docs/specs/040-production-table-ui/spec.md`; completed implementation evidence
+is recorded in `docs/exec-plans/completed/012-production-table-ui.md`.
 
 ### 041 — Offline rules viewer
 

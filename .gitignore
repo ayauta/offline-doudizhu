@@ -4,6 +4,7 @@
 /.vitest/
 /test-results/
 /playwright-report/
+/output/playwright/
 /.spike/
 *.tsbuildinfo
 

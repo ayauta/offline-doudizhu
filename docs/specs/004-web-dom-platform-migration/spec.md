@@ -3,6 +3,10 @@
 Status: Approved  
 Date: 2026-09-01
 
+Historical note: this completed migration slice required keyboard operation for
+its architecture-validation screen. ADR 0010 retires that requirement for the
+formal game UI; it is not a Spec 040 product or acceptance requirement.
+
 ## Goal
 
 Replace the retired platform and Canvas vertical slice with a standards-based,

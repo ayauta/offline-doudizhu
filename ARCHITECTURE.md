@@ -1,7 +1,7 @@
 # Architecture
 
 Status: Accepted  
-Last updated: 2026-09-01  
+Last updated: 2026-09-04
 Source of truth for: module boundaries, dependency direction, state ownership,
 Web integration, and verification
 
@@ -20,9 +20,9 @@ privacy, and code whose authority and dependencies remain obvious.
 ## 2. Context and dependency direction
 
 ```text
-keyboard / mouse / touch
-          |
-          v
+touch / mouse
+      |
+      v
 semantic DOM UI --intent--> application session --> pure game core
           ^                         |                    |
           |                         +--> local AI -------+
@@ -100,11 +100,18 @@ rules as human input.
 
 ## 5. DOM interaction
 
-Cards and actions are semantic buttons. Card selection supports click/tap,
-keyboard activation, and continuous pointer selection. A pure gesture state
-machine fixes the gesture mode from the first card's initial state, visits each
-card once, and emits selection intents; the gesture never repositions DOM or
-uses drag-and-drop.
+Cards and actions are semantic buttons. The supported gameplay-input baseline
+is touch, with mouse click retained for development and browser trials. Card
+selection supports discrete tap/click and continuous pointer selection. A pure
+gesture state machine fixes the gesture mode from the first card's initial
+state, visits each card once, and emits selection intents; the gesture never
+repositions DOM or uses drag-and-drop.
+
+The product defines no dedicated keyboard model, key bindings, focus-navigation
+scheme, or keyboard acceptance requirement. Semantic controls keep any native
+browser keyboard behavior they receive; that incidental behavior is neither
+disabled nor claimed as a complete way to play a match. ADR 0010 supersedes the
+earlier keyboard-completeness requirement in ADR 0008.
 
 Landscape is the only functional orientation. CSS makes the complete table
 unavailable in portrait and exposes only the accessible rotate prompt. Layout

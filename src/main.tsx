@@ -1,9 +1,13 @@
 import { render } from "preact";
 
-import { createDebugHand } from "./app/session/debug-hand.js";
-import { createDebugSession } from "./app/session/debug-state.js";
+import { createProductionSession } from "./app/session/production-session.js";
+import { createDeck, shuffle } from "./core/cards/index.js";
 import { registerOfflineWorker } from "./platform/web/offline.js";
-import { DebugTableApp } from "./ui/debug-table-app.js";
+import {
+  createWebRandomSource,
+  scheduleWebPresentation,
+} from "./platform/web/presentation.js";
+import { ProductionTableApp } from "./ui/production-table-app.js";
 import "./ui/styles.css";
 
 const root = document.querySelector("#app");
@@ -11,8 +15,15 @@ if (root === null) {
   throw new Error("Application root is missing.");
 }
 
-render(
-  <DebugTableApp cards={createDebugHand()} session={createDebugSession()} />,
-  root,
-);
+const random = createWebRandomSource();
+const session = createProductionSession({
+  deckSource: {
+    nextDeck: () => shuffle(createDeck(), random),
+  },
+  scheduler: {
+    schedule: scheduleWebPresentation,
+  },
+});
+
+render(<ProductionTableApp session={session} />, root);
 registerOfflineWorker();
