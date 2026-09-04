@@ -10,6 +10,10 @@
   --ink-blue: #173b59;
   --focus: #ffe08a;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
   color: var(--ivory);
   background: var(--field);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
@@ -118,19 +122,17 @@ button:focus-visible {
 }
 
 .home-copy h1 {
-  font-size: clamp(34px, 6vw, 66px);
-  font-weight: 760;
-  letter-spacing: -0.045em;
-  line-height: 1.03;
+  font-size: clamp(34px, 6vw, 60px);
+  font-weight: var(--weight-bold);
+  line-height: 1.08;
 }
 
 .home-copy p {
   margin-top: clamp(8px, 2vh, 16px);
   color: var(--ivory-muted);
   font-size: clamp(15px, 2.2vw, 21px);
-  font-weight: 560;
-  letter-spacing: 0.025em;
-  line-height: 1.35;
+  font-weight: var(--weight-medium);
+  line-height: 1.4;
 }
 
 .start-button {
@@ -143,7 +145,7 @@ button:focus-visible {
   background: var(--ivory);
   box-shadow: 0 8px 22px rgb(0 24 15 / 22%);
   font-size: clamp(19px, 2.7vw, 25px);
-  font-weight: 720;
+  font-weight: var(--weight-semibold);
   cursor: pointer;
   transition: transform 120ms var(--ease-out), box-shadow 160ms ease;
 }
@@ -174,7 +176,7 @@ button:focus-visible {
   color: var(--ivory-muted);
   background: #064532;
   font-size: clamp(15px, 2vw, 18px);
-  font-weight: 620;
+  font-weight: var(--weight-semibold);
   cursor: pointer;
   transition: transform 120ms var(--ease-out), color 160ms ease, border-color 160ms ease;
 }
@@ -349,9 +351,8 @@ button:focus-visible {
   margin-top: 6px;
   color: var(--ivory-muted);
   font-size: clamp(13px, 1.65vw, 16px);
-  font-weight: 650;
-  letter-spacing: 0.08em;
-  line-height: 1;
+  font-weight: var(--weight-semibold);
+  line-height: 1.2;
 }
 
 .human-identity {
@@ -376,15 +377,14 @@ button:focus-visible {
   color: inherit;
   font-size: clamp(25px, 4.3vw, 39px);
   font-variant-numeric: tabular-nums;
-  font-weight: 740;
-  letter-spacing: -0.045em;
+  font-weight: var(--weight-bold);
 }
 
 .human-identity > span {
   margin-top: 4px;
   font-size: clamp(12px, 1.65vw, 15px);
-  font-weight: 650;
-  letter-spacing: 0.06em;
+  font-weight: var(--weight-semibold);
+  line-height: 1.2;
 }
 
 .remaining-count--low {
@@ -444,8 +444,8 @@ button:focus-visible {
   padding: 7px 12px;
   color: var(--ivory-muted);
   font-size: clamp(16px, 2.3vw, 21px);
-  font-weight: 650;
-  letter-spacing: 0.035em;
+  font-weight: var(--weight-semibold);
+  line-height: 1.25;
 }
 
 .seat-action__play {
@@ -499,14 +499,13 @@ button:focus-visible {
   justify-items: center;
   width: min-content;
   font-size: clamp(13px, 1.85vw, 18px);
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   line-height: 0.88;
 }
 
 .playing-card__corner strong {
   font-size: 1.08em;
-  font-weight: 780;
-  letter-spacing: -0.04em;
+  font-weight: var(--weight-bold);
 }
 
 .playing-card__center {
@@ -527,7 +526,7 @@ button:focus-visible {
   top: 52%;
   transform: translate(-50%, -50%);
   font-size: clamp(8px, 1.25vw, 12px);
-  font-weight: 780;
+  font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
   line-height: 1;
   text-orientation: mixed;
@@ -570,8 +569,7 @@ button:focus-visible {
 .pattern-label {
   color: var(--ivory);
   font-size: clamp(15px, 2.2vw, 20px);
-  font-weight: 690;
-  letter-spacing: 0.06em;
+  font-weight: var(--weight-semibold);
   text-shadow: 0 2px 4px rgb(0 25 16 / 35%);
   animation: label-in 180ms var(--ease-out) both;
 }
@@ -579,7 +577,7 @@ button:focus-visible {
 [data-pattern="bomb"] .pattern-label,
 [data-pattern="rocket"] .pattern-label {
   font-size: clamp(17px, 2.5vw, 22px);
-  font-weight: 760;
+  font-weight: var(--weight-bold);
 }
 
 [data-pattern="rocket"] .pattern-label {
@@ -607,7 +605,7 @@ button:focus-visible {
   transform: translateX(-50%);
   color: var(--ivory);
   font-size: clamp(14px, 2vw, 18px);
-  font-weight: 620;
+  font-weight: var(--weight-semibold);
   line-height: 1.3;
   text-align: center;
 }
@@ -645,8 +643,7 @@ button:focus-visible {
   box-shadow: 0 7px 18px rgb(0 24 17 / 22%), inset 0 1px 0 rgb(255 255 255 / 12%);
   backdrop-filter: blur(10px) saturate(110%);
   font-size: clamp(17px, 2.55vw, 23px);
-  font-weight: 690;
-  letter-spacing: 0.025em;
+  font-weight: var(--weight-semibold);
   cursor: pointer;
   transition: transform 120ms var(--ease-out), color 160ms ease, background-color 160ms ease, border-color 160ms ease, opacity 160ms ease;
 }
@@ -679,11 +676,15 @@ button:focus-visible {
 .human-hand {
   --hand-card-width: clamp(47px, 7vw, 69px);
   --hand-card-height: calc(var(--hand-card-width) * 1.48);
+  --hand-card-step: clamp(33px, 5vw, 48px);
   position: absolute;
   z-index: 35;
   left: 50%;
   bottom: max(3px, env(safe-area-inset-bottom));
-  width: calc(100% - max(16px, env(safe-area-inset-left)) - max(16px, env(safe-area-inset-right)));
+  width: min(
+    calc(100% - max(16px, env(safe-area-inset-left)) - max(16px, env(safe-area-inset-right))),
+    var(--hand-natural-width)
+  );
   height: calc(var(--hand-card-height) + 16px);
   transform: translateX(-50%);
   touch-action: none;
@@ -699,7 +700,7 @@ button:focus-visible {
 }
 
 .human-hand .playing-card:active {
-  transform: translateY(-3px) scale(0.985);
+  transform: translateY(-3px);
 }
 
 .human-hand .playing-card[aria-pressed="true"] {
@@ -709,7 +710,7 @@ button:focus-visible {
 }
 
 .human-hand .playing-card[aria-pressed="true"]:active {
-  transform: translateY(clamp(-12px, -3.5vh, -9px)) scale(0.985);
+  transform: translateY(clamp(-12px, -3.5vh, -9px));
 }
 
 .human-hand .playing-card--received {
@@ -721,24 +722,24 @@ button:focus-visible {
   z-index: 26;
   top: 32%;
   left: 50%;
-  width: min(42vw, 330px);
+  width: min(48vw, 360px);
   transform: translate(-50%, -50%);
   text-align: center;
   animation: result-in 220ms var(--ease-out) both;
 }
 
 .result-message h1 {
-  font-size: clamp(42px, 7vw, 70px);
-  font-weight: 780;
-  letter-spacing: -0.05em;
-  line-height: 1;
+  font-size: clamp(40px, 6vw, 64px);
+  font-weight: var(--weight-bold);
+  line-height: 1.08;
 }
 
 .result-message p {
-  margin-top: 9px;
+  margin-top: 14px;
   color: var(--ivory-muted);
-  font-size: clamp(16px, 2.4vw, 23px);
-  font-weight: 620;
+  font-size: clamp(17px, 2.25vw, 22px);
+  font-weight: var(--weight-semibold);
+  line-height: 1.35;
 }
 
 .match-screen.is-result .match-topbar,
@@ -811,9 +812,8 @@ button:focus-visible {
 
 .exit-dialog h2 {
   font-size: clamp(23px, 3.5vw, 31px);
-  font-weight: 730;
-  letter-spacing: -0.025em;
-  line-height: 1.15;
+  font-weight: var(--weight-bold);
+  line-height: 1.2;
 }
 
 .exit-dialog p {
@@ -975,8 +975,13 @@ button:focus-visible {
 
   .human-hand {
     --hand-card-width: clamp(78px, 5.85vw, 86px);
-    width: min(calc(100vw - 64px), 1040px);
+    --hand-card-step: clamp(55px, 4.1vw, 60px);
+    width: min(calc(100vw - 64px), 1040px, var(--hand-natural-width));
     bottom: max(10px, env(safe-area-inset-bottom));
+  }
+
+  .result-message {
+    top: 41%;
   }
 
   .human-hand .playing-card__corner {
@@ -1118,12 +1123,14 @@ button:focus-visible {
 
   .rotate-gate h1 {
     font-size: clamp(30px, 9vw, 44px);
-    font-weight: 760;
-    letter-spacing: -0.035em;
+    font-weight: var(--weight-bold);
+    line-height: 1.15;
   }
 
   .rotate-gate p {
     color: var(--ivory-muted);
     font-size: clamp(17px, 5vw, 23px);
+    font-weight: var(--weight-medium);
+    line-height: 1.4;
   }
 }

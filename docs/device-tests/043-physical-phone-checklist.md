@@ -25,8 +25,19 @@ CSS viewport before each run.
 - [ ] Check both landscape orientations for cutout/safe-area clearance, no page
       scrolling, no clipped count, message, action, or 20-card hand.
 - [ ] Tap exposed strips at both ends and the middle of a 20-card hand; then
-      select and deselect at least four cards with one continuous swipe. Record
-      misses, unintended scrolling/dragging, and visible response latency.
+      select and deselect at least eight cards with one deliberately fast
+      continuous swipe. Reverse direction in the same gesture, leave the hand
+      vertically, and re-enter over a different card. Confirm every crossed
+      card changes once, the outside segment changes none, and prior changes
+      remain. Record misses, unintended scrolling/dragging, and visible response
+      latency.
+- [ ] Observe the hand at 17, 20, and—during a late game—two cards. Confirm card
+      size remains stable, 17 and two cards form naturally centered compact
+      groups, 20 compresses without clipping, and two cards never separate
+      across the table.
+- [ ] After an accepted play, confirm remaining cards regroup horizontally in
+      one restrained beat with no jump or vertical wobble. Repeat with reduced
+      motion and confirm regrouping is immediate.
 - [ ] Verify every exposed rank/suit, both jokers, bottom cards, selected state,
       disabled state, role, current seat, and `剩2张`/`剩1张` warning are legible
       at the owner's normal viewing distance.
@@ -39,7 +50,10 @@ CSS viewport before each run.
       remains soft, borderless, and understandable without color alone.
 - [ ] Complete an offline round through bidding, a valid response, an invalid
       selection, `没有可以压过的牌`, a special-pattern label, exit cancel, and
-      result/rematch. Confirm the final public play remains unobscured.
+      result/rematch. Confirm the final public play remains unobscured and the
+      result title, winning side, last play, and actions read as one comfortable
+      vertical sequence. Compare victory and failure: layout, type, and motion
+      must match, with only wording different.
 - [ ] Repeat the essential flow with reduced motion and increased system text
       scale; record any overlap or missing information rather than relaxing the
       automated baseline.

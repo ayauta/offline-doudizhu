@@ -1,5 +1,5 @@
 import type { TargetedPointerEvent } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 
 import type {
   MatchView,
@@ -13,11 +13,15 @@ import type { BidDecision } from "../core/game/index.js";
 import type { PlayPatternKind } from "../core/rules/index.js";
 import { CardBack, HandCard, TableCard } from "./components/card-face.js";
 import {
+  cardsCrossedByPointerSegment,
   INITIAL_POINTER_SELECTION_STATE,
   reducePointerSelection,
+  type PointerHitRegion,
+  type PointerPoint,
   type PointerSelectionEvent,
   type PointerSelectionState,
 } from "./input/pointer-selection.js";
+import { handNaturalWidth } from "./layout/hand-layout.js";
 
 const PATTERN_LABELS: Partial<Record<PlayPatternKind, string>> = {
   straight: "顺子",
@@ -61,6 +65,41 @@ function cardIdFromElement(element: Element | null): CardId | null {
   }
   const value = Number(rawId);
   return Number.isInteger(value) && value >= 0 && value < 54 ? asCardId(value) : null;
+}
+
+const HAND_POINTER_CORRIDOR = 16;
+
+function handPointerHitRegions(hand: HTMLDivElement): readonly PointerHitRegion<CardId>[] {
+  const cards = Array.from(hand.querySelectorAll<HTMLElement>("[data-card-id]"));
+  const measured = cards.flatMap((card) => {
+    const cardId = cardIdFromElement(card);
+    return cardId === null ? [] : [{ cardId, rectangle: card.getBoundingClientRect() }];
+  });
+  if (measured.length === 0) {
+    return [];
+  }
+  const top = Math.min(...measured.map(({ rectangle }) => rectangle.top)) - HAND_POINTER_CORRIDOR;
+  const bottom = Math.max(...measured.map(({ rectangle }) => rectangle.bottom)) + HAND_POINTER_CORRIDOR;
+  return measured.map(({ cardId, rectangle }, index) => ({
+    bottom,
+    cardId,
+    left: rectangle.left,
+    right: measured[index + 1]?.rectangle.left ?? rectangle.right,
+    top,
+  }));
+}
+
+function coalescedPointerPoints(event: TargetedPointerEvent<HTMLDivElement>): readonly PointerPoint[] {
+  const coalesced = typeof event.getCoalescedEvents === "function"
+    ? event.getCoalescedEvents()
+    : [];
+  const points = coalesced.map(({ clientX: x, clientY: y }) => ({ x, y }));
+  const finalPoint = { x: event.clientX, y: event.clientY };
+  const lastPoint = points.at(-1);
+  if (lastPoint?.x !== finalPoint.x || lastPoint.y !== finalPoint.y) {
+    points.push(finalPoint);
+  }
+  return points;
 }
 
 function TableAction({ action }: Readonly<{ action: PublicTableAction | null }>) {
@@ -211,8 +250,56 @@ function MatchControls({ session, view }: Readonly<ProductionTableAppProps & { v
 }
 
 function HumanHand({ session, view }: Readonly<ProductionTableAppProps & { view: MatchView }>) {
+  const handElement = useRef<HTMLDivElement>(null);
+  const activePointer = useRef<{
+    readonly hitRegions: readonly PointerHitRegion<CardId>[];
+    readonly point: PointerPoint;
+    readonly pointerId: number;
+  } | null>(null);
+  const previousCardPositions = useRef<ReadonlyMap<CardId, number>>(new Map());
+  const previousHandCount = useRef<number | null>(null);
   const pointerState = useRef<PointerSelectionState<CardId>>(INITIAL_POINTER_SELECTION_STATE);
   const selected = new Set(view.selectedCardIds);
+
+  useLayoutEffect(() => {
+    const hand = handElement.current;
+    if (hand === null) {
+      return;
+    }
+    const currentPositions = new Map<CardId, number>();
+    for (const card of hand.querySelectorAll<HTMLElement>("[data-card-id]")) {
+      const cardId = cardIdFromElement(card);
+      if (cardId !== null) {
+        currentPositions.set(cardId, card.getBoundingClientRect().left);
+      }
+    }
+
+    const previousCount = previousHandCount.current;
+    const reducedMotion = hand.ownerDocument.defaultView
+      ?.matchMedia("(prefers-reduced-motion: reduce)").matches === true;
+    if (previousCount !== null && view.humanHand.length < previousCount && !reducedMotion) {
+      const regroupEasing = getComputedStyle(hand).getPropertyValue("--ease-in-out").trim();
+      for (const card of hand.querySelectorAll<HTMLElement>("[data-card-id]")) {
+        const cardId = cardIdFromElement(card);
+        const previousLeft = cardId === null ? undefined : previousCardPositions.current.get(cardId);
+        const currentLeft = cardId === null ? undefined : currentPositions.get(cardId);
+        if (previousLeft === undefined || currentLeft === undefined) {
+          continue;
+        }
+        const offset = previousLeft - currentLeft;
+        if (Math.abs(offset) < 0.5) {
+          continue;
+        }
+        const animation = card.animate(
+          [{ translate: `${offset}px 0` }, { translate: "0 0" }],
+          { duration: 180, easing: regroupEasing },
+        );
+        animation.id = "hand-regroup";
+      }
+    }
+    previousCardPositions.current = currentPositions;
+    previousHandCount.current = view.humanHand.length;
+  });
 
   function apply(event: PointerSelectionEvent<CardId>) {
     const result = reducePointerSelection(pointerState.current, event);
@@ -223,12 +310,20 @@ function HumanHand({ session, view }: Readonly<ProductionTableAppProps & { view:
   }
 
   function startPointer(event: TargetedPointerEvent<HTMLDivElement>) {
+    if (pointerState.current.active !== null) {
+      return;
+    }
     const cardId = cardIdFromElement(event.target as Element | null);
     if (cardId === null) {
       return;
     }
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
+    activePointer.current = {
+      hitRegions: handPointerHitRegions(event.currentTarget),
+      point: { x: event.clientX, y: event.clientY },
+      pointerId: event.pointerId,
+    };
     apply({
       cardId,
       point: { x: event.clientX, y: event.clientY },
@@ -239,20 +334,35 @@ function HumanHand({ session, view }: Readonly<ProductionTableAppProps & { view:
   }
 
   function movePointer(event: TargetedPointerEvent<HTMLDivElement>) {
-    if (pointerState.current.active === null) {
+    const active = pointerState.current.active;
+    const previous = activePointer.current;
+    if (active === null || previous === null || active.pointerId !== event.pointerId) {
       return;
     }
-    const element = event.currentTarget.ownerDocument.elementFromPoint(event.clientX, event.clientY);
-    apply({
-      cardId: cardIdFromElement(element),
-      point: { x: event.clientX, y: event.clientY },
-      pointerId: event.pointerId,
-      type: "move",
-    });
+    let previousPoint = previous.point;
+    for (const point of coalescedPointerPoints(event)) {
+      const crossedCardIds = cardsCrossedByPointerSegment(
+        previousPoint,
+        point,
+        previous.hitRegions,
+      );
+      if (crossedCardIds.length === 0) {
+        apply({ cardId: null, point, pointerId: event.pointerId, type: "move" });
+      } else {
+        for (const cardId of crossedCardIds) {
+          apply({ cardId, point, pointerId: event.pointerId, type: "move" });
+        }
+      }
+      previousPoint = point;
+    }
+    activePointer.current = { ...previous, point: previousPoint };
   }
 
   function finishPointer(event: TargetedPointerEvent<HTMLDivElement>, type: "end" | "cancel") {
     apply({ pointerId: event.pointerId, type });
+    if (activePointer.current?.pointerId === event.pointerId) {
+      activePointer.current = null;
+    }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -269,7 +379,11 @@ function HumanHand({ session, view }: Readonly<ProductionTableAppProps & { view:
       onPointerDown={startPointer}
       onPointerMove={movePointer}
       onPointerUp={(event) => finishPointer(event, "end")}
-      style={{ "--hand-count": Math.max(view.humanHand.length, 1) } as never}
+      ref={handElement}
+      style={{
+        "--hand-count": Math.max(view.humanHand.length, 1),
+        "--hand-natural-width": handNaturalWidth(view.humanHand.length),
+      } as never}
     >
       {view.humanHand.map((cardId, index) => (
         <HandCard

@@ -1,12 +1,20 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  cardsCrossedByPointerSegment,
   INITIAL_POINTER_SELECTION_STATE,
   reducePointerSelection,
+  type PointerHitRegion,
   type PointerSelectionState,
 } from "../../src/ui/input/pointer-selection.js";
 
 type CardId = "a" | "b" | "c";
+
+const HORIZONTAL_CARD_REGIONS: readonly PointerHitRegion<CardId>[] = [
+  { bottom: 80, cardId: "a", left: 0, right: 40, top: 0 },
+  { bottom: 80, cardId: "b", left: 40, right: 80, top: 0 },
+  { bottom: 80, cardId: "c", left: 80, right: 140, top: 0 },
+];
 
 function start(
   state: PointerSelectionState<CardId>,
@@ -24,6 +32,35 @@ function start(
 }
 
 describe("continuous pointer selection", () => {
+  it("recovers every card crossed by one fast delivered pointer segment", () => {
+    expect(cardsCrossedByPointerSegment(
+      { x: 10, y: 36 },
+      { x: 120, y: 36 },
+      HORIZONTAL_CARD_REGIONS,
+    )).toEqual(["a", "b", "c"]);
+  });
+
+  it("orders recovered cards by pointer direction and excludes the outside corridor", () => {
+    expect(cardsCrossedByPointerSegment(
+      { x: 120, y: 36 },
+      { x: 10, y: 36 },
+      HORIZONTAL_CARD_REGIONS,
+    )).toEqual(["c", "b", "a"]);
+    expect(cardsCrossedByPointerSegment(
+      { x: 10, y: -20 },
+      { x: 120, y: -20 },
+      HORIZONTAL_CARD_REGIONS,
+    )).toEqual([]);
+  });
+
+  it("only resumes crossing cards where a returning segment re-enters the corridor", () => {
+    expect(cardsCrossedByPointerSegment(
+      { x: 10, y: -40 },
+      { x: 100, y: 40 },
+      HORIZONTAL_CARD_REGIONS,
+    )).toEqual(["b", "c"]);
+  });
+
   it("toggles one card when a pointer ends below the movement threshold", () => {
     const begun = start(INITIAL_POINTER_SELECTION_STATE, "a", false);
     const moved = reducePointerSelection(begun.state, {

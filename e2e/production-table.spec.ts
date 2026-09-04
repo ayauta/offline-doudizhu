@@ -22,6 +22,17 @@ async function swipeAcross(page: Page, cards: readonly Locator[]) {
   await page.mouse.up();
 }
 
+async function swipeInOneMove(page: Page, first: Locator, last: Locator) {
+  const [firstPoint, lastPoint] = await Promise.all([
+    exposedPoint(first),
+    exposedPoint(last),
+  ]);
+  await page.mouse.move(firstPoint.x, firstPoint.y);
+  await page.mouse.down();
+  await page.mouse.move(lastPoint.x, lastPoint.y);
+  await page.mouse.up();
+}
+
 async function useDeterministicRandom(page: Page, seed = 2_026_090_4) {
   await page.addInitScript((initialSeed) => {
     let state = initialSeed >>> 0;
@@ -93,6 +104,11 @@ async function expectCompactDesktopHand(
   expect(firstBox!.width).toBeGreaterThanOrEqual(78);
   expect(firstBox!.width).toBeLessThanOrEqual(86);
   expect(secondBox!.x).toBeLessThan(firstBox!.x + firstBox!.width - 8);
+  if (expectedCount === 17) {
+    const preferredStepRatio = (secondBox!.x - firstBox!.x) / firstBox!.width;
+    expect(preferredStepRatio).toBeGreaterThanOrEqual(0.68);
+    expect(preferredStepRatio).toBeLessThanOrEqual(0.72);
+  }
   expect(lastBox!.x + lastBox!.width - firstBox!.x).toBeLessThanOrEqual(1_041);
   expect(handBox!.x + handBox!.width / 2).toBeCloseTo(viewportWidth / 2, 0);
 }
@@ -239,7 +255,18 @@ test("plays a complete human-landlord round with selection feedback and the fina
   await expect(page.locator(".seat-action__play")).not.toHaveCount(0);
   await expect(page.locator(".opponent-status").first()).toHaveCSS("opacity", "0.24");
   const resultBox = await page.locator(".result-message").boundingBox();
+  const resultTitle = page.locator(".result-message h1");
+  const resultSubtitle = page.locator(".result-message p");
   expect(resultBox).not.toBeNull();
+  await expect(resultTitle).toHaveCSS("font-weight", "700");
+  await expect(resultTitle).toHaveCSS("letter-spacing", "normal");
+  await expect(resultSubtitle).toHaveCSS("margin-top", "14px");
+  const resultTitleBox = await resultTitle.boundingBox();
+  const resultSubtitleBox = await resultSubtitle.boundingBox();
+  expect(resultTitleBox).not.toBeNull();
+  expect(resultSubtitleBox).not.toBeNull();
+  expect(resultSubtitleBox!.y - resultTitleBox!.y - resultTitleBox!.height)
+    .toBeCloseTo(14, 0);
   for (const play of await page.locator(".seat-action__play").all()) {
     const playBox = await play.boundingBox();
     expect(playBox).not.toBeNull();
@@ -317,6 +344,96 @@ test("continuously selects and deselects exposed cards without reordering the ha
   await expect.poll(() => cards.evaluateAll((elements) =>
     elements.map((element) => element.getAttribute("data-card-id")),
   )).toEqual(idsBefore);
+});
+
+test("recovers every crossed card from one fast pointer move", async ({ page }) => {
+  await useIdentityDeck(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始游戏" }).click();
+  await page.getByRole("button", { name: "叫地主" }).click();
+
+  const cards = page.getByLabel("你的手牌").getByRole("button");
+  await swipeInOneMove(page, cards.nth(3), cards.nth(6));
+
+  for (const index of [3, 4, 5, 6]) {
+    await expect(cards.nth(index)).toHaveAttribute("aria-pressed", "true");
+  }
+  await expect(cards.nth(2)).toHaveAttribute("aria-pressed", "false");
+  await expect(cards.nth(7)).toHaveAttribute("aria-pressed", "false");
+
+  await swipeInOneMove(page, cards.nth(6), cards.nth(3));
+  for (const index of [3, 4, 5, 6]) {
+    await expect(cards.nth(index)).toHaveAttribute("aria-pressed", "false");
+  }
+
+  const [start, outside, reentry, handBox] = await Promise.all([
+    exposedPoint(cards.nth(3)),
+    exposedPoint(cards.nth(4)),
+    exposedPoint(cards.nth(6)),
+    page.getByLabel("你的手牌").boundingBox(),
+  ]);
+  expect(handBox).not.toBeNull();
+  const outsideY = handBox!.y - 32;
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(outside.x, outsideY);
+  await page.mouse.move(reentry.x, outsideY);
+  await page.mouse.move(reentry.x, reentry.y);
+  await page.mouse.up();
+
+  await expect(cards.nth(3)).toHaveAttribute("aria-pressed", "true");
+  await expect(cards.nth(4)).toHaveAttribute("aria-pressed", "false");
+  await expect(cards.nth(5)).toHaveAttribute("aria-pressed", "false");
+  await expect(cards.nth(6)).toHaveAttribute("aria-pressed", "true");
+});
+
+test("naturally narrows and smoothly regroups the hand only after an accepted play", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 360 });
+  await useIdentityDeck(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始游戏" }).click();
+  await page.getByRole("button", { name: "叫地主" }).click();
+
+  const hand = page.getByLabel("你的手牌");
+  const widthBefore = (await hand.boundingBox())!.width;
+  await hand.getByRole("button", { name: "大王" }).click();
+  await hand.getByRole("button", { name: "小王" }).click();
+  await page.getByRole("button", { name: "出牌" }).click();
+
+  await expect(hand.getByRole("button")).toHaveCount(18);
+  expect((await hand.boundingBox())!.width).toBeLessThan(widthBefore - 20);
+  await expect.poll(() => hand.getByRole("button").first().evaluate((element) =>
+    element.getAnimations().some((animation) => animation.id === "hand-regroup"),
+  )).toBe(true);
+  expect(await hand.getByRole("button").first().evaluate((element) => {
+    const animation = element.getAnimations().find(({ id }) => id === "hand-regroup");
+    const timing = animation?.effect?.getTiming();
+    return timing === undefined ? null : {
+      duration: timing.duration,
+      easing: timing.easing,
+    };
+  })).toEqual({
+    duration: 180,
+    easing: "cubic-bezier(0.77, 0, 0.175, 1)",
+  });
+});
+
+test("makes hand regroup immediate when reduced motion is requested", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await useIdentityDeck(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始游戏" }).click();
+  await page.getByRole("button", { name: "叫地主" }).click();
+
+  const hand = page.getByLabel("你的手牌");
+  await hand.getByRole("button", { name: "大王" }).click();
+  await hand.getByRole("button", { name: "小王" }).click();
+  await page.getByRole("button", { name: "出牌" }).click();
+
+  await expect(hand.getByRole("button")).toHaveCount(18);
+  expect(await hand.getByRole("button").first().evaluate((element) =>
+    element.getAnimations().some((animation) => animation.id === "hand-regroup"),
+  )).toBe(false);
 });
 
 test("pauses AI presentation for exit confirmation and resumes the exact match after rotation", async ({ page }) => {

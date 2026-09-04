@@ -157,6 +157,14 @@ It performs the accepted core restart and begins a newly shuffled deal.
 coins, points, multiplier, statistics, awards, revealed losing hands, confetti,
 or engagement prompts.
 
+Victory and failure use the same quiet composition, type roles, spacing, and
+motion; wording is the only difference. The title uses the system's standard
+bold rather than an arbitrary extra-heavy weight, natural Chinese spacing, and
+comfortable leading, and
+sits on one continuous vertical rhythm with the subline, retained final play,
+and actions. It arrives with only a 220 ms opacity and 4-pixel settle—no scale,
+glow, bounce, or color-coded success/failure treatment.
+
 ## Table layout and information hierarchy
 
 The game is landscape-only. The human sits at the bottom, `ai-one` at the
@@ -191,12 +199,19 @@ whole status anchor and by the spatial origin of its action. The emphasis does
 not create a boundary or lift the anchor into the control layer. The UI does
 not add an arrow, bouncing marker, glowing ring, or duplicate turn sentence.
 
-The human hand is always one upright row containing all 17 cards, or all 20
-when the human is landlord. It never scrolls horizontally and never wraps into
-two rows. Overlap adjusts to viewport width while preserving a readable rank
-and suit on every exposed strip. The entire exposed vertical strip participates
-in that card's hit region; continuous swipe selection provides the forgiving
-path on the narrowest supported viewport.
+The human hand is always one upright row. Card size stays stable as cards leave
+the hand: the group—not each card—becomes narrower and remains centered. From
+one through 17 cards, adjacent origins target about 68–72% of card width, which
+keeps two remaining cards visibly related instead of stretching them across
+the table. At 18–20 cards the step compresses only when the safe viewport or
+desktop stage requires it. The hand never scrolls horizontally or wraps into
+two rows. Every exposed rank and suit remains readable.
+
+The entire exposed vertical strip participates in that card's hit region. A
+small vertical corridor around the visual hand makes continuous selection
+forgiving without turning the whole table into a hit target. Leaving the
+corridor pauses hit detection while retaining already selected cards; re-entry
+continues the same gesture and pointer-up commits it.
 
 At desktop trial widths, the match uses an invisible centered table stage of
 about 1180 CSS pixels rather than stretching meaningful content to the browser
@@ -247,14 +262,17 @@ Both jokers combine familiar international and Chinese cues:
 
 They do not use a clown, crown, portrait, or decorative character illustration.
 
-Typography uses the local system stack only. Large numerals use tabular figures.
-Weight, size, line height, and tracking provide hierarchy without a custom or
-remote font. Primary game information uses medium-to-bold weights rather than
-thin text; secondary labels remain comfortably readable instead of becoming
-decorative low-contrast gray. Opponent counts target about 24–28 pixels on
-phone landscape and 28–32 pixels on desktop. Important normal text meets at
-least 4.5:1 contrast; large text and meaningful control boundaries meet at
-least 3:1.
+Typography uses the local system stack only, including ranks, J/Q/K, and joker
+text. Five consistent roles govern the screen: large result/home titles, key
+tabular numerals, action labels, transient feedback, and secondary role/meta
+labels. Hierarchy comes primarily from size, standard system weights, line
+height, color, and proximity; Chinese copy does not use arbitrary aggressive
+positive or negative tracking. Primary game information uses medium,
+semibold, or bold weights rather than thin text, while secondary labels remain
+comfortably readable instead of becoming decorative low-contrast gray.
+Opponent counts target about 24–28 pixels on phone landscape and 28–32 pixels
+on desktop. Important normal text meets at least 4.5:1 contrast; large text and
+meaningful control boundaries meet at least 3:1.
 
 ## Direct selection, validation, and hints
 
@@ -262,14 +280,21 @@ Cards are semantic buttons. Pointer down gives immediate pressed feedback. A
 tap commits selection on pointer up. After the existing movement threshold is
 crossed, the gesture becomes continuous selection: the first card's initial
 state fixes select versus deselect, each visited card changes at most once, and
-the active pointer retains capture. A second touch is ignored while one gesture
-is active. The gesture never starts native drag, reorders cards, scrolls the
-hand, or submits a play.
+the active pointer retains capture. Reversing direction does not toggle a card
+a second time. The UI consumes coalesced pointer samples when available and
+also intersects every segment between delivered samples with card hit regions,
+so a fast movement cannot probabilistically skip intermediate cards merely
+because the browser reduced `pointermove` frequency. A second touch is ignored
+while one gesture is active. The gesture never starts native drag, reorders
+cards, scrolls the hand, or submits a play.
 
-Selected cards lift once and use a clear border/contrast change, so selection
-does not depend on color. There is no checkmark, bounce, pulse, or persistent
-glow. Selection feedback begins within one frame and the accepted interaction
-response is visible within 80 ms of touch release on target phones.
+Selected cards lift 10–12 pixels once and use a clear border/contrast change,
+so selection does not depend on color. The transition is a quiet 100 ms
+ease-out; there is no checkmark, bounce, scale, pulse, or persistent glow.
+Selection feedback begins within one frame and the accepted interaction
+response is visible within 80 ms of touch release on target phones. With
+reduced motion, the lift is removed and static border/contrast carries the
+same state.
 
 After each completed selection gesture, the session validates the complete
 selection with the accepted rules seam:
@@ -371,6 +396,13 @@ polite accessible announcement supply the remaining-card meaning. It then
 remains static and high-contrast. It does not flash, bounce, speak, or repeatedly
 animate.
 
+After an accepted human play reduces the hand, remaining cards regroup over
+180 ms using horizontal transform only and the shared smooth ease-in-out curve
+`cubic-bezier(0.77, 0, 0.175, 1)`. This motion exists solely to preserve spatial
+continuity between old and new card positions. It does not run for selection,
+hints, or other renders, does not move vertically, and becomes an immediate
+layout update under reduced motion.
+
 When the operating system/browser requests reduced motion, the app keeps the
 same states, order, labels, and reading intervals but removes nonessential
 movement: selection uses static contrast/border, card and bottom-card changes
@@ -459,6 +491,8 @@ Playwright exercises the production app rather than the debug screen:
 - home-to-bidding and both bid buttons;
 - a complete match driven by `提示` plus `出牌`/`不出` until `胜利` or `失败`;
 - tap and continuous select/deselect without hand reordering;
+- a one-step fast swipe that crosses several cards without skipping any,
+  including corridor exit/re-entry and direction reversal semantics;
 - invalid-selection feedback and the cannot-beat single-button state;
 - bidding-action retention, bottom-card reveal, role/count changes, current-trick
   retention/clear, a special-pattern label, and unobscured final play;
@@ -467,8 +501,9 @@ Playwright exercises the production app rather than the debug screen:
 - reduced-motion behavior;
 - portrait-only rotate gate and exact landscape resume;
 - no overflow at 800×360, 900×400, and 640×340; and
-- centered, intentionally overlapping 17- and 20-card hands plus inward
-  opponent anchors at 1366×768 and 1440×900;
+- naturally compact centered 1-, 2-, and 17-card hands, viewport-compressed
+  18- and 20-card hands, post-play spatial regrouping, and inward opponent
+  anchors at 1366×768 and 1440×900;
 - noninteractive opponent status semantics and the absence of button-like
   enclosing material; and
 - installed-build offline relaunch to the home screen.
@@ -502,6 +537,17 @@ copied.
 - [Apple Human Interface Guidelines: Motion](https://developer.apple.com/design/human-interface-guidelines/motion)
   and [Feedback](https://developer.apple.com/design/human-interface-guidelines/feedback)
   support purposeful, interruptible feedback instead of decorative motion.
+- [Apple Human Interface Guidelines: Typography](https://developer.apple.com/design/human-interface-guidelines/typography)
+  and [Layout](https://developer.apple.com/design/human-interface-guidelines/layout)
+  support system type, readable standard weights, alignment, proximity, and
+  consistent spacing as the primary hierarchy tools.
+- [Apple Human Interface Guidelines: Gestures](https://developer.apple.com/design/human-interface-guidelines/gestures/)
+  and [Game controls](https://developer.apple.com/design/human-interface-guidelines/game-controls)
+  support responsive direct manipulation, comfortable hit regions, and clear
+  feedback throughout a gesture.
+- [W3C Pointer Events Level 3](https://www.w3.org/TR/pointerevents3/) documents
+  browser coalescing of pointer movement; coalesced samples plus geometric
+  segment recovery make the intended card path deterministic.
 - [Apple Human Interface Guidelines: Buttons](https://developer.apple.com/design/human-interface-guidelines/buttons)
   and [Alerts](https://developer.apple.com/design/human-interface-guidelines/alerts)
   inform coherent groups and restrained destructive confirmation.
@@ -513,8 +559,9 @@ copied.
   informs removal of the generic rounded status container and notification-like
   count badge.
 - Public 欢乐斗地主 and JJ斗地主 play/result captures were used to compare
-  spatial action persistence and the visibility of the last play; this spec
-  retains only the broadly familiar table grammar.
+  centered compact hands, stable card scale, spatial action persistence, and
+  the visibility of the last play; this spec retains only the broadly familiar
+  table grammar.
 - [JJ斗地主's public App Store notes](https://apps.apple.com/cn/app/jj%E6%96%97%E5%9C%B0%E4%B8%BB-%E4%B8%93%E4%B8%9A%E6%A3%8B%E7%89%8C%E5%90%88%E9%9B%86/id472885640)
   show that sequence, airplane, and bomb feedback are expected game moments;
   this product deliberately reduces them to labels and two motion weights.

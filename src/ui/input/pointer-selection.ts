@@ -3,6 +3,56 @@ export interface PointerPoint {
   readonly y: number;
 }
 
+export interface PointerHitRegion<CardId> {
+  readonly bottom: number;
+  readonly cardId: CardId;
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
+}
+
+function segmentIntervalForAxis(
+  start: number,
+  delta: number,
+  minimum: number,
+  maximum: number,
+): readonly [number, number] | null {
+  if (delta === 0) {
+    return start >= minimum && start <= maximum
+      ? [Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY]
+      : null;
+  }
+  const first = (minimum - start) / delta;
+  const second = (maximum - start) / delta;
+  return [Math.min(first, second), Math.max(first, second)];
+}
+
+export function cardsCrossedByPointerSegment<CardId>(
+  from: PointerPoint,
+  to: PointerPoint,
+  regions: readonly PointerHitRegion<CardId>[],
+): readonly CardId[] {
+  const deltaX = to.x - from.x;
+  const deltaY = to.y - from.y;
+  const crossings: Array<{ readonly cardId: CardId; readonly progress: number; readonly order: number }> = [];
+
+  regions.forEach((region, order) => {
+    const horizontal = segmentIntervalForAxis(from.x, deltaX, region.left, region.right);
+    const vertical = segmentIntervalForAxis(from.y, deltaY, region.top, region.bottom);
+    if (horizontal === null || vertical === null) {
+      return;
+    }
+    const entry = Math.max(0, horizontal[0], vertical[0]);
+    const exit = Math.min(1, horizontal[1], vertical[1]);
+    if (entry <= exit) {
+      crossings.push({ cardId: region.cardId, order, progress: entry });
+    }
+  });
+
+  crossings.sort((left, right) => left.progress - right.progress || left.order - right.order);
+  return crossings.map(({ cardId }) => cardId);
+}
+
 interface ActivePointerSelection<CardId> {
   readonly continuous: boolean;
   readonly desiredSelected: boolean;
