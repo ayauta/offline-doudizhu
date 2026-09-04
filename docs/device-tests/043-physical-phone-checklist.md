@@ -31,6 +31,9 @@ CSS viewport before each run.
       card changes once, the outside segment changes none, and prior changes
       remain. Record misses, unintended scrolling/dragging, and visible response
       latency.
+- [ ] Select five cards with one swipe, then hold a second swipe while
+      deselecting the same five. Confirm the origin card settles with the other
+      four and does not perform another visible rebound on release.
 - [ ] Observe the hand at 17, 20, and—during a late game—two cards. Confirm card
       size remains stable, 17 and two cards form naturally centered compact
       groups, 20 compresses without clipping, and two cards never separate
@@ -54,6 +57,10 @@ CSS viewport before each run.
       result title, winning side, last play, and actions read as one comfortable
       vertical sequence. Compare victory and failure: layout, type, and motion
       must match, with only wording different.
+- [ ] On a failed round with cards remaining in the human hand, tap the center
+      and lower portion of both `返回首页` and `再来一局` in separate runs. Confirm
+      the faded hand never intercepts either result action in either landscape
+      orientation.
 - [ ] Repeat the essential flow with reduced motion and increased system text
       scale; record any overlap or missing information rather than relaxing the
       automated baseline.

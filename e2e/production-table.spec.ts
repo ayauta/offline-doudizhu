@@ -346,6 +346,37 @@ test("continuously selects and deselects exposed cards without reordering the ha
   )).toEqual(idsBefore);
 });
 
+test("settles the origin with the rest while continuous deselection is still held", async ({ page }) => {
+  await useIdentityDeck(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始游戏" }).click();
+  await page.getByRole("button", { name: "叫地主" }).click();
+
+  const cards = page.getByLabel("你的手牌").getByRole("button");
+  const targets = [cards.nth(3), cards.nth(4), cards.nth(5), cards.nth(6), cards.nth(7)];
+  await swipeAcross(page, targets);
+  for (const card of targets) {
+    await expect(card).toHaveAttribute("aria-pressed", "true");
+  }
+
+  const points = await Promise.all(targets.map(exposedPoint));
+  await page.mouse.move(points[0]!.x, points[0]!.y);
+  await page.mouse.down();
+  for (const point of points.slice(1)) {
+    await page.mouse.move(point.x, point.y, { steps: 2 });
+  }
+  for (const card of targets) {
+    await expect(card).toHaveAttribute("aria-pressed", "false");
+  }
+  await page.waitForTimeout(150);
+
+  const transforms = await Promise.all(targets.map((card) =>
+    card.evaluate((element) => getComputedStyle(element).transform)
+  ));
+  expect(new Set(transforms).size).toBe(1);
+  await page.mouse.up();
+});
+
 test("recovers every crossed card from one fast pointer move", async ({ page }) => {
   await useIdentityDeck(page);
   await page.goto("/");
@@ -535,6 +566,21 @@ test("finishes a human-farmer round and rematches with a fresh deal", async ({ p
   expect(sawNoResponse).toBe(true);
   expect(sawLowCard).toBe(true);
   await expect(page.getByRole("heading", { name: "失败" })).toBeVisible();
+
+  await page.setViewportSize({ width: 1_440, height: 900 });
+  for (const name of ["返回首页", "再来一局"] as const) {
+    const button = page.getByRole("button", { name });
+    const box = await button.boundingBox();
+    expect(box).not.toBeNull();
+    await button.click({
+      position: { x: box!.width / 2, y: box!.height / 2 },
+      trial: true,
+    });
+    await button.click({
+      position: { x: box!.width / 2, y: box!.height - 4 },
+      trial: true,
+    });
+  }
 
   await page.getByRole("button", { name: "再来一局" }).click();
   await expect(page.locator('[data-control="bid-decline"]')).toBeVisible();

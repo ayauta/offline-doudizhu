@@ -157,11 +157,17 @@ It performs the accepted core restart and begins a newly shuffled deal.
 coins, points, multiplier, statistics, awards, revealed losing hands, confetti,
 or engagement prompts.
 
+At every supported landscape aspect ratio, the full visible result-button
+surface remains the topmost interactive hit region. Receded table content,
+including a losing human hand that still contains cards, is presentation-only
+and pointer-inert in the result state; it must never cover or intercept either
+result action when responsive layout makes their visual bounds overlap.
+
 Victory and failure use the same quiet composition, type roles, spacing, and
 motion; wording is the only difference. The title uses the system's standard
 bold rather than an arbitrary extra-heavy weight, natural Chinese spacing, and
-comfortable leading, and
-sits on one continuous vertical rhythm with the subline, retained final play,
+comfortable leading, and sits on one continuous vertical rhythm with the
+subline, retained final play,
 and actions. It arrives with only a 220 ms opacity and 4-pixel settle—no scale,
 glow, bounce, or color-coded success/failure treatment.
 
@@ -295,6 +301,12 @@ Selection feedback begins within one frame and the accepted interaction
 response is visible within 80 ms of touch release on target phones. With
 reduced motion, the lift is removed and static border/contrast carries the
 same state.
+
+Pointer-down feedback may adjust a card's boundary or shadow but does not give
+the pressed origin card a competing vertical position. When a continuous
+gesture selects or deselects several cards, the origin and every later card
+begin the same 100 ms positional settle as their selection state changes;
+pointer-up does not trigger a delayed second rebound for the origin card.
 
 After each completed selection gesture, the session validates the complete
 selection with the accepted rules seam:
