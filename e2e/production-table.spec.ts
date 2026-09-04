@@ -72,6 +72,31 @@ function intersects(
   );
 }
 
+async function expectCompactDesktopHand(
+  page: Page,
+  viewportWidth: number,
+  expectedCount: 17 | 20,
+) {
+  const hand = page.getByLabel("你的手牌");
+  const cards = hand.getByRole("button");
+  await expect(cards).toHaveCount(expectedCount);
+
+  const handBox = await hand.boundingBox();
+  const firstBox = await cards.first().boundingBox();
+  const secondBox = await cards.nth(1).boundingBox();
+  const lastBox = await cards.last().boundingBox();
+  expect(handBox).not.toBeNull();
+  expect(firstBox).not.toBeNull();
+  expect(secondBox).not.toBeNull();
+  expect(lastBox).not.toBeNull();
+
+  expect(firstBox!.width).toBeGreaterThanOrEqual(78);
+  expect(firstBox!.width).toBeLessThanOrEqual(86);
+  expect(secondBox!.x).toBeLessThan(firstBox!.x + firstBox!.width - 8);
+  expect(lastBox!.x + lastBox!.width - firstBox!.x).toBeLessThanOrEqual(1_041);
+  expect(handBox!.x + handBox!.width / 2).toBeCloseTo(viewportWidth / 2, 0);
+}
+
 test("moves from the quiet home into a complete narrow bidding table", async ({ page }) => {
   await page.setViewportSize({ width: 640, height: 340 });
   await useDeterministicRandom(page);
@@ -107,6 +132,52 @@ test("moves from the quiet home into a complete narrow bidding table", async ({ 
     expect(box!.y).toBeGreaterThanOrEqual(0);
     expect(box!.x + box!.width).toBeLessThanOrEqual(641);
     expect(box!.y + box!.height).toBeLessThanOrEqual(341);
+  }
+});
+
+test("presents opponent counts as borderless noninteractive card-stack status", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 400 });
+  await useDeterministicRandom(page, 3);
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始游戏" }).click();
+  await page.getByRole("button", { name: "叫地主" }).click();
+
+  for (const side of ["左侧", "右侧"] as const) {
+    const seat = page.getByLabel(new RegExp(`${side}玩家，剩余17张牌，农民`));
+    const status = seat.locator(".opponent-status");
+    await expect(status).toBeVisible();
+    await expect(status.locator(".opponent-stack .remaining-count")).toHaveText("17");
+    await expect(status.getByText("农民", { exact: true })).toBeVisible();
+    await expect(seat.getByRole("button")).toHaveCount(0);
+    await expect(seat.locator(".seat-identity")).toHaveCount(0);
+    await expect(status).toHaveCSS("border-top-style", "none");
+    await expect(status).toHaveCSS("box-shadow", "none");
+    await expect(status).toHaveCSS("cursor", "auto");
+  }
+});
+
+test("centers larger overlapping hands and opponent anchors on desktop", async ({ page }) => {
+  await useDeterministicRandom(page, 4);
+
+  for (const viewport of [
+    { width: 1_366, height: 768 },
+    { width: 1_440, height: 900 },
+  ] as const) {
+    await page.setViewportSize(viewport);
+    await page.goto("/");
+    await page.getByRole("button", { name: "开始游戏" }).click();
+
+    await expectCompactDesktopHand(page, viewport.width, 17);
+    const stageInset = (viewport.width - 1_180) / 2;
+    const leftSeat = await page.locator(".opponent-seat--left").boundingBox();
+    const rightSeat = await page.locator(".opponent-seat--right").boundingBox();
+    expect(leftSeat).not.toBeNull();
+    expect(rightSeat).not.toBeNull();
+    expect(leftSeat!.x).toBeGreaterThanOrEqual(stageInset + 12);
+    expect(rightSeat!.x + rightSeat!.width).toBeLessThanOrEqual(viewport.width - stageInset - 12);
+
+    await page.getByRole("button", { name: "叫地主" }).click();
+    await expectCompactDesktopHand(page, viewport.width, 20);
   }
 });
 
@@ -166,6 +237,7 @@ test("plays a complete human-landlord round with selection feedback and the fina
   await expect(page.getByRole("button", { name: "返回首页" })).toBeVisible();
   await expect(page.getByRole("button", { name: "再来一局" })).toBeVisible();
   await expect(page.locator(".seat-action__play")).not.toHaveCount(0);
+  await expect(page.locator(".opponent-status").first()).toHaveCSS("opacity", "0.24");
   const resultBox = await page.locator(".result-message").boundingBox();
   expect(resultBox).not.toBeNull();
   for (const play of await page.locator(".seat-action__play").all()) {
@@ -330,7 +402,7 @@ test("finishes a human-farmer round and rematches with a fresh deal", async ({ p
     const lowCard = page.locator(".remaining-count--low").first();
     if (await lowCard.isVisible()) {
       sawLowCard = true;
-      await expect(lowCard).toHaveText(/剩[12]张/);
+      await expect(lowCard).toHaveText(/^[12]$/);
       await expect(lowCard).toHaveCSS("animation-name", "low-card");
       await expect(page.locator(".opponent-low-announcement").filter({ hasText: /只剩[12]张牌/ }).first()).toHaveAttribute("aria-live", "polite");
     }
@@ -396,6 +468,10 @@ for (const viewport of [
     const cards = await page.getByLabel("你的手牌").getByRole("button").all();
     const actions = await page.getByLabel("当前操作").getByRole("button").all();
     const actionBoxes = await Promise.all(actions.map((action) => action.boundingBox()));
+    const exposedRankSize = await page.getByLabel("你的手牌").locator(".playing-card__corner").first().evaluate(
+      (element) => Number.parseFloat(getComputedStyle(element).fontSize),
+    );
+    expect(exposedRankSize).toBeGreaterThanOrEqual(13);
     for (const card of cards) {
       const box = await card.boundingBox();
       expect(box).not.toBeNull();

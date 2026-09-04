@@ -103,7 +103,7 @@ function RemainingCount({
 }: Readonly<{ count: number; low: boolean }>) {
   return (
     <strong class={`remaining-count${low ? " remaining-count--low" : ""}`}>
-      {low ? `剩${count}张` : count}
+      {count}
     </strong>
   );
 }
@@ -125,14 +125,14 @@ function OpponentSeat({
       aria-label={`${side === "left" ? "左侧" : "右侧"}玩家，剩余${count}张牌${role === null ? "" : `，${ROLE_LABELS[role]}`}`}
       class={`opponent-seat opponent-seat--${side}${view.currentSeat === seat ? " is-current" : ""}`}
     >
-      <div class="opponent-stack" aria-hidden="true">
-        <CardBack />
-        <CardBack />
-        <CardBack />
-      </div>
-      <div class="seat-identity">
-        <RemainingCount count={count} low={low} />
-        {role === null ? null : <span>{ROLE_LABELS[role]}</span>}
+      <div class="opponent-status" aria-hidden="true">
+        <div class="opponent-stack">
+          <CardBack />
+          <CardBack />
+          <CardBack />
+          <RemainingCount count={count} low={low} />
+        </div>
+        {role === null ? null : <span class="opponent-role">{ROLE_LABELS[role]}</span>}
       </div>
       <span aria-atomic="true" aria-live="polite" class="opponent-low-announcement">
         {low ? `${side === "left" ? "左侧" : "右侧"}玩家只剩${count}张牌` : ""}

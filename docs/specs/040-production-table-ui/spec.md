@@ -1,6 +1,6 @@
 # Spec 040: Production Table UI
 
-Status: Approved for implementation
+Status: Approved; visual refinement approved for implementation
 
 Date: 2026-09-04
 
@@ -15,8 +15,10 @@ home without encountering debug language or unfinished controls.
 The experience is designed for the product owner's parents: familiar enough to
 operate from existing Dou Dizhu knowledge, unusually calm and legible, and
 carefully responsive to touch. Its Apple-influenced qualities are hierarchy,
-direct manipulation, precision, restraint, and humane timing. They do not mean
-frosted glass, ornamental translucency, or copying an Apple product.
+direct manipulation, precision, restraint, and humane timing. Materials follow
+their meaning: physical cards feel opaque and tactile, static status stays
+quiet, and interactive controls alone receive elevated response cues. The
+design does not copy an Apple product or apply glass indiscriminately.
 
 ## Product and architecture boundary
 
@@ -175,8 +177,18 @@ It does not contain the game title, offline badge, clock, turn text, score, or
 multiplier. Before landlord assignment, bottom cards show only their backs.
 After assignment, their faces remain visible for the rest of the match.
 
-The current seat is indicated by one restrained local emphasis around its
-remaining-count/role group and by the spatial origin of its action. The UI does
+Each opponent uses one borderless status anchor. A slightly fanned physical
+card-back stack explains the large tabular numeral optically centered on its
+front card; the role sits directly below as secondary text. The group is not a
+button: it has no generic rounded container, glass fill, enclosing border,
+control shadow, pointer cursor, focus target, hover response, or press response.
+The positional relationship already identifies the left and right seats, so no
+visible `上家` or `下家` label is added. Its accessible name still states the
+side, remaining count, and assigned role.
+
+The current seat is indicated by one soft, diffuse tonal emphasis behind the
+whole status anchor and by the spatial origin of its action. The emphasis does
+not create a boundary or lift the anchor into the control layer. The UI does
 not add an arrow, bouncing marker, glowing ring, or duplicate turn sentence.
 
 The human hand is always one upright row containing all 17 cards, or all 20
@@ -185,6 +197,14 @@ two rows. Overlap adjusts to viewport width while preserving a readable rank
 and suit on every exposed strip. The entire exposed vertical strip participates
 in that card's hit region; continuous swipe selection provides the forgiving
 path on the narrowest supported viewport.
+
+At desktop trial widths, the match uses an invisible centered table stage of
+about 1180 CSS pixels rather than stretching meaningful content to the browser
+edges. The hand is centered within a maximum span of about 1040 pixels; cards
+are about 78–86 pixels wide and intentionally overlap at both 17 and 20 cards.
+Opponent anchors move inward with the same stage. At phone landscape widths the
+stage becomes fluid, and the hand continues to use the available safe width.
+The breakpoint changes density, not state, order, or interaction.
 
 The fixed hand order is descending strength:
 
@@ -197,17 +217,20 @@ manually reorder cards.
 
 ## Card and material design
 
-The table is a clean, untextured deep emerald field. It does not imitate felt,
-wood, a casino, or a glossy game lobby. Cards use warm ivory faces, restrained
-graphite shadows and black suits, and a deep vermilion for hearts, diamonds,
-and the most important destructive text. Card backs use low-saturation deep
-ink blue with one warm-ivory inner line and an original three-arc motif. There
-is no gold palette.
+The table is a clean, untextured deep emerald field. A very low-contrast tonal
+falloff may establish depth across large desktop areas, but it must not resemble
+felt, wood, a casino spotlight, or a glossy game lobby. Cards use warm ivory
+faces with a subtle paper-tonal transition, restrained layered graphite
+shadows, graphite suits, and a deep vermilion for hearts, diamonds, and the
+most important destructive text. Card backs use low-saturation deep ink blue
+with one warm-ivory inner line and an original three-arc motif. There is no gold
+palette.
 
-Materials are opaque and quiet. Translucency may be used only where it clarifies
-temporary depth, such as the exit confirmation scrim; frosted-glass cards,
-large blur layers, reflective highlights, neon glows, and decorative gradients
-are excluded.
+Physical cards and status content remain opaque and quiet. Restrained
+translucency may distinguish an actual control or clarify temporary depth, such
+as the exit confirmation scrim, only when contrast survives. Frosted cards,
+glass status anchors, stacked blur layers, reflective highlights, neon glows,
+and decorative gradients are excluded.
 
 Standard cards have familiar paper proportions, a large corner rank and suit,
 and one subtle central suit mark. J, Q, and K remain typographic instead of
@@ -226,8 +249,12 @@ They do not use a clown, crown, portrait, or decorative character illustration.
 
 Typography uses the local system stack only. Large numerals use tabular figures.
 Weight, size, line height, and tracking provide hierarchy without a custom or
-remote font. Important normal text meets at least 4.5:1 contrast; large text and
-meaningful control boundaries meet at least 3:1.
+remote font. Primary game information uses medium-to-bold weights rather than
+thin text; secondary labels remain comfortably readable instead of becoming
+decorative low-contrast gray. Opponent counts target about 24–28 pixels on
+phone landscape and 28–32 pixels on desktop. Important normal text meets at
+least 4.5:1 contrast; large text and meaningful control boundaries meet at
+least 3:1.
 
 ## Direct selection, validation, and hints
 
@@ -338,9 +365,11 @@ also occupies one beat. Human controls appear only after the last AI action has
 settled. The UI never adds random delay, spinner, fake thought process, or
 countdown.
 
-When an opponent reaches two or one cards, its count expands once to `剩2张` or
-`剩1张`, then remains static and high-contrast. It does not flash, bounce, speak,
-or repeatedly animate.
+When an opponent reaches two or one cards, the numeral remains dominant on the
+card stack and receives one brief tonal settle; the card-stack context and
+polite accessible announcement supply the remaining-card meaning. It then
+remains static and high-contrast. It does not flash, bounce, speak, or repeatedly
+animate.
 
 When the operating system/browser requests reduced motion, the app keeps the
 same states, order, labels, and reading intervals but removes nonessential
@@ -361,6 +390,11 @@ viewports:
 - 800 × 360;
 - 900 × 400; and
 - 640 × 340.
+
+Desktop trial acceptance also covers 1366 × 768 and 1440 × 900. At those
+viewports the hand is centered, cards overlap instead of separating, card width
+stays within the desktop target range, and opponent anchors remain tied to the
+centered stage rather than the outer window edges.
 
 Layout includes all four safe-area insets and must also be reviewed against the
 landscape CSS viewport reported by the Redmi K60E and Redmi K70 Pro. At the
@@ -433,12 +467,17 @@ Playwright exercises the production app rather than the debug screen:
 - reduced-motion behavior;
 - portrait-only rotate gate and exact landscape resume;
 - no overflow at 800×360, 900×400, and 640×340; and
+- centered, intentionally overlapping 17- and 20-card hands plus inward
+  opponent anchors at 1366×768 and 1440×900;
+- noninteractive opponent status semantics and the absence of button-like
+  enclosing material; and
 - installed-build offline relaunch to the home screen.
 
 Browser review records screenshots for home, bidding, human landlord, human
-farmer, narrow 20-card hand, normal response, cannot-beat, bomb/rocket feedback,
-exit confirmation, victory, failure, and portrait. Review checks hierarchy,
-contrast, clipping, card readability, button symmetry, final-play visibility,
+farmer, narrow 20-card hand, 1366- and 1440-pixel desktop tables, normal
+response, cannot-beat, bomb/rocket feedback, exit confirmation, victory,
+failure, and portrait. Review checks hierarchy, contrast, clipping, card
+readability, opponent-status affordance, button symmetry, final-play visibility,
 and absence of unintended motion or debug copy.
 
 ### Quality and device handoff
@@ -466,6 +505,13 @@ copied.
 - [Apple Human Interface Guidelines: Buttons](https://developer.apple.com/design/human-interface-guidelines/buttons)
   and [Alerts](https://developer.apple.com/design/human-interface-guidelines/alerts)
   inform coherent groups and restrained destructive confirmation.
+- [Apple Human Interface Guidelines: Materials](https://developer.apple.com/design/human-interface-guidelines/materials)
+  informs the separation of quiet content/status from elevated interactive
+  controls instead of applying glass to both.
+- Nielsen Norman Group guidance on [recognizable clickable elements](https://www.nngroup.com/articles/clickable-elements/)
+  and the [similarity principle](https://www.nngroup.com/articles/gestalt-similarity/)
+  informs removal of the generic rounded status container and notification-like
+  count badge.
 - Public 欢乐斗地主 and JJ斗地主 play/result captures were used to compare
   spatial action persistence and the visibility of the last play; this spec
   retains only the broadly familiar table grammar.

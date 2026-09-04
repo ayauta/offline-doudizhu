@@ -30,6 +30,13 @@ CSS viewport before each run.
 - [ ] Verify every exposed rank/suit, both jokers, bottom cards, selected state,
       disabled state, role, current seat, and `剩2张`/`剩1张` warning are legible
       at the owner's normal viewing distance.
+- [ ] Confirm each opponent's large remaining count reads as part of its
+      fanned card-back stack, the role below remains easy to read, and neither
+      status anchor looks or responds like a button. Confirm `上家`/`下家` is
+      unnecessary at both landscape orientations.
+- [ ] Compare the status anchors with the real action buttons: only controls
+      should appear elevated and respond to touch, while the current-seat halo
+      remains soft, borderless, and understandable without color alone.
 - [ ] Complete an offline round through bidding, a valid response, an invalid
       selection, `没有可以压过的牌`, a special-pattern label, exit cancel, and
       result/rematch. Confirm the final public play remains unobscured.
