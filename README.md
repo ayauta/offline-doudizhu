@@ -67,8 +67,20 @@ pnpm dev
 pnpm check
 ```
 
-常用命令：`pnpm test` 运行确定性测试，`pnpm test:browser` 运行 Chromium
-验收，`pnpm build` 生成 PWA，`pnpm typecheck` 进行严格类型检查。
+常用命令：`pnpm test` 运行确定性测试，`pnpm test:browser` 使用仓库固定的
+Playwright 与 Chromium 运行验收，`pnpm build` 生成 PWA，`pnpm typecheck`
+进行严格类型检查。浏览器测试可以把文件和标题筛选直接传给 Playwright：
+
+```bash
+pnpm test:browser e2e/production-table.spec.ts -g "quiet card"
+```
+
+需要留下人工复核截图时，在相同命令前加 `VISUAL_REVIEW=1`；截图和本次运行
+记录写入已忽略的 `output/playwright/`，不会进入提交：
+
+```bash
+VISUAL_REVIEW=1 pnpm test:browser e2e/production-table.spec.ts -g "quiet card"
+```
 
 产品范围、规则和隐私承诺见 `docs/product-spec.md`；依赖方向和状态所有权
 见 `ARCHITECTURE.md`；功能顺序见 `docs/specs/README.md`，最近完成的工作见

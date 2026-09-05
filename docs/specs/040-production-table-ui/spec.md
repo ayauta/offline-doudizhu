@@ -253,20 +253,37 @@ as the exit confirmation scrim, only when contrast survives. Frosted cards,
 glass status anchors, stacked blur layers, reflective highlights, neon glows,
 and decorative gradients are excluded.
 
-Standard cards have familiar paper proportions, a large corner rank and suit,
-and one subtle central suit mark. J, Q, and K remain typographic instead of
-using illustrated court figures. Hearts/diamonds use one project-owned deep
+The 2026-09-05 owner-approved "large type and whitespace" revision replaces
+the earlier central-suit / bilingual-joker treatment. Standard cards have
+familiar paper proportions and one fixed-width corner column: a large upright
+rank above one suit, with explicit spacing. The rest of the face is blank.
+There is no center suit, opposite corner, color side panel, or illustration.
+J, Q, and K remain typographic instead of using illustrated court figures.
+Hearts/diamonds use one project-owned deep
 vermilion, clubs/spades one graphite. Suit shapes are consistent project-owned
 inline SVG geometry rather than operating-system emoji or font-dependent glyphs.
 
-Both jokers combine familiar international and Chinese cues:
+Both jokers use the same exposed index column:
 
-- a vertical central `JOKER` word;
-- a large corner `大` or `小` with the smaller `王` beneath it;
+- `JOKER` stacked as five upright Latin letters, never sideways;
+- no visible Chinese text on either face;
 - deep vermilion for the big joker and graphite for the small joker; and
 - accessible names `大王` and `小王`.
 
 They do not use a clown, crown, portrait, or decorative character illustration.
+
+Faces use their own soft-white paper, graphite ink and deep-red tokens so
+refining the cards does not change controls, feedback or the table palette.
+Edges and short shadows separate overlapping cards without a heavy glow.
+Hand ranks target at least 21 CSS pixels on phones and 30 on desktop. The
+complete `10`, suit and joker index must remain inside the exposed strip of a
+20-card hand, including selected cards. Small table cards use a separate optical
+size rather than scaling the hand artwork; their rank/suit spacing and upright
+joker letters remain explicit. Hand, bottom and public-play faces share the
+same art and colors. Existing gesture, selected-state and reduced-motion
+contracts remain intact. Public-play density must be checked with long groups,
+not just single-card examples. Physical-phone readability remains a Spec 043
+handoff and is not inferred from a desktop screenshot.
 
 Typography uses the local system stack only, including ranks, J/Q/K, and joker
 text. Five consistent roles govern the screen: large result/home titles, key

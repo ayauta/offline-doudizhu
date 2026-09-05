@@ -2,6 +2,8 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { parseBrowserTestArguments } from "./browser-test-options.mjs";
+
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 
 function run(scriptPath, args) {
@@ -18,7 +20,11 @@ function run(scriptPath, args) {
   }
 }
 
-if (!process.argv.includes("--skip-build")) {
+const { skipBuild, testArguments } = parseBrowserTestArguments(
+  process.argv.slice(2),
+);
+
+if (!skipBuild) {
   run(join(repositoryRoot, "node_modules/vite/bin/vite.js"), ["build"]);
 }
-run(join(repositoryRoot, "node_modules/@playwright/test/cli.js"), ["test"]);
+run(join(repositoryRoot, "node_modules/@playwright/test/cli.js"), ["test", ...testArguments]);

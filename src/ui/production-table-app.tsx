@@ -110,10 +110,17 @@ function TableAction({ action }: Readonly<{ action: PublicTableAction | null }>)
     return <span class="seat-action__pass">不出</span>;
   }
   const label = action.leading ? PATTERN_LABELS[action.pattern] : undefined;
+  const lengthClass = action.cards.length <= 3 ? " seat-action__play--short" : "";
+  const phoneStepWidth = Math.max(0, action.cards.length - 1) * 26;
+  const desktopStepWidth = Math.max(0, action.cards.length - 1) * 30;
   return (
     <div
-      class={`seat-action__play seat-action__play--${action.weight}`}
+      class={`seat-action__play seat-action__play--${action.weight}${lengthClass}`}
       data-pattern={action.pattern}
+      style={{
+        "--played-card-desktop-width": `calc(${desktopStepWidth}px + var(--table-card-width))`,
+        "--played-card-phone-width": `calc(${phoneStepWidth}px + var(--table-card-width))`,
+      }}
     >
       <div class="table-card-group">
         {action.cards.map((cardId) => <TableCard cardId={cardId} key={cardId} />)}

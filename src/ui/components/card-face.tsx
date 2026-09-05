@@ -27,27 +27,17 @@ function SuitMark({ suit }: Readonly<{ suit: Suit }>) {
 function CardArtwork({ cardId }: Readonly<{ cardId: CardId }>) {
   const card = getCard(cardId);
   if (card.kind === "joker") {
-    const big = card.rank === "big-joker";
     return (
-      <>
-        <span class="playing-card__corner playing-card__corner--joker" aria-hidden="true">
-          <strong>{big ? "大" : "小"}</strong>
-          <span>王</span>
-        </span>
-        <span class="playing-card__joker-word" aria-hidden="true">JOKER</span>
-      </>
+      <span class="playing-card__joker-word" aria-hidden="true">
+        {Array.from("JOKER", (letter) => <span key={letter}>{letter}</span>)}
+      </span>
     );
   }
   return (
-    <>
-      <span class="playing-card__corner" aria-hidden="true">
-        <strong>{card.rank}</strong>
-        <SuitMark suit={card.suit} />
-      </span>
-      <span class="playing-card__center" aria-hidden="true">
-        <SuitMark suit={card.suit} />
-      </span>
-    </>
+    <span class="playing-card__corner" aria-hidden="true">
+      <strong>{card.rank}</strong>
+      <SuitMark suit={card.suit} />
+    </span>
   );
 }
 

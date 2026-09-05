@@ -1,11 +1,13 @@
 import { defineConfig } from "@playwright/test";
 
+const visualReview = process.env.VISUAL_REVIEW === "1";
+
 export default defineConfig({
   expect: {
     timeout: 5_000,
   },
   fullyParallel: false,
-  outputDir: "test-results",
+  outputDir: visualReview ? "output/playwright" : "test-results",
   projects: [
     {
       name: "chromium",
@@ -21,7 +23,7 @@ export default defineConfig({
   timeout: 30_000,
   use: {
     baseURL: "http://127.0.0.1:4173",
-    screenshot: "only-on-failure",
+    screenshot: visualReview ? "on" : "only-on-failure",
     serviceWorkers: "allow",
     trace: "retain-on-failure",
   },

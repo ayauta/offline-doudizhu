@@ -61,6 +61,94 @@ async function useIdentityDeck(page: Page) {
   });
 }
 
+// Specify a legal deal through the existing randomness boundary, without adding
+// production test hooks or exposing the AI hands in the application DOM.
+async function useSeatHand(
+  page: Page,
+  seatCards: readonly number[],
+  seatIndex = 0,
+) {
+  const rest = Array.from({ length: 54 }, (_, id) => id).filter(
+    (id) => !seatCards.includes(id),
+  );
+  const hand = [...seatCards, ...rest.splice(0, 20 - seatCards.length)];
+  const deck = Array.from({ length: 51 }, (_, index) =>
+    index % 3 === seatIndex ? hand[Math.floor(index / 3)]! : rest.shift()!,
+  );
+  deck.push(...hand.slice(17));
+  const working = Array.from({ length: 54 }, (_, id) => id);
+  const samples: number[] = [];
+  for (let index = 53; index > 0; index -= 1) {
+    const swap = working.indexOf(deck[index]!);
+    samples.push(Math.floor(((swap + 0.5) / (index + 1)) * 0x1_0000_0000));
+    [working[index], working[swap]] = [working[swap]!, working[index]!];
+  }
+  await page.addInitScript((values) => {
+    let index = 0;
+    Crypto.prototype.getRandomValues = function<T extends ArrayBufferView | null>(
+      array: T,
+    ): T {
+      if (array instanceof Uint32Array) {
+        array.fill(values[index++] ?? 0xffff_ffff);
+      }
+      return array;
+    };
+  }, samples);
+}
+
+test("keeps a long AI winning play readable beside the result", async ({ page }) => {
+  await page.clock.install();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 640, height: 340 });
+  const core = Array.from({ length: 4 }, (_, rank) => [
+    (rank + 6) * 4,
+    (rank + 6) * 4 + 1,
+    (rank + 6) * 4 + 2,
+  ]).flat();
+  const highPairs = [40, 41, 44, 45];
+  const ids = [...core, ...highPairs, 48, 49, 20, 21];
+  // The right AI sees the core, both high pairs and one 2 before bidding,
+  // which reaches its normal call threshold. Its three bottom cards complete
+  // a legal four-triple airplane with four pair wings.
+  await useSeatHand(page, ids, 1);
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始游戏" }).click();
+  await page.getByRole("button", { name: "不叫", exact: true }).click();
+  for (let step = 0; step < 8; step += 1) {
+    await page.clock.fastForward(700);
+  }
+  await expect(
+    page.getByRole("heading", { name: "失败", exact: true }),
+  ).toBeVisible();
+  const cards = page.locator(".opponent-seat--right .table-card");
+  await expect(cards).toHaveCount(20);
+  const covered = await cards.evaluateAll((elements) => elements.flatMap((card) =>
+    Array.from(card.querySelectorAll("strong, .suit-mark")).flatMap((mark) => {
+      const box = mark.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+      const coveringCard = hit?.closest(".table-card");
+      const cardLabel = card.getAttribute("aria-label");
+      const coveringLabel = coveringCard?.getAttribute("aria-label") ??
+        hit?.className ?? "nothing";
+      return coveringCard === card
+        ? []
+        : [`${cardLabel} covered by ${coveringLabel}`];
+    }),
+  ));
+  expect(covered).toEqual([]);
+  const label = page.locator(".opponent-seat--right .pattern-label");
+  await expect(label).toHaveText("飞机");
+  expect(await label.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return document.elementFromPoint(
+      box.x + box.width / 2,
+      box.y + box.height / 2,
+    ) === element;
+  })).toBe(true);
+  await page.getByRole("button", { name: "返回首页" }).click();
+  await expect(page.getByRole("button", { name: "开始游戏" })).toBeVisible();
+});
+
 async function expectNoViewportOverflow(page: Page) {
   await expect.poll(() => page.evaluate(() => ({
     height: document.documentElement.scrollHeight,
@@ -261,12 +349,14 @@ test("plays a complete human-landlord round with selection feedback and the fina
   await expect(resultTitle).toHaveCSS("font-weight", "700");
   await expect(resultTitle).toHaveCSS("letter-spacing", "normal");
   await expect(resultSubtitle).toHaveCSS("margin-top", "14px");
-  const resultTitleBox = await resultTitle.boundingBox();
-  const resultSubtitleBox = await resultSubtitle.boundingBox();
-  expect(resultTitleBox).not.toBeNull();
-  expect(resultSubtitleBox).not.toBeNull();
-  expect(resultSubtitleBox!.y - resultTitleBox!.y - resultTitleBox!.height)
-    .toBeCloseTo(14, 0);
+  // Measure related elements in one browser frame; separate remote reads can
+  // straddle the result's 4px entry animation and report a false spacing error.
+  const resultSpacing = await page.locator(".result-message").evaluate((message) => {
+    const title = message.querySelector("h1")!.getBoundingClientRect();
+    const subtitle = message.querySelector("p")!.getBoundingClientRect();
+    return subtitle.top - title.bottom;
+  });
+  expect(resultSpacing).toBeCloseTo(14, 0);
   for (const play of await page.locator(".seat-action__play").all()) {
     const playBox = await play.boundingBox();
     expect(playBox).not.toBeNull();
@@ -646,6 +736,108 @@ for (const viewport of [
         expect(actionBox).not.toBeNull();
         expect(intersects(box!, actionBox!)).toBe(false);
       }
+    }
+  });
+
+  test(`keeps quiet card indices readable at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.clock.install();
+    await page.setViewportSize(viewport);
+    await useIdentityDeck(page);
+    await page.goto("/");
+    await page.getByRole("button", { name: "开始游戏" }).click();
+    await page.getByRole("button", { name: "叫地主" }).click();
+    await page.clock.fastForward(700);
+    const hand = page.getByLabel("你的手牌");
+    await expect(hand.getByRole("button")).toHaveCount(20);
+    await expect(hand.getByRole("button", { name: "大王", exact: true })).toHaveText("JOKER");
+    await expect(hand.getByRole("button", { name: "小王", exact: true })).toHaveText("JOKER");
+    await expect(page.locator(".playing-card__center")).toHaveCount(0);
+    const violations = await hand.locator(".playing-card").evaluateAll((cards) => cards.flatMap((card, index) => {
+      const bounds = card.getBoundingClientRect();
+      const edge = cards[index + 1]?.getBoundingClientRect().left ?? bounds.right;
+      return Array.from(card.querySelectorAll("strong, .suit-mark, .playing-card__joker-word")).flatMap((mark) => {
+        const box = mark.getBoundingClientRect();
+        const font = Number.parseFloat(getComputedStyle(mark).fontSize);
+        return box.left < bounds.left || box.right > edge - 1 || box.bottom > bounds.bottom ||
+          (mark.tagName === "STRONG" && font < 21)
+          ? [`${card.getAttribute("aria-label")}: clipped or undersized index`] : [];
+      });
+    }));
+    expect(violations).toEqual([]);
+    await hand.getByRole("button", { name: "大王", exact: true }).click({ position: { x: 5, y: 20 } });
+    await hand.getByRole("button", { name: "小王", exact: true }).click({ position: { x: 5, y: 20 } });
+    await page.getByRole("button", { name: "出牌" }).click();
+    await page.clock.fastForward(250);
+    const jokers = page.locator(".human-play-zone .table-card");
+    await expect(jokers).toHaveCount(2);
+    for (const joker of await jokers.all()) {
+      await expect(joker).toHaveText("JOKER");
+      expect(
+        await joker.evaluate((card) =>
+          Number.parseFloat(getComputedStyle(card).width),
+        ),
+      ).toBeGreaterThanOrEqual(38);
+      const size = await joker.locator(".playing-card__joker-word").evaluate(
+        (word) => Number.parseFloat(getComputedStyle(word).fontSize),
+      );
+      expect(size).toBeGreaterThanOrEqual(11);
+    }
+  });
+}
+
+for (const count of [12, 20] as const) {
+  test(`retains readable ${count}-card public plays on a narrow table`, async ({ page }) => {
+    await page.clock.install();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.setViewportSize({ width: 640, height: 340 });
+    const ids = count === 12
+      ? Array.from({ length: 12 }, (_, rank) => rank * 4)
+      : [
+          ...Array.from({ length: 4 }, (_, rank) => [
+            rank * 4,
+            rank * 4 + 1,
+            rank * 4 + 2,
+          ]).flat(),
+          ...Array.from({ length: 4 }, (_, rank) => [
+            (rank + 4) * 4,
+            (rank + 4) * 4 + 1,
+          ]).flat(),
+        ];
+    await useSeatHand(page, ids);
+    await page.goto("/");
+    await page.getByRole("button", { name: "开始游戏" }).click();
+    await page.getByRole("button", { name: "叫地主", exact: true }).click();
+    await page.clock.fastForward(700);
+    for (const id of ids) {
+      await page.locator(`[data-card-id="${id}"]`).click({
+        position: { x: 5, y: 20 },
+      });
+    }
+    await page.getByRole("button", { name: "出牌" }).click();
+    const cards = page.locator(".human-play-zone .table-card");
+    await expect(cards).toHaveCount(count);
+    const check = async () => {
+      const hidden = await cards.evaluateAll((elements) => elements.flatMap((card) =>
+        Array.from(card.querySelectorAll("strong, .suit-mark")).flatMap((mark) => {
+          const box = mark.getBoundingClientRect();
+          const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+          return box.top < 0 || box.bottom > innerHeight || box.left < 0 || box.right > innerWidth ||
+            hit?.closest(".table-card") !== card ? [card.getAttribute("aria-label")] : [];
+        }),
+      ));
+      expect(hidden).toEqual([]);
+    };
+    await check();
+    if (count === 20) {
+      await page.clock.fastForward(700);
+      await expect(
+        page.getByRole("heading", { name: "胜利", exact: true }),
+      ).toBeVisible();
+      await check();
+      await page.getByRole("button", { name: "再来一局" }).click();
+      await expect(
+        page.getByRole("button", { name: "叫地主", exact: true }),
+      ).toBeVisible();
     }
   });
 }

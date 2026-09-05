@@ -41,9 +41,11 @@ CSS viewport before each run.
 - [ ] After an accepted play, confirm remaining cards regroup horizontally in
       one restrained beat with no jump or vertical wobble. Repeat with reduced
       motion and confirm regrouping is immediate.
-- [ ] Verify every exposed rank/suit, both jokers, bottom cards, selected state,
-      disabled state, role, current seat, and `剩2张`/`剩1张` warning are legible
-      at the owner's normal viewing distance.
+- [ ] Verify every exposed rank/suit, complete `10`, and both upright stacked
+      `JOKER` indices are legible at the owner's normal viewing distance in the
+      20-card hand, selected hand, bottom cards, and public plays. Confirm faces
+      have no center mark or visible Chinese joker text. Also check selected and
+      disabled states, role, current seat, and the `剩2张`/`剩1张` warning.
 - [ ] Confirm each opponent's large remaining count reads as part of its
       fanned card-back stack, the role below remains easy to read, and neither
       status anchor looks or responds like a button. Confirm `上家`/`下家` is
@@ -57,6 +59,10 @@ CSS viewport before each run.
       result title, winning side, last play, and actions read as one comfortable
       vertical sequence. Compare victory and failure: layout, type, and motion
       must match, with only wording different.
+- [ ] Play a long straight and, if practical, a 20-card airplane with pair
+      wings. Confirm every public rank and suit remains readable, wrapping is
+      orderly, the pattern label remains visible, and neither result action
+      covers the final group at either landscape orientation.
 - [ ] On a failed round with cards remaining in the human hand, tap the center
       and lower portion of both `返回首页` and `再来一局` in separate runs. Confirm
       the faded hand never intercepts either result action in either landscape

@@ -188,7 +188,7 @@ button:focus-visible {
 }
 
 .bottom-cards {
-  --back-width: clamp(35px, 5.4vw, 47px);
+  --back-width: clamp(38px, 5.4vw, 47px);
   --back-height: calc(var(--back-width) * 1.46);
   display: flex;
   justify-content: center;
@@ -449,6 +449,12 @@ button:focus-visible {
 }
 
 .seat-action__play {
+  --table-card-width: clamp(38px, 4.9vw, 44px);
+  --table-card-height: calc(var(--table-card-width) * 1.5);
+  --table-card-step: 26px;
+  --table-row-step: 42px;
+  --played-card-width: var(--played-card-phone-width);
+  width: min(100%, var(--played-card-width));
   max-width: 100%;
   display: grid;
   justify-items: center;
@@ -461,9 +467,21 @@ button:focus-visible {
 }
 
 .table-card-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--table-card-step), 1fr));
+  grid-auto-rows: var(--table-row-step);
+  width: 100%;
+  padding-right: calc(var(--table-card-width) - var(--table-card-step));
+  padding-bottom: calc(var(--table-card-height) - var(--table-row-step));
+}
+
+.seat-action__play--short {
+  width: fit-content;
+}
+
+.seat-action__play--short .table-card-group {
   display: flex;
-  justify-content: center;
-  max-width: 100%;
+  padding: 0;
 }
 
 .playing-card {
@@ -471,20 +489,26 @@ button:focus-visible {
   display: block;
   width: var(--hand-card-width);
   height: var(--hand-card-height);
-  padding: clamp(4px, 0.65vw, 7px);
+  --card-index-width: 26px;
+  --card-index-left: 1px;
+  --card-index-top: 5px;
+  --card-rank-size: 21px;
+  --card-suit-size: 22px;
+  --card-joker-size: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  padding: 0;
   overflow: hidden;
-  border: 1px solid #d8cfbf;
-  border-radius: clamp(6px, 0.9vw, 9px);
-  color: var(--graphite);
-  background: linear-gradient(155deg, var(--ivory-bright), var(--ivory));
+  border: 1px solid #dadbd3;
+  border-radius: clamp(6px, 0.75vw, 8px);
+  color: #252c2d;
+  background: linear-gradient(160deg, #fdfcf8 65%, #f1f1eb);
   box-shadow:
-    0 7px 16px rgb(0 24 17 / 26%),
-    0 2px 4px rgb(0 24 17 / 18%),
-    inset 0 1px 0 rgb(255 255 255 / 72%);
+    0 1px 1px rgb(18 45 40 / 20%),
+    0 3px 6px rgb(18 45 40 / 11%);
 }
 
 .playing-card--red {
-  color: var(--vermilion);
+  color: #b12f3c;
 }
 
 .suit-mark {
@@ -495,71 +519,57 @@ button:focus-visible {
 }
 
 .playing-card__corner {
+  position: absolute;
+  left: var(--card-index-left);
+  top: var(--card-index-top);
   display: grid;
   justify-items: center;
-  width: min-content;
-  font-size: clamp(13px, 1.85vw, 18px);
-  font-weight: var(--weight-bold);
-  line-height: 0.88;
+  gap: 4px;
+  width: var(--card-index-width);
+  font-size: var(--card-rank-size);
+  line-height: 1.1;
 }
 
 .playing-card__corner strong {
-  font-size: 1.08em;
-  font-weight: var(--weight-bold);
+  font-size: inherit;
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: lining-nums;
+  font-optical-sizing: auto;
+  letter-spacing: 0;
 }
 
-.playing-card__center {
-  position: absolute;
-  inset: 50% auto auto 50%;
-  transform: translate(-50%, -42%);
-  font-size: clamp(22px, 4vw, 38px);
-  opacity: 0.78;
-}
-
-.playing-card__corner--joker {
-  line-height: 0.8;
+.playing-card__corner .suit-mark {
+  font-size: var(--card-suit-size);
 }
 
 .playing-card__joker-word {
   position: absolute;
-  left: 54%;
-  top: 52%;
-  transform: translate(-50%, -50%);
-  font-size: clamp(8px, 1.25vw, 12px);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.08em;
+  left: var(--card-index-left);
+  top: var(--card-index-top);
+  width: var(--card-index-width);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: var(--card-joker-size);
+  font-weight: var(--weight-semibold);
   line-height: 1;
-  text-orientation: mixed;
-  writing-mode: vertical-rl;
 }
 
 .table-card {
-  --table-card-width: clamp(27px, 4vw, 35px);
-  --table-card-height: calc(var(--table-card-width) * 1.48);
+  --card-index-width: 24px;
+  --card-index-top: 3px;
+  --card-rank-size: 18px;
+  --card-suit-size: 17px;
+  --card-joker-size: 11px;
   position: relative;
   flex: 0 0 var(--table-card-width);
   width: var(--table-card-width);
   height: var(--table-card-height);
-  margin-right: calc(var(--table-card-width) * -0.48);
-  padding: 2px;
-  border-radius: 4px;
-  box-shadow: 0 2px 5px rgb(0 25 16 / 27%);
-}
-
-.table-card:last-child {
-  margin-right: 0;
+  border-radius: 5px;
 }
 
 .table-card .playing-card__corner {
-  font-size: clamp(8px, 1.15vw, 11px);
-}
-
-.table-card .playing-card__center {
-  font-size: clamp(13px, 2vw, 18px);
-}
-
-.table-card .playing-card__joker-word {
-  font-size: 6px;
+  gap: 1px;
 }
 
 .seat-action__play--impact .table-card {
@@ -596,6 +606,7 @@ button:focus-visible {
 }
 
 .live-feedback {
+  pointer-events: none;
   position: absolute;
   z-index: 28;
   left: 50%;
@@ -721,6 +732,7 @@ button:focus-visible {
 }
 
 .result-message {
+  pointer-events: none;
   position: absolute;
   z-index: 26;
   top: 32%;
@@ -762,6 +774,11 @@ button:focus-visible {
 
 .match-screen.is-result .human-play-zone {
   bottom: 160px;
+  pointer-events: none;
+}
+
+.match-screen.is-result .human-play-zone > .seat-action__play {
+  pointer-events: auto;
 }
 
 .match-screen.is-result .match-controls {
@@ -918,7 +935,7 @@ button:focus-visible {
   }
 
   .human-play-zone {
-    bottom: 190px;
+    bottom: 153px;
   }
 
   .live-feedback {
@@ -938,15 +955,16 @@ button:focus-visible {
   }
 
   .result-message {
-    top: 28%;
+    top: 24%;
   }
 
   .match-screen.is-result .human-play-zone {
-    bottom: 145px;
+    width: calc(100% - 80px);
+    bottom: 128px;
   }
 
   .match-screen.is-result .match-controls {
-    bottom: 82px;
+    bottom: max(6px, env(safe-area-inset-bottom));
   }
 }
 
@@ -992,16 +1010,27 @@ button:focus-visible {
     top: 41%;
   }
 
-  .human-hand .playing-card__corner {
-    font-size: clamp(20px, 1.55vw, 22px);
+  .human-hand .playing-card {
+    --card-index-width: 40px;
+    --card-index-left: 4px;
+    --card-index-top: 8px;
+    --card-rank-size: 30px;
+    --card-suit-size: 27px;
+    --card-joker-size: 17px;
   }
 
-  .human-hand .playing-card__center {
-    font-size: clamp(38px, 3vw, 43px);
+  .seat-action__play {
+    --table-card-width: 50px;
+    --table-card-step: 30px;
+    --table-row-step: 46px;
+    --played-card-width: var(--played-card-desktop-width);
   }
 
-  .human-hand .playing-card__joker-word {
-    font-size: 13px;
+  .table-card {
+    --card-rank-size: 21px;
+    --card-index-width: 26px;
+    --card-suit-size: 20px;
+    --card-joker-size: 12px;
   }
 
   .human-identity {
