@@ -702,6 +702,17 @@ test("relaunches the installed build offline at home without claiming recovery",
   await expect(page.getByLabel("你的手牌")).toHaveCount(0);
 });
 
+test("starts the embedded build without registering a service worker", async ({ page }) => {
+  await useDeterministicRandom(page, 99);
+  await page.goto("/embedded.html");
+
+  await expect(page.getByRole("heading", { name: "单机斗地主" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "开始游戏" })).toBeVisible();
+  await expect.poll(() => page.evaluate(async () =>
+    (await navigator.serviceWorker.getRegistrations()).length,
+  )).toBe(0);
+});
+
 for (const viewport of [
   { width: 800, height: 360 },
   { width: 900, height: 400 },

@@ -11,15 +11,16 @@ AI 对局，不登录、不收集数据、没有广告或付费，也没有后�
 
 ## 技术边界
 
-- 标准 Web 与可安装 PWA；正式移动基线为 Android 10+ Chrome/System
-  WebView。
+- 同时维护标准 Web/PWA 与私人 Android APK；正式移动基线为 Android 10+
+  Chrome/System WebView。
 - Preact 负责轻量视图组合，原生 CSS
   负责布局；不使用 Canvas、CSS 框架或全局状态库。
 - `src/core` 是不依赖 DOM、浏览器或平台的纯 TypeScript。
-- Vite 生成静态 `dist/`；PWA 工具只预缓存固定同源构建文件。
+- Vite 一次生成静态 `dist/`：`index.html` 用于 Web/PWA，`embedded.html`
+  用于 Android；PWA 工具只预缓存自己的固定同源构建文件。
 - 应用源码没有网络请求、远程字体/图片、账号、统计或遥测。
-- 未来可以把同一份静态输出包装为私人签名 Android APK；本仓库当前不
-  选择包装器、不签名、不上架、不托管。
+- Android 使用最小原生 WebView 壳安全加载包内输出，无 Android 权限、
+  JS-native bridge 或原生业务逻辑；不使用第三方跨平台包装器，也不上架。
 
 ## 本地开发
 
@@ -82,10 +83,29 @@ pnpm test:browser e2e/production-table.spec.ts -g "quiet card"
 VISUAL_REVIEW=1 pnpm test:browser e2e/production-table.spec.ts -g "quiet card"
 ```
 
+## Android 调试包
+
+先生成并验证 Web 制品，再由 Android 工程打包同一份 `dist/`：
+
+```bash
+source scripts/activate-toolchain.sh
+pnpm build
+pnpm check:bundle
+pnpm check:android
+cd android
+./gradlew lintDebug assembleDebug
+```
+
+APK 位于 `android/app/build/outputs/apk/debug/`，构建输出已忽略。Android
+工程需要 JDK 17、Android SDK 36 和 Build Tools 36；Gradle 由仓库 wrapper
+固定为 9.6.0。Release 构建只从 `OFFLINE_DDZ_KEYSTORE`、
+`OFFLINE_DDZ_KEYSTORE_PASSWORD`、`OFFLINE_DDZ_KEY_ALIAS`、
+`OFFLINE_DDZ_KEY_PASSWORD` 环境变量读取仓库外签名信息。
+
 产品范围、规则和隐私承诺见 `docs/product-spec.md`；依赖方向和状态所有权
 见 `ARCHITECTURE.md`；功能顺序见 `docs/specs/README.md`，最近完成的工作见
 `docs/specs/040-production-table-ui/` 与
-`docs/exec-plans/completed/012-production-table-ui.md`。真机调优将在 Spec 043
+`docs/exec-plans/completed/012-production-table-ui.md`。Android 交付见 Spec 044；真机调优将在 Spec 043
 按 `docs/device-tests/043-physical-phone-checklist.md` 执行；这里不提前声明
 Redmi K60E 或 Redmi K70 Pro 已通过真机验收。
 

@@ -158,6 +158,14 @@ statistics, identity, or analytics.
 Run the real-phone landscape matrix, tune contrast/card overlap/touch targets,
 verify offline/background-resume behavior, and record playable acceptance.
 
+### 044 — Private Android package
+
+Package the same verified Web artifact in a minimal permission-free Android
+WebView shell. Add explicit PWA and embedded delivery entries, hardened local
+asset loading, external release signing, Android build checks, and a short
+physical-device quick acceptance. Its active specification is
+`docs/specs/044-android-private-package/spec.md`.
+
 ## 7. Later optional improvements
 
 ### 050 — Optional local key-action voice

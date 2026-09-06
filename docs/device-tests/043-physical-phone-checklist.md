@@ -70,8 +70,11 @@ CSS viewport before each run.
 - [ ] Repeat the essential flow with reduced motion and increased system text
       scale; record any overlap or missing information rather than relaxing the
       automated baseline.
-- [ ] Play continuously for at least 15 minutes and note visible stutter,
-      delayed taps, unexpected reloads, battery drain, and uncomfortable heat.
+- [ ] Run five cold starts, roughly 30 seconds of rapid continuous selection,
+      one representative round flow, and three background/rotation cycles.
+      Note visible stutter, delayed taps, unexpected reloads, battery drain, and
+      uncomfortable heat. Extend to a 15-minute continuous diagnostic only when
+      the quick run exposes a performance, reload, battery, or heat concern.
 
 For every failure, attach a screenshot or short screen recording, the exact
 step, device/environment fields, and a reproducible issue. Keep device

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">单机斗地主</string>
+    <string name="press_back_again_to_exit">再按一次退出游戏</string>
+</resources>

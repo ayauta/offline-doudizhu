@@ -36,6 +36,7 @@ describe("repository configuration", () => {
     await expect(exists("../../project.config.example.json")).resolves.toBe(false);
     await expect(exists("../../tsconfig.wechat.json")).resolves.toBe(false);
     await expect(exists("../../index.html")).resolves.toBe(true);
+    await expect(exists("../../embedded.html")).resolves.toBe(true);
     await expect(exists("../../vite.config.ts")).resolves.toBe(true);
   });
 

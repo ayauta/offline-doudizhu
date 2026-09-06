@@ -1,7 +1,7 @@
 # Toolchain and Dependency Record
 
-Status: Approved migration baseline  
-Last updated: 2026-09-01
+Status: Approved Web and Android baseline
+Last updated: 2026-09-06
 
 All direct versions are exact and the lockfile is committed. Runtime gameplay
 has one possible renderer dependency; the remaining packages are development
@@ -17,6 +17,9 @@ or build-time only.
 | `typescript` | `7.0.2` | Apache-2.0 | Strict static checking only. |
 | `vitest` | `4.1.11` | MIT | Deterministic Node test runner only. |
 | `@types/node` | `24.13.3` | MIT | Types for build/check/test configuration only. |
+| Android Gradle Plugin | `9.4.0` | Apache-2.0 | Android build-time packaging only; no application runtime code. |
+| Gradle wrapper | `9.6.0` | Apache-2.0 | Reproducible Android build runner; wrapper files only are committed. |
+| `androidx.webkit:webkit` | `1.17.0` | Apache-2.0 | Android-shell-only `WebViewAssetLoader`; no bridge or game dependency. |
 
 ## Alternatives and costs
 
@@ -30,6 +33,10 @@ or build-time only.
   while output inspection and offline browser tests enforce its narrow scope.
 - Direct Vite scripts replace bespoke bundler wrappers. Native CSS replaces CSS
   frameworks. Preact hooks, if accepted, replace any global state library.
+- AndroidX WebKit replaces a custom local-request interceptor because the
+  official loader provides reviewed origin-aware asset mapping. Plain platform
+  `Activity` and Java avoid AppCompat, Compose, the Kotlin plugin, Capacitor,
+  Tauri, and a general JavaScript-native bridge.
 
 ## Maintenance controls
 

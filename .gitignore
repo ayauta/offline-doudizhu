@@ -25,3 +25,10 @@
 .DS_Store
 Thumbs.db
 /.idea/
+
+# Android local/generated output
+/android/.gradle/
+/android/**/build/
+/android/local.properties
+*.apk
+*.aab

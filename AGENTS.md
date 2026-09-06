@@ -5,8 +5,8 @@
 This repository builds 单机斗地主 (`offline-doudizhu`): a standards-based,
 offline PWA for one human and two local AI players. It is designed for older
 family members and prioritizes readability, direct operation, correctness,
-privacy, and maintainability. A future private Android package may wrap the
-static Web output, but is not part of the current implementation.
+privacy, and maintainability. A private Android package wraps the same verified
+static Web output through the explicit embedded delivery entry.
 
 ## Hard constraints
 
@@ -28,11 +28,13 @@ static Web output, but is not part of the current implementation.
 ## Dependency direction
 
 `cards <- rules <- game <- app <- ui/composition`, with
-`ai -> game/rules/cards` and `platform/web -> app ports`.
+`ai -> game/rules/cards`, `platform/web -> app ports`, and delivery entries at
+the outer composition edge.
 
 The application session is authoritative. UI consumes read-only views and emits
-intents. Browser storage, lifecycle, and service-worker APIs remain in
-`src/platform/web`; `src/main.tsx` is the composition root.
+intents. Browser storage and lifecycle APIs remain in `src/platform/web`; PWA
+service-worker registration remains in `src/platform/pwa`; `src/main.tsx` is
+the shared composition root.
 
 ## Required workflow
 

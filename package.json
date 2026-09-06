@@ -18,6 +18,7 @@
     "test:watch": "vitest",
     "test:browser": "node scripts/run-browser-tests.mjs",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
+    "check:android": "node scripts/check-android.mjs",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:privacy": "node scripts/check-privacy.mjs",
     "check": "node scripts/check.mjs"
