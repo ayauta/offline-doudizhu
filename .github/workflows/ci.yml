@@ -67,7 +67,8 @@ jobs:
             android/gradle.properties
             android/gradle/wrapper/gradle-wrapper.properties
       - name: Install Android SDK components
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+        run: |
+          "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
       - name: Build debug Android package
         working-directory: android
         run: ./gradlew lintDebug assembleDebug --no-daemon

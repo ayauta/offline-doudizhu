@@ -27,6 +27,7 @@ describe("public preview release delivery", () => {
     expect(ci).toContain("pnpm check");
     expect(ci).toContain("lintDebug assembleDebug");
     expect(ci).toContain("scripts/android-emulator-smoke.sh");
+    expect(ci).toContain("cmdline-tools/latest/bin/sdkmanager");
     expect(ci).toContain("contents: read");
     expect(ci).not.toContain("OFFLINE_DDZ_KEYSTORE_BASE64");
     expect(ci).not.toContain("pages: write");
@@ -43,6 +44,7 @@ describe("public preview release delivery", () => {
     expect(release).toContain("OFFLINE_DDZ_KEYSTORE_BASE64");
     expect(release).toContain("lintRelease assembleRelease");
     expect(release).toContain("scripts/android-emulator-smoke.sh");
+    expect(release).toContain("cmdline-tools/latest/bin/sdkmanager");
     expect(release).toContain("gh release create");
     expect(release).toContain("--prerelease");
     expect(release).toContain("actions/upload-pages-artifact");
