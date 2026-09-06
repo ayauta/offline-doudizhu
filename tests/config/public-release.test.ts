@@ -22,12 +22,17 @@ describe("public preview release delivery", () => {
   });
 
   it("runs CI without release signing or publication authority", async () => {
-    const ci = await source("../../.github/workflows/ci.yml");
+    const [ci, emulatorSmoke] = await Promise.all([
+      source("../../.github/workflows/ci.yml"),
+      source("../../scripts/android-emulator-smoke.mjs"),
+    ]);
 
     expect(ci).toContain("pnpm check");
     expect(ci).toContain("lintDebug assembleDebug");
     expect(ci).toContain("scripts/android-emulator-smoke.sh");
     expect(ci).toContain("cmdline-tools/latest/bin/sdkmanager");
+    expect(ci).toContain("/dev/kvm");
+    expect(emulatorSmoke).toContain('["shell", "service", "check", "phone"]');
     expect(ci).toContain("contents: read");
     expect(ci).not.toContain("OFFLINE_DDZ_KEYSTORE_BASE64");
     expect(ci).not.toContain("pages: write");

@@ -96,7 +96,12 @@ try {
   adb(["shell", "settings", "put", "system", "accelerometer_rotation", "0"]);
   adb(["shell", "settings", "put", "system", "user_rotation", "1"]);
   adb(["shell", "svc", "wifi", "disable"]);
-  adb(["shell", "svc", "data", "disable"]);
+  const phoneService = adb(["shell", "service", "check", "phone"], { quiet: true });
+  if (phoneService.includes("Service phone: found")) {
+    adb(["shell", "svc", "data", "disable"]);
+  } else {
+    console.log("No emulator telephony service is present; cellular data is unavailable.");
+  }
   adb(["logcat", "-c"]);
 
   startActivity({ stop: true });

@@ -69,6 +69,11 @@ jobs:
           OFFLINE_DDZ_KEY_PASSWORD: ${{ secrets.OFFLINE_DDZ_KEY_PASSWORD }}
       - name: Inspect signed APK
         run: scripts/inspect-android-apk.sh android/app/build/outputs/apk/release/app-release.apk io.github.ayauta.offlinedoudizhu 0.1.0
+      - name: Enable emulator acceleration when available
+        run: |
+          if [[ -e /dev/kvm ]]; then
+            sudo chmod 0666 /dev/kvm
+          fi
       - name: Run Android emulator smoke
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
