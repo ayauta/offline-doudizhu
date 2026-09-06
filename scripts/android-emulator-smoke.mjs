@@ -1,6 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 
 const [apkPath, packageId] = process.argv.slice(2);
@@ -9,8 +7,6 @@ if (apkPath === undefined || packageId === undefined) {
 }
 
 const component = `${packageId}/io.github.ayauta.offlinedoudizhu.MainActivity`;
-const scratch = mkdtempSync(join(tmpdir(), "offline-ddz-emulator-"));
-const uiDumpPath = join(scratch, "window.xml");
 
 function adb(args, { quiet = false } = {}) {
   const result = spawnSync("adb", ["-e", ...args], {
@@ -53,32 +49,46 @@ function isResumed() {
   );
 }
 
-function dumpUi() {
-  adb(["shell", "uiautomator", "dump", "/sdcard/offline-ddz-window.xml"], { quiet: true });
-  adb(["pull", "/sdcard/offline-ddz-window.xml", uiDumpPath], { quiet: true });
-  return readFileSync(uiDumpPath, "utf8");
-}
-
-function boundsForLabel(xml, label) {
-  const escaped = label.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const node = xml.match(new RegExp(`<node[^>]*(?:text|content-desc)="${escaped}"[^>]*>`))?.[0];
-  const bounds = node?.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
-  if (bounds === undefined) {
-    return null;
+function captureScreen() {
+  const result = spawnSync("adb", ["-e", "exec-out", "screencap", "-p"], {
+    encoding: null,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (result.error !== undefined) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(`adb screencap failed: ${result.stderr.toString("utf8")}`);
+  }
+  const png = result.stdout;
+  if (png.length < 24 || png.subarray(1, 4).toString("ascii") !== "PNG") {
+    throw new Error("adb screencap did not return a PNG image.");
   }
   return {
-    x: Math.round((Number(bounds[1]) + Number(bounds[3])) / 2),
-    y: Math.round((Number(bounds[2]) + Number(bounds[4])) / 2),
+    bytes: png.length,
+    digest: createHash("sha256").update(png).digest("hex"),
+    height: png.readUInt32BE(20),
+    width: png.readUInt32BE(16),
   };
 }
 
-async function waitForLabel(label) {
-  let bounds = null;
-  await waitUntil(`UI label ${label}`, () => {
-    bounds = boundsForLabel(dumpUi(), label);
-    return bounds !== null;
-  });
-  return bounds;
+async function waitForPaintedScreen(label, changedFrom) {
+  const deadline = Date.now() + 30_000;
+  let snapshot;
+  while (Date.now() < deadline) {
+    snapshot = captureScreen();
+    if (
+      snapshot.bytes >= 30_000
+      && snapshot.width > snapshot.height
+      && (changedFrom === undefined || snapshot.digest !== changedFrom)
+    ) {
+      return snapshot;
+    }
+    await delay(500);
+  }
+  throw new Error(
+    `Timed out waiting for ${label}; last screenshot was ${snapshot?.width}x${snapshot?.height}, ${snapshot?.bytes} bytes.`,
+  );
 }
 
 function startActivity({ stop = false } = {}) {
@@ -90,7 +100,6 @@ function startActivity({ stop = false } = {}) {
   adb(args);
 }
 
-try {
   adb(["install", "-r", apkPath]);
   adb(["shell", "pm", "clear", packageId]);
   adb(["shell", "settings", "put", "system", "accelerometer_rotation", "0"]);
@@ -106,21 +115,29 @@ try {
 
   startActivity({ stop: true });
   await waitUntil("offline cold-started Activity", isResumed);
-  const start = await waitForLabel("开始游戏");
-  adb(["shell", "input", "tap", String(start.x), String(start.y)]);
-  await waitForLabel("叫地主");
+  const homeScreen = await waitForPaintedScreen("painted landscape home screen");
+  adb([
+    "shell",
+    "input",
+    "tap",
+    String(Math.round(homeScreen.width * 0.5)),
+    String(Math.round(homeScreen.height * 0.63)),
+  ]);
+  await delay(750);
+  const gameScreen = await waitForPaintedScreen("game table after the centered start action", homeScreen.digest);
 
   adb(["shell", "input", "keyevent", "KEYCODE_HOME"]);
   await waitUntil("backgrounded Activity", () => !isResumed());
   startActivity();
   await waitUntil("resumed Activity", isResumed);
-  await waitForLabel("叫地主");
+  await waitForPaintedScreen("resumed game table");
 
   adb(["shell", "settings", "put", "system", "user_rotation", "3"]);
   await waitUntil("opposite landscape rotation", isResumed);
-  await waitForLabel("叫地主");
+  await waitForPaintedScreen("opposite landscape game table");
   adb(["shell", "settings", "put", "system", "user_rotation", "1"]);
   await waitUntil("original landscape rotation", isResumed);
+  await waitForPaintedScreen("original landscape game table");
 
   adb(["shell", "input", "keyevent", "KEYCODE_BACK"]);
   await waitUntil("first Back to retain the Activity", isResumed, 5_000);
@@ -129,13 +146,10 @@ try {
 
   startActivity();
   await waitUntil("clean relaunch", isResumed);
-  await waitForLabel("开始游戏");
+  await waitForPaintedScreen("painted clean relaunch", gameScreen.digest);
 
   const crashLog = adb(["logcat", "-d", "-b", "crash"], { quiet: true });
   if (crashLog.includes(packageId)) {
     throw new Error(`Crash buffer contains ${packageId}:\n${crashLog}`);
   }
-  console.log("Android emulator smoke passed (offline launch, game entry, resume, rotation, Back, clean relaunch)." );
-} finally {
-  rmSync(scratch, { force: true, recursive: true });
-}
+  console.log("Android emulator smoke passed (offline launch, centered game entry, resume, rotation, Back, clean relaunch)." );
