@@ -7,7 +7,7 @@ if (apkPath === undefined || packageId === undefined) {
 }
 
 const component = `${packageId}/io.github.ayauta.offlinedoudizhu.MainActivity`;
-const BACK_DISPATCH_SETTLE_MILLISECONDS = 500;
+const BACK_CONFIRMATION_EXPIRY_MILLISECONDS = 2_500;
 
 function adb(args, { quiet = false } = {}) {
   const result = spawnSync("adb", ["-e", ...args], {
@@ -141,10 +141,13 @@ function startActivity({ stop = false } = {}) {
   await waitForPaintedScreen("original landscape game table");
 
   adb(["shell", "input", "keyevent", "KEYCODE_BACK"]);
-  await waitUntil("first Back to retain the Activity", isResumed, 5_000);
-  await delay(BACK_DISPATCH_SETTLE_MILLISECONDS);
-  adb(["shell", "input", "keyevent", "KEYCODE_BACK"]);
-  await waitUntil("second Back to remove the Activity", () => !isResumed(), 5_000);
+  await delay(BACK_CONFIRMATION_EXPIRY_MILLISECONDS);
+  if (!isResumed()) {
+    throw new Error("A single Back removed the Activity instead of requesting confirmation.");
+  }
+
+  adb(["shell", "input", "keyevent", "KEYCODE_BACK", "KEYCODE_BACK"]);
+  await waitUntil("two consecutive Back events to remove the Activity", () => !isResumed(), 5_000);
 
   startActivity();
   await waitUntil("clean relaunch", isResumed);
