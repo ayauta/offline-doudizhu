@@ -7,6 +7,7 @@ if (apkPath === undefined || packageId === undefined) {
 }
 
 const component = `${packageId}/io.github.ayauta.offlinedoudizhu.MainActivity`;
+const BACK_DISPATCH_SETTLE_MILLISECONDS = 500;
 
 function adb(args, { quiet = false } = {}) {
   const result = spawnSync("adb", ["-e", ...args], {
@@ -141,6 +142,7 @@ function startActivity({ stop = false } = {}) {
 
   adb(["shell", "input", "keyevent", "KEYCODE_BACK"]);
   await waitUntil("first Back to retain the Activity", isResumed, 5_000);
+  await delay(BACK_DISPATCH_SETTLE_MILLISECONDS);
   adb(["shell", "input", "keyevent", "KEYCODE_BACK"]);
   await waitUntil("second Back to remove the Activity", () => !isResumed(), 5_000);
 

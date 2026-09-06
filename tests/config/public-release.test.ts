@@ -34,6 +34,7 @@ describe("public preview release delivery", () => {
     expect(ci).toContain("/dev/kvm");
     expect(emulatorSmoke).toContain('["shell", "service", "check", "phone"]');
     expect(emulatorSmoke).toContain('"screencap", "-p"');
+    expect(emulatorSmoke).toContain("BACK_DISPATCH_SETTLE_MILLISECONDS");
     expect(emulatorSmoke).not.toContain("uiautomator");
     expect(ci).toContain("contents: read");
     expect(ci).not.toContain("OFFLINE_DDZ_KEYSTORE_BASE64");
