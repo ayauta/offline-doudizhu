@@ -1,6 +1,6 @@
 # Execution Plan 017: Private Android Package
 
-Status: Active
+Status: Completed
 Started: 2026-09-06
 Spec: `docs/specs/044-android-private-package/spec.md`
 
@@ -23,10 +23,12 @@ embedded entries, and a minimal permission-free Android package.
 8. [x] Add the owner-approved uniform two-press Android system-Back exit,
    prevent duplicate launcher Activities, and verify the native path from the
    home and active-match screens on Xiaomi 10S.
-9. [ ] Finish the approved Xiaomi 10S three-to-five-minute quick
-   acceptance; record environment and results without device identifiers.
-10. [ ] Self-review tracked/generated files, privacy, permissions, APK contents,
-   signing exclusions, and documentation; then move this plan to completed.
+9. [x] Close the Xiaomi 10S check with the owner's extended-play and offline
+   cold-launch reports, preserving unrecorded granular observations as
+   non-blocking rather than retroactively marking them passed.
+10. [x] Self-review tracked/generated files, privacy, permissions, APK contents,
+    signing exclusions, and documentation; superseding ADR 0012 carries public
+    distribution and repeatable emulator acceptance into Plan 018.
 
 ## Safety and recovery
 

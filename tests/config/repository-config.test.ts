@@ -19,11 +19,11 @@ async function exists(relativePath: string): Promise<boolean> {
 }
 
 describe("repository configuration", () => {
-  it("identifies a private static Web/PWA package", async () => {
+  it("identifies the non-publishable Web/PWA and Android workspace", async () => {
     const packageConfig = await readJson("../../package.json");
 
     expect(packageConfig).toMatchObject({
-      description: "Offline, accessible Dou Dizhu Web/PWA",
+      description: "Offline, accessible Dou Dizhu Web/PWA and Android game",
       license: "Apache-2.0",
       name: "offline-doudizhu",
       private: true,

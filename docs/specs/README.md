@@ -166,6 +166,14 @@ asset loading, external release signing, Android build checks, and a short
 physical-device quick acceptance. Its active specification is
 `docs/specs/044-android-private-package/spec.md`.
 
+### 045 — Public preview release
+
+Publish the reviewed Web/PWA and a signed universal Android APK from one `v*`
+tag through GitHub Pages and Releases. Add protected-history checks, automated
+Android-emulator smoke acceptance, checksum output, signing recovery, and
+maintainer-facing development/release documentation. Its active specification
+is `docs/specs/045-public-preview-release/spec.md`.
+
 ## 7. Later optional improvements
 
 ### 050 — Optional local key-action voice

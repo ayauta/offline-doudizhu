@@ -1,6 +1,6 @@
 # Spec 044 Xiaomi 10S Android Quick Check
 
-Status: In progress
+Status: Closed as non-blocking device evidence under ADR 0012
 
 Date: 2026-09-06
 
@@ -59,6 +59,17 @@ No device identifier, account, notification, or other personal data is recorded.
       and layout.
 - [ ] No unexpected reload, external page, permission prompt, or uncomfortable
       heat is observed.
-- [ ] Offline-first launch is repeated with Wi-Fi and mobile data disabled.
+- [x] Offline-first launch was repeated with Wi-Fi and mobile data disabled.
 
-The quick check is not accepted until the owner-operated items are completed.
+## Closure note
+
+On 2026-09-06 the owner reported extended play with no material problem and
+then separately confirmed a cold launch with Wi-Fi and mobile data disabled.
+The unchecked granular observations above were not individually recorded and
+remain unchecked; they are not retroactively claimed as passed. ADR 0012 and
+Spec 045 make repeatable CI plus Android-emulator acceptance authoritative for
+public releases, while this record remains useful optional physical evidence.
+
+This record is closed as optional physical evidence; the unchecked observations
+remain available for a future comfort review but do not block an automated
+public release.

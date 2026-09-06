@@ -1,6 +1,6 @@
 # ADR 0011: Explicit PWA and Embedded Android Delivery Entries
 
-Status: Accepted
+Status: Superseded by ADR 0012 for distribution; embedded delivery design remains accepted
 Date: 2026-09-06
 
 ## Context

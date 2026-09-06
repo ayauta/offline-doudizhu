@@ -20,6 +20,12 @@ or build-time only.
 | Android Gradle Plugin | `9.4.0` | Apache-2.0 | Android build-time packaging only; no application runtime code. |
 | Gradle wrapper | `9.6.0` | Apache-2.0 | Reproducible Android build runner; wrapper files only are committed. |
 | `androidx.webkit:webkit` | `1.17.0` | Apache-2.0 | Android-shell-only `WebViewAssetLoader`; no bridge or game dependency. |
+| `actions/checkout` | commit `3d3c42e5aac5ba805825da76410c181273ba90b1` (`v7`) | MIT | GitHub-hosted source checkout in CI/release only. |
+| `actions/setup-node` | commit `820762786026740c76f36085b0efc47a31fe5020` (`v7`) | MIT | Installs exact Node 24.20.0 on GitHub-hosted runners. |
+| `actions/setup-java` | commit `dd06d9cba3e5552c54d9f8ea23572deb30010f7c` (`v6`) | MIT | Installs Temurin JDK 17 and caches Gradle inputs in CI. |
+| `actions/upload-artifact` / `download-artifact` | commits `b7c566a772e6b6bfb58ed0dc250532a479d7789f` (`v6`) / `37930b1c2abaa49bbe596cd826c3c89aef350131` (`v7`) | MIT | Transfers already-verified release assets between isolated release jobs. |
+| GitHub Pages actions | `configure-pages` `983d7736d9b0ae728b81ab479565c72886d7745b`, `upload-pages-artifact` `7b1f4a764d45c48632c6b24a0339c27f5614fb0b`, `deploy-pages` `d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e` | MIT | Official tag-only static Pages artifact and deployment path. |
+| `ReactiveCircus/android-emulator-runner` | commit `a421e43855164a8197daf9d8d40fe71c6996bb0d` (`v2`) | MIT | CI-only AVD lifecycle for Android shell smoke; no application/runtime dependency. |
 
 ## Alternatives and costs
 
@@ -37,6 +43,12 @@ or build-time only.
   official loader provides reviewed origin-aware asset mapping. Plain platform
   `Activity` and Java avoid AppCompat, Compose, the Kotlin plugin, Capacitor,
   Tauri, and a general JavaScript-native bridge.
+- GitHub-hosted Actions are pinned to immutable commits instead of floating
+  tags. Direct shell setup was retained for pnpm and APK inspection; official
+  actions are used only where they encapsulate runner authentication/artifact
+  protocols. A fully hand-written emulator lifecycle was rejected because AVD
+  boot, acceleration, shutdown, and diagnostics are runner-sensitive; the
+  pinned emulator action is isolated to CI and invokes project-owned tests.
 
 ## Maintenance controls
 

@@ -3,8 +3,8 @@
 ## Supported surface
 
 当前受支持的安全边界是本地开发、静态 Web/PWA 构建、生成的同源静态
-precache worker、离线浏览器运行，以及无权限的私人 Android 包。没有
-服务器、账号、业务 API、远程配置或公开 Android 包。
+precache worker、GitHub Pages 静态托管、离线浏览器运行，以及无权限的
+公开预览 Android 包。没有服务器、账号、业务 API 或远程配置。
 
 ## Reporting
 
@@ -27,7 +27,8 @@ precache worker、离线浏览器运行，以及无权限的私人 Android 包�
 - Android manifest 必须保持零权限；WebView 禁止网络、明文、文件和内容
   访问，只能加载 `WebViewAssetLoader` 映射的包内 `embedded.html`，且不得
   添加 JavaScript-native bridge。
-- 发布完整 UI 前，在 Redmi K60E 和 Redmi K70 Pro 上完成横屏、离线、后台
-  恢复和可读性检查。
+- `v*` 发布必须通过受保护主分支、签名 APK 检查和 Android 模拟器冒烟；
+  keystore 与口令只存在于仓库外恢复副本和 GitHub Actions Secrets。
+- 真机可读性、触感和发热保留为非阻塞抽查，不得被描述成自动化已测能力。
 
-Android 签名、私发更新或公开托管范围变化需要独立威胁复核和 ADR。
+Android 签名、分发渠道或公开托管范围变化需要独立威胁复核和 ADR。

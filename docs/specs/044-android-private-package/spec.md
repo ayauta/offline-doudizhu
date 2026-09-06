@@ -1,6 +1,6 @@
 # Spec 044: Private Android Package and Explicit Delivery Entries
 
-Status: Approved for implementation
+Status: Implemented; private-only distribution superseded by Spec 045
 Approved: 2026-09-06
 Decision: ADR 0011
 
@@ -122,7 +122,10 @@ battery concerns.
 
 ## Non-goals
 
-- Google Play, public distribution, Play App Signing, analytics, crash upload,
+- Google Play, Play App Signing, analytics, crash upload,
   auto-update, online content, notifications, deep links, file access, camera,
   audio recording, location, account integration, iOS, macOS, and Windows.
 - Native menus, settings, game logic, persistence bridge, or asset downloader.
+
+Public GitHub preview distribution is intentionally added later by ADR 0012 and
+Spec 045; the Android shell and signing boundaries in this spec remain active.

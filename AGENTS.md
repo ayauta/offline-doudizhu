@@ -5,8 +5,8 @@
 This repository builds 单机斗地主 (`offline-doudizhu`): a standards-based,
 offline PWA for one human and two local AI players. It is designed for older
 family members and prioritizes readability, direct operation, correctness,
-privacy, and maintainability. A private Android package wraps the same verified
-static Web output through the explicit embedded delivery entry.
+privacy, and maintainability. A public-preview Android package wraps the same
+verified static Web output through the explicit embedded delivery entry.
 
 ## Hard constraints
 
@@ -50,8 +50,10 @@ Use small changes following:
 `spec -> tests -> implementation -> self-review -> browser/playable review -> commit`
 
 Rules changes require table-driven tests first. Every bug gets a regression test
-before its fix. UI changes require applicable Playwright acceptance and later
-real-phone review; build success alone is not playable acceptance.
+before its fix. UI changes require applicable Playwright acceptance. Public
+Android releases additionally require the automated emulator shell smoke;
+real-phone comfort/touch/heat review is useful non-blocking evidence and must
+not be represented as an automated capability.
 
 ## Commands
 
@@ -85,6 +87,6 @@ permission; do not change toolchains.
 
 A change is done only when its approved spec is satisfied, relevant deterministic
 and browser tests exist, `pnpm check` passes, dependency/privacy impact is
-reviewed, contract changes include documentation/ADR updates, applicable phone
-checks are recorded, and no generated output, browser binary, private config,
-secret, signing material, or PII is staged.
+reviewed, contract changes include documentation/ADR updates, applicable
+automated delivery checks pass, and no generated output, browser binary,
+private config, secret, signing material, or PII is staged.

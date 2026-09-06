@@ -19,6 +19,7 @@
 *.pfx
 *.keystore
 *.jks
+*-release-recovery.json
 
 # Tool and OS noise
 *.log

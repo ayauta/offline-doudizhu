@@ -1,0 +1,135 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Verify and build release
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Check out source and history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24.20.0
+          package-manager-cache: false
+      - name: Verify tag version
+        run: node scripts/check-release-tag.mjs "$GITHUB_REF_NAME"
+      - name: Verify tag belongs to main
+        run: scripts/check-tag-on-main.sh "$GITHUB_SHA" "$GITHUB_REF_NAME"
+      - name: Set up pnpm
+        run: npm install --global pnpm@11.24.0
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run complete Web gate
+        run: pnpm check
+      - name: Set up Java
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+          cache-dependency-path: |
+            android/*.gradle.kts
+            android/gradle.properties
+            android/gradle/wrapper/gradle-wrapper.properties
+      - name: Install Android SDK components
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+      - name: Restore release signing key
+        run: node scripts/restore-release-keystore.mjs "$RUNNER_TEMP/offline-doudizhu-release.jks"
+        env:
+          OFFLINE_DDZ_KEYSTORE_BASE64: ${{ secrets.OFFLINE_DDZ_KEYSTORE_BASE64 }}
+          OFFLINE_DDZ_KEYSTORE_PASSWORD: ${{ secrets.OFFLINE_DDZ_KEYSTORE_PASSWORD }}
+          OFFLINE_DDZ_KEY_ALIAS: ${{ secrets.OFFLINE_DDZ_KEY_ALIAS }}
+          OFFLINE_DDZ_KEY_PASSWORD: ${{ secrets.OFFLINE_DDZ_KEY_PASSWORD }}
+      - name: Build signed Android release
+        working-directory: android
+        run: ./gradlew lintRelease assembleRelease --no-daemon
+        env:
+          OFFLINE_DDZ_KEYSTORE: ${{ runner.temp }}/offline-doudizhu-release.jks
+          OFFLINE_DDZ_KEYSTORE_PASSWORD: ${{ secrets.OFFLINE_DDZ_KEYSTORE_PASSWORD }}
+          OFFLINE_DDZ_KEY_ALIAS: ${{ secrets.OFFLINE_DDZ_KEY_ALIAS }}
+          OFFLINE_DDZ_KEY_PASSWORD: ${{ secrets.OFFLINE_DDZ_KEY_PASSWORD }}
+      - name: Inspect signed APK
+        run: scripts/inspect-android-apk.sh android/app/build/outputs/apk/release/app-release.apk io.github.ayauta.offlinedoudizhu 0.1.0
+      - name: Run Android emulator smoke
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 36
+          arch: x86_64
+          profile: pixel_6
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect -camera-back none
+          script: scripts/android-emulator-smoke.sh android/app/build/outputs/apk/release/app-release.apk io.github.ayauta.offlinedoudizhu
+      - name: Prepare versioned assets
+        run: node scripts/prepare-release-assets.mjs "$GITHUB_REF_NAME" android/app/build/outputs/apk/release/app-release.apk release-assets
+      - name: Upload release assets
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: release-assets
+          path: release-assets
+          if-no-files-found: error
+          retention-days: 7
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: dist
+
+  deploy-pages:
+    name: Deploy GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy verified Pages artifact
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+
+  publish:
+    name: Publish GitHub pre-release
+    needs: [build, deploy-pages]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out release notes
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Download release assets
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: release-assets
+          path: release-assets
+      - name: Create GitHub Release
+        run: |
+          if [[ "$GITHUB_REF_NAME" == v0.* ]]; then
+            gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag --prerelease --title "单机斗地主 $GITHUB_REF_NAME" --notes-file "docs/release-notes/$GITHUB_REF_NAME.md"
+          else
+            gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag --title "单机斗地主 $GITHUB_REF_NAME" --notes-file "docs/release-notes/$GITHUB_REF_NAME.md"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}

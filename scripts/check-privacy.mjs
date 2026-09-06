@@ -41,6 +41,7 @@ const sensitivePaths = [
   ["private local directory", /(^|\/)\.local\//],
   ["environment file", /(^|\/)\.env(?:\.|$)/],
   ["private key, certificate, or keystore", /\.(?:pem|key|p12|pfx|keystore|jks)$/i],
+  ["release-signing recovery file", /(^|\/)[^/]*-release-recovery\.json$/i],
   ["browser test artifact", /(^|\/)(?:test-results|playwright-report)\//],
   ["generated output", /(^|\/)dist\//],
 ];
@@ -60,6 +61,7 @@ for (const sentinel of [
   "secret.key",
   "signing.keystore",
   "signing.jks",
+  "offline-doudizhu-release-recovery.json",
   "dist/index.html",
   "test-results/result.json",
   "playwright-report/index.html",

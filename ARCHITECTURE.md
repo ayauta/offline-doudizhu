@@ -7,7 +7,7 @@ Web integration, and verification
 
 ## 1. Outcome
 
-单机斗地主 is a static Web/PWA and private Android modular monolith around a
+单机斗地主 is a static Web/PWA and public-preview Android modular monolith around a
 deterministic pure TypeScript game engine. Semantic DOM and native CSS present
 the game. A thin application layer owns the session, while narrow browser
 adapters own browser capabilities. Android is a permission-free native shell
@@ -152,7 +152,8 @@ JavaScript-native bridge. The native shell owns Android system-Back handling:
 all application screens use the same two-press task-exit behavior, while
 visible Web controls own navigation back to the game home screen. System Back
 is never delegated to WebView history. APK replacement under the owner's
-signing key is the Android update channel. ADR 0011 owns this delivery decision.
+long-lived signing key is the Android update channel. ADR 0011 owns the shell
+boundary; ADR 0012 owns public distribution and release automation.
 
 ## 7. Verification
 
@@ -167,10 +168,12 @@ signing key is the Android update channel. ADR 0011 owns this delivery decision.
   viewports, gestures, PWA offline relaunch, and embedded startup without a
   service-worker registration.
 - Android source checks enforce zero permissions, fixed identities, the local
-  asset URL, and hardened WebView settings. Android lint/build and physical
-  installation remain required delivery gates.
-- Redmi K60E and Redmi K70 Pro review is required before production UI
-  acceptance, but not before the architecture-validation slice is handed off.
+  asset URL, and hardened WebView settings. Android lint/build are supplemented
+  by a release-blocking API 36 emulator smoke.
+- Physical-phone review remains valuable for comfort, touch feel, and heat but
+  is non-blocking evidence; automated gates are authoritative for releases.
+- GitHub Release and Pages delivery is tag-driven from protected `main` under
+  ADR 0012. Both public targets come from the same verified tag artifact.
 
 ## 8. Change rules
 

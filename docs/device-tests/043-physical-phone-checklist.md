@@ -1,6 +1,6 @@
 # Spec 043 Physical-Phone Checklist
 
-Status: Prepared; not yet executed
+Status: Optional non-blocking device evidence under ADR 0012
 
 Prepared: 2026-09-04
 
