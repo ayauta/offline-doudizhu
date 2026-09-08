@@ -83,9 +83,19 @@ cd android
 `.debug` 包名，可以与正式版共存。APK、SDK 配置和所有 Android 构建目录都被
 忽略，不能提交。
 
-GitHub Actions 的 Android 门禁会进一步启动 API 36 模拟器，自动验证安装、
-断网冷启动、进入牌局、前后台恢复、两种横屏方向、两次返回退出和干净重启。
-Playwright 仍负责完整游戏逻辑和浏览器交互覆盖；模拟器只负责 Android 壳层。
+有模拟器运行时，Android 壳层交互测试使用：
+
+```bash
+cd android
+./gradlew connectedDebugAndroidTest
+```
+
+GitHub Actions 在 API 29 和 36 上运行这组 instrumentation：Espresso-Web 只
+抽样验证从嵌入首页进入牌局，ActivityScenario 验证前后台和状态恢复，UI
+Automator 负责两种横屏方向与系统返回。随后独立的 shell smoke 安装指定 APK，
+关闭可用网络、验证离线冷启动、画面、恢复、再次冷启动和 crash buffer。
+Playwright 仍负责完整游戏逻辑、DOM 交互和浏览器覆盖。失败时 CI 保留 Android
+测试报告、logcat 和最终截图。
 
 ## 修改纪律
 

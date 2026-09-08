@@ -84,6 +84,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -135,4 +136,10 @@ androidComponents {
 
 dependencies {
     implementation("androidx.webkit:webkit:1.17.0")
+
+    androidTestImplementation("androidx.test:core:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
+    androidTestImplementation("androidx.test.espresso:espresso-web:3.7.0")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
 }

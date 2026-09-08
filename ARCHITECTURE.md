@@ -169,7 +169,8 @@ boundary; ADR 0012 owns public distribution and release automation.
   service-worker registration.
 - Android source checks enforce zero permissions, fixed identities, the local
   asset URL, and hardened WebView settings. Android lint/build are supplemented
-  by a release-blocking API 36 emulator smoke.
+  by API 29/36 instrumentation at the Android/WebView seam and an exact-APK
+  offline shell smoke under ADR 0013.
 - Physical-phone review remains valuable for comfort, touch feel, and heat but
   is non-blocking evidence; automated gates are authoritative for releases.
 - GitHub Release and Pages delivery is tag-driven from protected `main` under

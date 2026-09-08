@@ -21,25 +21,48 @@ describe("public preview release delivery", () => {
     expect(androidBuild).toContain("versionCode = 1");
   });
 
-  it("runs CI without release signing or publication authority", async () => {
-    const [ci, emulatorSmoke] = await Promise.all([
+  it("layers Android interaction and exact-APK CI without publication authority", async () => {
+    const [ci, emulatorSmoke, androidBuild, interactionTest, androidRunner] = await Promise.all([
       source("../../.github/workflows/ci.yml"),
       source("../../scripts/android-emulator-smoke.mjs"),
+      source("../../android/app/build.gradle.kts"),
+      source(
+        "../../android/app/src/androidTest/java/io/github/ayauta/offlinedoudizhu/AndroidShellInteractionTest.java",
+      ),
+      source("../../scripts/android-ci-test.sh"),
     ]);
 
     expect(ci).toContain("pnpm check");
     expect(ci).toContain("lintDebug assembleDebug");
-    expect(ci).toContain("scripts/android-emulator-smoke.sh");
+    expect(ci).toContain("api-level: [29, 36]");
+    expect(ci).toContain("scripts/android-ci-test.sh");
     expect(ci).toContain("cmdline-tools/latest/bin/sdkmanager");
     expect(ci).toContain("/dev/kvm");
+    expect(ci).toContain("build/reports/androidTests/connected");
+    expect(ci).toContain("if: always()");
+    expect(androidRunner).toContain("connectedDebugAndroidTest");
+    expect(androidRunner).toContain("adb -e logcat -d");
+    expect(androidRunner).toContain("adb -e exec-out screencap -p");
     expect(emulatorSmoke).toContain('["shell", "service", "check", "phone"]');
     expect(emulatorSmoke).toContain('"screencap", "-p"');
-    expect(emulatorSmoke).toContain("BACK_CONFIRMATION_EXPIRY_MILLISECONDS");
-    expect(emulatorSmoke).toContain("BACK_DISPATCH_SETTLE_MILLISECONDS");
-    expect(
-      emulatorSmoke.match(/\["shell", "input", "keyevent", "KEYCODE_BACK"\]/g),
-    ).toHaveLength(3);
-    expect(emulatorSmoke).not.toContain("uiautomator");
+    expect(emulatorSmoke).toContain("KEYCODE_HOME");
+    expect(emulatorSmoke).not.toContain("KEYCODE_BACK");
+    expect(emulatorSmoke).not.toContain('"input", "tap"');
+    expect(androidBuild).toContain(
+      'testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"',
+    );
+    expect(androidBuild).toContain('androidx.test:core:1.7.0');
+    expect(androidBuild).toContain('androidx.test.ext:junit:1.3.0');
+    expect(androidBuild).toContain('androidx.test.espresso:espresso-core:3.7.0');
+    expect(androidBuild).toContain('androidx.test.espresso:espresso-web:3.7.0');
+    expect(androidBuild).toContain('androidx.test.uiautomator:uiautomator:2.4.0');
+    expect(interactionTest).toContain("onWebView()");
+    expect(interactionTest).toContain('Locator.CSS_SELECTOR, ".start-button"');
+    expect(interactionTest).toContain('waitForWebElement(".match-screen", "叫地主")');
+    expect(interactionTest).toContain("moveToState");
+    expect(interactionTest).toContain("SCREEN_ORIENTATION_REVERSE_LANDSCAPE");
+    expect(interactionTest).toContain("performSystemBack");
+    expect(interactionTest).toContain("UiDevice");
     expect(ci).toContain("contents: read");
     expect(ci).not.toContain("OFFLINE_DDZ_KEYSTORE_BASE64");
     expect(ci).not.toContain("pages: write");
@@ -55,7 +78,8 @@ describe("public preview release delivery", () => {
     expect(release).toContain("scripts/check-tag-on-main.sh");
     expect(release).toContain("OFFLINE_DDZ_KEYSTORE_BASE64");
     expect(release).toContain("lintRelease assembleRelease");
-    expect(release).toContain("scripts/android-emulator-smoke.sh");
+    expect(release).toContain("scripts/android-ci-test.sh");
+    expect(release).toContain("android-release-test-evidence");
     expect(release).toContain("cmdline-tools/latest/bin/sdkmanager");
     expect(release).toContain("gh release create");
     expect(release).toContain("--prerelease");

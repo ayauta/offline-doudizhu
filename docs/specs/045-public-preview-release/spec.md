@@ -2,7 +2,7 @@
 
 Status: Approved for implementation
 Approved: 2026-09-06
-Decision: ADR 0012
+Decision: ADR 0012 and ADR 0013
 
 ## Outcome
 
@@ -40,12 +40,19 @@ Ordinary pushes and pull requests run read-only/reproducible verification:
 - `pnpm check` including deterministic, bundle/privacy, and Chromium tests;
 - JDK 17, Android SDK 36, `lintDebug`, and `assembleDebug`;
 - APK metadata, permission, embedded-entry, and signature inspection;
-- an Android API 36 emulator shell smoke that installs and cold-starts the APK
-  offline, enters the game, backgrounds/resumes, switches both landscape
-  rotations, verifies the two-press Back contract, and cold-starts again.
+- an Android instrumentation suite on API 29 and 36 that enters the embedded
+  game, backgrounds/resumes, switches both landscape rotations, preserves the
+  WebView state, and verifies the two-press system-Back contract;
+- an Android shell smoke on API 29 and 36 that installs the exact APK, disables
+  available emulator network transports, verifies offline cold start and a
+  painted landscape frame, backgrounds/resumes, cold-starts again, and checks
+  the crash buffer; and
+- retained Android test reports, logcat, and a screenshot for diagnosis.
 
-The emulator smoke owns only Android-shell integration. Playwright remains the
-complete deterministic gameplay and browser-interaction acceptance.
+The instrumentation suite owns the Android/WebView seam and system interaction.
+The shell smoke owns only exact-APK installation and Android-shell integration;
+it does not locate Web DOM elements or inject raw Back key events. Playwright
+remains the complete deterministic gameplay and browser-interaction acceptance.
 
 ## Release contract
 
@@ -55,7 +62,8 @@ A `v*` tag must point to a commit contained in `main`. The release workflow:
 2. reruns the complete Web and Android gates;
 3. restores the release keystore from Actions Secrets without printing it;
 4. builds and verifies the signed release APK;
-5. runs the same Android-emulator shell smoke against that APK;
+5. reruns the Android instrumentation suite on API 36 and the black-box shell
+   smoke against that signed APK;
 6. creates an APK with a stable versioned filename and a SHA-256 digest file;
 7. creates the GitHub Pre-release with Chinese notes; and
 8. deploys the already-verified `dist/` from that tag to GitHub Pages.
@@ -81,8 +89,8 @@ feature specifications remain the engineering source of truth.
   workflow permissions, secret names, tag-to-main verification, Pre-release
   creation, Pages artifact source, and absence of committed signing files.
 - The local full gate passes with the pinned project toolchain.
-- Android lint/debug build and the emulator smoke pass locally when the
-  corresponding SDK/emulator environment is available.
+- Android lint/debug build, instrumentation, and shell smoke pass locally when
+  the corresponding SDK/emulator environment is available.
 - GitHub CI passes on the public repository before branch protection is made
   required.
 - A tag-driven dry path or `v0.1.0` run proves signed APK, checksum, Release,

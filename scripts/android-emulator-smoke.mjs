@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 
 const [apkPath, packageId] = process.argv.slice(2);
@@ -7,8 +6,6 @@ if (apkPath === undefined || packageId === undefined) {
 }
 
 const component = `${packageId}/io.github.ayauta.offlinedoudizhu.MainActivity`;
-const BACK_CONFIRMATION_EXPIRY_MILLISECONDS = 2_500;
-const BACK_DISPATCH_SETTLE_MILLISECONDS = 250;
 
 function adb(args, { quiet = false } = {}) {
   const result = spawnSync("adb", ["-e", ...args], {
@@ -68,23 +65,18 @@ function captureScreen() {
   }
   return {
     bytes: png.length,
-    digest: createHash("sha256").update(png).digest("hex"),
     height: png.readUInt32BE(20),
     width: png.readUInt32BE(16),
   };
 }
 
-async function waitForPaintedScreen(label, changedFrom) {
+async function waitForPaintedLandscape(label) {
   const deadline = Date.now() + 30_000;
   let snapshot;
   while (Date.now() < deadline) {
     snapshot = captureScreen();
-    if (
-      snapshot.bytes >= 30_000
-      && snapshot.width > snapshot.height
-      && (changedFrom === undefined || snapshot.digest !== changedFrom)
-    ) {
-      return snapshot;
+    if (snapshot.bytes >= 30_000 && snapshot.width > snapshot.height) {
+      return;
     }
     await delay(500);
   }
@@ -102,6 +94,7 @@ function startActivity({ stop = false } = {}) {
   adb(args);
 }
 
+async function main() {
   adb(["install", "-r", apkPath]);
   adb(["shell", "pm", "clear", packageId]);
   adb(["shell", "settings", "put", "system", "accelerometer_rotation", "0"]);
@@ -117,47 +110,25 @@ function startActivity({ stop = false } = {}) {
 
   startActivity({ stop: true });
   await waitUntil("offline cold-started Activity", isResumed);
-  const homeScreen = await waitForPaintedScreen("painted landscape home screen");
-  adb([
-    "shell",
-    "input",
-    "tap",
-    String(Math.round(homeScreen.width * 0.5)),
-    String(Math.round(homeScreen.height * 0.63)),
-  ]);
-  await delay(750);
-  const gameScreen = await waitForPaintedScreen("game table after the centered start action", homeScreen.digest);
+  await waitForPaintedLandscape("painted landscape home screen");
 
   adb(["shell", "input", "keyevent", "KEYCODE_HOME"]);
   await waitUntil("backgrounded Activity", () => !isResumed());
   startActivity();
   await waitUntil("resumed Activity", isResumed);
-  await waitForPaintedScreen("resumed game table");
+  await waitForPaintedLandscape("painted resumed Activity");
 
-  adb(["shell", "settings", "put", "system", "user_rotation", "3"]);
-  await waitUntil("opposite landscape rotation", isResumed);
-  await waitForPaintedScreen("opposite landscape game table");
-  adb(["shell", "settings", "put", "system", "user_rotation", "1"]);
-  await waitUntil("original landscape rotation", isResumed);
-  await waitForPaintedScreen("original landscape game table");
-
-  adb(["shell", "input", "keyevent", "KEYCODE_BACK"]);
-  await delay(BACK_CONFIRMATION_EXPIRY_MILLISECONDS);
-  if (!isResumed()) {
-    throw new Error("A single Back removed the Activity instead of requesting confirmation.");
-  }
-
-  adb(["shell", "input", "keyevent", "KEYCODE_BACK"]);
-  await delay(BACK_DISPATCH_SETTLE_MILLISECONDS);
-  adb(["shell", "input", "keyevent", "KEYCODE_BACK"]);
-  await waitUntil("second Back to remove the Activity", () => !isResumed(), 5_000);
-
-  startActivity();
-  await waitUntil("clean relaunch", isResumed);
-  await waitForPaintedScreen("painted clean relaunch", gameScreen.digest);
+  startActivity({ stop: true });
+  await waitUntil("clean cold relaunch", isResumed);
+  await waitForPaintedLandscape("painted clean cold relaunch");
 
   const crashLog = adb(["logcat", "-d", "-b", "crash"], { quiet: true });
   if (crashLog.includes(packageId)) {
     throw new Error(`Crash buffer contains ${packageId}:\n${crashLog}`);
   }
-  console.log("Android emulator smoke passed (offline launch, centered game entry, resume, rotation, Back, clean relaunch)." );
+  console.log(
+    "Android exact-APK smoke passed (offline cold start, painted landscape, resume, clean relaunch).",
+  );
+}
+
+await main();

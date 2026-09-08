@@ -24,11 +24,14 @@ preview and matching Web/PWA from protected GitHub history.
    locally feasible release-script check.
 8. [x] Self-review tracked/generated files, history, privacy, permissions,
    workflow privilege, signing exclusions, and recovery instructions.
-9. [ ] Create the public GitHub repository, push the feature branch, let CI pass,
+9. [ ] Replace the unstable raw-adb interaction smoke under ADR 0013 with
+   layered API 29/36 instrumentation and exact-APK shell checks, retain failure
+   evidence, and rerun the complete local and hosted gates.
+10. [ ] Create the public GitHub repository, push the feature branch, let CI pass,
    merge to `main`, and enable branch protection/disable Issues.
-10. [ ] Generate the long-lived project signing identity, configure GitHub
+11. [ ] Generate the long-lived project signing identity, configure GitHub
     Secrets without exposing them, and hand the owner a recovery requirement.
-11. [ ] Create `v0.1.0`, monitor Release and Pages jobs to completion, verify
+12. [ ] Create `v0.1.0`, monitor Release and Pages jobs to completion, verify
     downloadable checksums/signature and live offline-capable Web startup, then
     record the published URLs and complete this plan.
 

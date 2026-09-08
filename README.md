@@ -48,7 +48,8 @@ spec -> tests -> implementation -> self-review -> playable review -> commit
 ```
 
 所有提交和发布都必须通过 `pnpm check`。发布标签还会在 GitHub Actions 中
-自动构建并检查签名 APK、启动 Android 模拟器执行离线/旋转/返回键冒烟测试，
+自动构建并检查签名 APK，在 Android 10 与当前目标系统上执行 WebView 交互、
+生命周期、旋转、返回和离线成品冒烟测试，
 然后从同一提交创建 GitHub Release 和 GitHub Pages 部署。
 
 ## 许可

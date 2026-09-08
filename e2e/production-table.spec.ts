@@ -180,6 +180,9 @@ async function expectCompactDesktopHand(
   const cards = hand.getByRole("button");
   await expect(cards).toHaveCount(expectedCount);
 
+  await hand.evaluate((element) =>
+    Promise.all(element.getAnimations().map(({ finished }) => finished)),
+  );
   const handBox = await hand.boundingBox();
   const firstBox = await cards.first().boundingBox();
   const secondBox = await cards.nth(1).boundingBox();

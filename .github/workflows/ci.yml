@@ -36,9 +36,13 @@ jobs:
         run: pnpm check
 
   android:
-    name: Android package and emulator
+    name: Android package and emulator (API ${{ matrix.api-level }})
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [29, 36]
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -79,13 +83,26 @@ jobs:
           if [[ -e /dev/kvm ]]; then
             sudo chmod 0666 /dev/kvm
           fi
-      - name: Run Android emulator smoke
+      - name: Run Android instrumentation and exact-APK smoke
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        env:
+          ANDROID_TEST_ARTIFACT_DIR: test-results/android-api-${{ matrix.api-level }}
         with:
-          api-level: 36
+          api-level: ${{ matrix.api-level }}
           arch: x86_64
           profile: pixel_6
           target: google_apis
           disable-animations: true
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect -camera-back none
-          script: scripts/android-emulator-smoke.sh android/app/build/outputs/apk/debug/app-debug.apk io.github.ayauta.offlinedoudizhu.debug
+          script: scripts/android-ci-test.sh android/app/build/outputs/apk/debug/app-debug.apk io.github.ayauta.offlinedoudizhu.debug
+      - name: Upload Android test evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: android-test-evidence-api-${{ matrix.api-level }}
+          path: |
+            android/app/build/reports/androidTests/connected
+            android/app/build/outputs/androidTest-results/connected
+            test-results/android-api-${{ matrix.api-level }}
+          if-no-files-found: warn
+          retention-days: 7

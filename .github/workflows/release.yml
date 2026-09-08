@@ -16,7 +16,7 @@ jobs:
   build:
     name: Verify and build release
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 60
     steps:
       - name: Check out source and history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -74,8 +74,10 @@ jobs:
           if [[ -e /dev/kvm ]]; then
             sudo chmod 0666 /dev/kvm
           fi
-      - name: Run Android emulator smoke
+      - name: Run Android instrumentation and signed exact-APK smoke
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        env:
+          ANDROID_TEST_ARTIFACT_DIR: test-results/android-release-api-36
         with:
           api-level: 36
           arch: x86_64
@@ -83,7 +85,18 @@ jobs:
           target: google_apis
           disable-animations: true
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect -camera-back none
-          script: scripts/android-emulator-smoke.sh android/app/build/outputs/apk/release/app-release.apk io.github.ayauta.offlinedoudizhu
+          script: scripts/android-ci-test.sh android/app/build/outputs/apk/release/app-release.apk io.github.ayauta.offlinedoudizhu
+      - name: Upload Android release test evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: android-release-test-evidence
+          path: |
+            android/app/build/reports/androidTests/connected
+            android/app/build/outputs/androidTest-results/connected
+            test-results/android-release-api-36
+          if-no-files-found: warn
+          retention-days: 7
       - name: Prepare versioned assets
         run: node scripts/prepare-release-assets.mjs "$GITHUB_REF_NAME" android/app/build/outputs/apk/release/app-release.apk release-assets
       - name: Upload release assets
