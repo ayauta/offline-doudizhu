@@ -67,6 +67,8 @@ describe("public preview release delivery", () => {
     expect(interactionTest).toContain('Locator.CSS_SELECTOR, ".start-button"');
     expect(interactionTest).toContain('waitForWebElement(".match-screen")');
     expect(interactionTest).toContain("waitForWindowFocus(scenario)");
+    expect(interactionTest).toContain("WINDOW_FOCUS_STABLE_MILLIS");
+    expect(interactionTest).not.toContain("forceJavascriptEnabled()");
     expect(interactionTest).toContain("moveToState");
     expect(interactionTest).toContain("SCREEN_ORIENTATION_REVERSE_LANDSCAPE");
     expect(interactionTest).toContain("performSystemBack");

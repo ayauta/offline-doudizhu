@@ -35,7 +35,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @RunWith(AndroidJUnit4.class)
 public final class AndroidShellInteractionTest {
     private static final long WEB_WAIT_MILLIS = 10_000L;
-    private static final long STATE_WAIT_MILLIS = 5_000L;
+    private static final long STATE_WAIT_MILLIS = 10_000L;
+    private static final long WINDOW_FOCUS_STABLE_MILLIS = 1_000L;
     private static final long EXIT_CONFIRMATION_EXPIRY_MILLIS = 2_500L;
 
     private UiDevice device;
@@ -58,7 +59,6 @@ public final class AndroidShellInteractionTest {
     public void embeddedGameSurvivesLifecycleAndBothLandscapeRotations() throws Exception {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             waitForWindowFocus(scenario);
-            onWebView().forceJavascriptEnabled();
             waitForWebElement(".start-button", "开始游戏");
             onWebView()
                     .withElement(findElement(Locator.CSS_SELECTOR, ".start-button"))
@@ -121,18 +121,30 @@ public final class AndroidShellInteractionTest {
 
     private static void waitForWindowFocus(ActivityScenario<MainActivity> scenario) {
         long deadline = SystemClock.elapsedRealtime() + STATE_WAIT_MILLIS;
-        AtomicBoolean hasFocus = new AtomicBoolean(false);
+        long stableSince = -1L;
+        AtomicBoolean windowReady = new AtomicBoolean(false);
         while (SystemClock.elapsedRealtime() < deadline) {
             scenario.onActivity(
-                    activity ->
-                            hasFocus.set(
-                                    activity.getWindow().getDecorView().hasWindowFocus()));
-            if (hasFocus.get()) {
+                    activity -> {
+                        android.view.View decorView =
+                                activity.getWindow().getDecorView();
+                        windowReady.set(
+                                decorView.hasWindowFocus()
+                                        && decorView.isShown()
+                                        && !decorView.isLayoutRequested());
+                    });
+            long now = SystemClock.elapsedRealtime();
+            if (!windowReady.get()) {
+                stableSince = -1L;
+            } else if (stableSince < 0L) {
+                stableSince = now;
+            } else if (now - stableSince >= WINDOW_FOCUS_STABLE_MILLIS) {
+                InstrumentationRegistry.getInstrumentation().waitForIdleSync();
                 return;
             }
             SystemClock.sleep(100L);
         }
-        assertTrue("The activity window never received focus.", hasFocus.get());
+        assertTrue("The activity window never held stable focus.", false);
     }
 
     private static void waitForExitConfirmationState(
