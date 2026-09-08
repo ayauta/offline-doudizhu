@@ -21,6 +21,12 @@ describe("public preview release delivery", () => {
     expect(androidBuild).toContain("versionCode = 1");
   });
 
+  it("targets the WebView generation shipped with Android 10 emulator images", async () => {
+    const viteConfig = await source("../../vite.config.ts");
+
+    expect(viteConfig).toContain('target: "chrome74"');
+  });
+
   it("layers Android interaction and exact-APK CI without publication authority", async () => {
     const [ci, emulatorSmoke, androidBuild, interactionTest, androidRunner] = await Promise.all([
       source("../../.github/workflows/ci.yml"),
