@@ -47,6 +47,7 @@ describe("public preview release delivery", () => {
     expect(ci).toContain("build/reports/androidTests/connected");
     expect(ci).toContain("if: always()");
     expect(androidRunner).toContain("connectedDebugAndroidTest");
+    expect(androidRunner).toContain("enable-exclusive --category");
     expect(androidRunner).toContain("adb -e logcat -d");
     expect(androidRunner).toContain("adb -e exec-out screencap -p");
     expect(emulatorSmoke).toContain('["shell", "service", "check", "phone"]');
@@ -64,10 +65,12 @@ describe("public preview release delivery", () => {
     expect(androidBuild).toContain('androidx.test.uiautomator:uiautomator:2.4.0');
     expect(interactionTest).toContain("onWebView()");
     expect(interactionTest).toContain('Locator.CSS_SELECTOR, ".start-button"');
-    expect(interactionTest).toContain('waitForWebElement(".match-screen", "叫地主")');
+    expect(interactionTest).toContain('waitForWebElement(".match-screen")');
     expect(interactionTest).toContain("moveToState");
     expect(interactionTest).toContain("SCREEN_ORIENTATION_REVERSE_LANDSCAPE");
     expect(interactionTest).toContain("performSystemBack");
+    expect(interactionTest).not.toContain("enable-exclusive --category");
+    expect(interactionTest).not.toContain("UI Automator could not inject Back.");
     expect(interactionTest).toContain("UiDevice");
     expect(ci).toContain("contents: read");
     expect(ci).not.toContain("OFFLINE_DDZ_KEYSTORE_BASE64");

@@ -14,6 +14,14 @@ collect_evidence() {
 
 trap collect_evidence EXIT
 
+android_api="$(adb -e shell getprop ro.build.version.sdk | tr -d '\r')"
+if [[ "$android_api" -ge 33 ]]; then
+  adb -e shell cmd overlay enable-exclusive --category \
+    com.android.internal.systemui.navbar.gestural
+fi
+adb -e shell input keyevent KEYCODE_WAKEUP
+adb -e shell wm dismiss-keyguard
+
 (
   cd android
   ./gradlew connectedDebugAndroidTest --no-daemon

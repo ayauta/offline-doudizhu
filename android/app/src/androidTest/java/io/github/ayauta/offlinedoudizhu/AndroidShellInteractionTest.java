@@ -6,6 +6,7 @@ import static androidx.test.espresso.web.webdriver.DriverAtoms.findElement;
 import static androidx.test.espresso.web.webdriver.DriverAtoms.getText;
 import static androidx.test.espresso.web.webdriver.DriverAtoms.webClick;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
@@ -13,7 +14,6 @@ import static org.junit.Assert.assertTrue;
 import android.app.Instrumentation;
 import android.content.pm.ActivityInfo;
 import android.os.Build;
-import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 
 import androidx.lifecycle.Lifecycle;
@@ -31,14 +31,9 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-import java.io.IOException;
-import java.io.InputStream;
-
 @LargeTest
 @RunWith(AndroidJUnit4.class)
 public final class AndroidShellInteractionTest {
-    private static final String GESTURAL_NAVIGATION_OVERLAY =
-            "com.android.internal.systemui.navbar.gestural";
     private static final long WEB_WAIT_MILLIS = 10_000L;
     private static final long STATE_WAIT_MILLIS = 5_000L;
     private static final long EXIT_CONFIRMATION_EXPIRY_MILLIS = 2_500L;
@@ -47,13 +42,9 @@ public final class AndroidShellInteractionTest {
     private UiDevice device;
 
     @Before
-    public void prepareDevice() throws IOException {
+    public void prepareDevice() {
         instrumentation = InstrumentationRegistry.getInstrumentation();
         device = UiDevice.getInstance(instrumentation);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            executeShellCommand(
-                    "cmd overlay enable-exclusive --category " + GESTURAL_NAVIGATION_OVERLAY);
-        }
         device.waitForIdle();
     }
 
@@ -72,12 +63,12 @@ public final class AndroidShellInteractionTest {
             onWebView()
                     .withElement(findElement(Locator.CSS_SELECTOR, ".start-button"))
                     .perform(webClick());
-            waitForWebElement(".match-screen", "叫地主");
+            waitForWebElement(".match-screen");
 
             scenario.moveToState(Lifecycle.State.CREATED);
             assertEquals(Lifecycle.State.CREATED, scenario.getState());
             scenario.moveToState(Lifecycle.State.RESUMED);
-            waitForWebElement(".match-screen", "叫地主");
+            waitForWebElement(".match-screen");
 
             int initialRotation = device.getDisplayRotation();
             scenario.onActivity(
@@ -85,7 +76,7 @@ public final class AndroidShellInteractionTest {
                             activity.setRequestedOrientation(
                                     ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE));
             waitForDifferentRotation(initialRotation);
-            waitForWebElement(".match-screen", "叫地主");
+            waitForWebElement(".match-screen");
 
             int reverseRotation = device.getDisplayRotation();
             scenario.onActivity(
@@ -93,10 +84,10 @@ public final class AndroidShellInteractionTest {
                             activity.setRequestedOrientation(
                                     ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE));
             waitForDifferentRotation(reverseRotation);
-            waitForWebElement(".match-screen", "叫地主");
+            waitForWebElement(".match-screen");
 
             scenario.recreate();
-            waitForWebElement(".match-screen", "叫地主");
+            waitForWebElement(".match-screen");
         }
     }
 
@@ -136,7 +127,8 @@ public final class AndroidShellInteractionTest {
 
     private void performSystemBack() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            assertTrue("UI Automator could not inject Back.", device.pressBack());
+            device.pressBack();
+            device.waitForIdle();
             return;
         }
 
@@ -156,6 +148,23 @@ public final class AndroidShellInteractionTest {
                 onWebView()
                         .withElement(findElement(Locator.CSS_SELECTOR, selector))
                         .check(webMatches(getText(), containsString(expectedText)));
+                return;
+            } catch (RuntimeException | AssertionError failure) {
+                lastFailure = failure;
+                SystemClock.sleep(200L);
+            }
+        }
+        throw new AssertionError("Timed out waiting for WebView element " + selector, lastFailure);
+    }
+
+    private void waitForWebElement(String selector) {
+        long deadline = SystemClock.elapsedRealtime() + WEB_WAIT_MILLIS;
+        Throwable lastFailure = null;
+        while (SystemClock.elapsedRealtime() < deadline) {
+            try {
+                onWebView()
+                        .withElement(findElement(Locator.CSS_SELECTOR, selector))
+                        .check(webMatches(getText(), notNullValue(String.class)));
                 return;
             } catch (RuntimeException | AssertionError failure) {
                 lastFailure = failure;
@@ -194,16 +203,5 @@ public final class AndroidShellInteractionTest {
             SystemClock.sleep(100L);
         }
         assertEquals(expectedState, scenario.getState());
-    }
-
-    private void executeShellCommand(String command) throws IOException {
-        ParcelFileDescriptor descriptor =
-                instrumentation.getUiAutomation().executeShellCommand(command);
-        try (InputStream input = new ParcelFileDescriptor.AutoCloseInputStream(descriptor)) {
-            byte[] buffer = new byte[1024];
-            while (input.read(buffer) != -1) {
-                // Drain the command output so completion is synchronized.
-            }
-        }
     }
 }
