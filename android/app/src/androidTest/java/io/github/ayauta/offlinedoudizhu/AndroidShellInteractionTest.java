@@ -39,11 +39,12 @@ public final class AndroidShellInteractionTest {
     private static final long WINDOW_FOCUS_STABLE_MILLIS = 1_000L;
     private static final long EXIT_CONFIRMATION_EXPIRY_MILLIS = 2_500L;
 
+    private Instrumentation instrumentation;
     private UiDevice device;
 
     @Before
     public void prepareDevice() {
-        Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
+        instrumentation = InstrumentationRegistry.getInstrumentation();
         device = UiDevice.getInstance(instrumentation);
         device.waitForIdle();
     }
@@ -58,7 +59,7 @@ public final class AndroidShellInteractionTest {
     @Test
     public void embeddedGameSurvivesLifecycleAndBothLandscapeRotations() throws Exception {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            waitForWindowFocus(scenario);
+            bringActivityToForeground(scenario);
             waitForWebElement(".start-button", "开始游戏");
             onWebView()
                     .withElement(findElement(Locator.CSS_SELECTOR, ".start-button"))
@@ -68,7 +69,7 @@ public final class AndroidShellInteractionTest {
             scenario.moveToState(Lifecycle.State.CREATED);
             assertEquals(Lifecycle.State.CREATED, scenario.getState());
             scenario.moveToState(Lifecycle.State.RESUMED);
-            waitForWindowFocus(scenario);
+            bringActivityToForeground(scenario);
             waitForWebElement(".match-screen");
 
             int initialRotation = device.getDisplayRotation();
@@ -77,7 +78,7 @@ public final class AndroidShellInteractionTest {
                             activity.setRequestedOrientation(
                                     ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE));
             waitForDifferentRotation(initialRotation);
-            waitForWindowFocus(scenario);
+            bringActivityToForeground(scenario);
             waitForWebElement(".match-screen");
 
             int reverseRotation = device.getDisplayRotation();
@@ -86,11 +87,11 @@ public final class AndroidShellInteractionTest {
                             activity.setRequestedOrientation(
                                     ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE));
             waitForDifferentRotation(reverseRotation);
-            waitForWindowFocus(scenario);
+            bringActivityToForeground(scenario);
             waitForWebElement(".match-screen");
 
             scenario.recreate();
-            waitForWindowFocus(scenario);
+            bringActivityToForeground(scenario);
             waitForWebElement(".match-screen");
         }
     }
@@ -98,7 +99,7 @@ public final class AndroidShellInteractionTest {
     @Test
     public void twoSystemBackActionsExitOnlyInsideConfirmationWindow() throws Exception {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            waitForWindowFocus(scenario);
+            bringActivityToForeground(scenario);
             waitForWebElement(".start-button", "开始游戏");
 
             long firstBackStartedAt = SystemClock.elapsedRealtime();
@@ -117,6 +118,18 @@ public final class AndroidShellInteractionTest {
             performSystemBack();
             waitForLifecycleState(scenario, Lifecycle.State.DESTROYED);
         }
+    }
+
+    private void bringActivityToForeground(ActivityScenario<MainActivity> scenario)
+            throws Exception {
+        String component =
+                instrumentation.getTargetContext().getPackageName()
+                        + "/"
+                        + MainActivity.class.getName();
+        String result = device.executeShellCommand("am start -W -n " + component);
+        assertTrue("Failed to foreground " + component + ": " + result,
+                result.contains("Status: ok") || result.contains("Activity not started"));
+        waitForWindowFocus(scenario);
     }
 
     private static void waitForWindowFocus(ActivityScenario<MainActivity> scenario) {
