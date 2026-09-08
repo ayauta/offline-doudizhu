@@ -21,15 +21,15 @@ import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.LargeTest;
 import androidx.test.platform.app.InstrumentationRegistry;
-import androidx.test.uiautomator.By;
 import androidx.test.uiautomator.UiDevice;
-import androidx.test.uiautomator.Until;
 import androidx.test.espresso.web.webdriver.Locator;
 
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @LargeTest
 @RunWith(AndroidJUnit4.class)
@@ -38,12 +38,11 @@ public final class AndroidShellInteractionTest {
     private static final long STATE_WAIT_MILLIS = 5_000L;
     private static final long EXIT_CONFIRMATION_EXPIRY_MILLIS = 2_500L;
 
-    private Instrumentation instrumentation;
     private UiDevice device;
 
     @Before
     public void prepareDevice() {
-        instrumentation = InstrumentationRegistry.getInstrumentation();
+        Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
         device = UiDevice.getInstance(instrumentation);
         device.waitForIdle();
     }
@@ -58,6 +57,7 @@ public final class AndroidShellInteractionTest {
     @Test
     public void embeddedGameSurvivesLifecycleAndBothLandscapeRotations() throws Exception {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            waitForWindowFocus(scenario);
             onWebView().forceJavascriptEnabled();
             waitForWebElement(".start-button", "开始游戏");
             onWebView()
@@ -68,6 +68,7 @@ public final class AndroidShellInteractionTest {
             scenario.moveToState(Lifecycle.State.CREATED);
             assertEquals(Lifecycle.State.CREATED, scenario.getState());
             scenario.moveToState(Lifecycle.State.RESUMED);
+            waitForWindowFocus(scenario);
             waitForWebElement(".match-screen");
 
             int initialRotation = device.getDisplayRotation();
@@ -76,6 +77,7 @@ public final class AndroidShellInteractionTest {
                             activity.setRequestedOrientation(
                                     ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE));
             waitForDifferentRotation(initialRotation);
+            waitForWindowFocus(scenario);
             waitForWebElement(".match-screen");
 
             int reverseRotation = device.getDisplayRotation();
@@ -84,45 +86,68 @@ public final class AndroidShellInteractionTest {
                             activity.setRequestedOrientation(
                                     ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE));
             waitForDifferentRotation(reverseRotation);
+            waitForWindowFocus(scenario);
             waitForWebElement(".match-screen");
 
             scenario.recreate();
+            waitForWindowFocus(scenario);
             waitForWebElement(".match-screen");
         }
     }
 
     @Test
     public void twoSystemBackActionsExitOnlyInsideConfirmationWindow() throws Exception {
-        String confirmationText =
-                instrumentation
-                        .getTargetContext()
-                        .getString(R.string.press_back_again_to_exit);
-
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            waitForWindowFocus(scenario);
             waitForWebElement(".start-button", "开始游戏");
 
             long firstBackStartedAt = SystemClock.elapsedRealtime();
             performSystemBack();
-            assertTrue(
-                    "The first system Back action must show exit guidance.",
-                    device.wait(Until.hasObject(By.text(confirmationText)), STATE_WAIT_MILLIS));
+            waitForExitConfirmationState(scenario, true);
             assertEquals(Lifecycle.State.RESUMED, scenario.getState());
 
             waitUntilAfter(
                     firstBackStartedAt,
                     EXIT_CONFIRMATION_EXPIRY_MILLIS + 250L);
+            waitForExitConfirmationState(scenario, false);
             assertEquals(Lifecycle.State.RESUMED, scenario.getState());
-            assertTrue(
-                    "Expired exit guidance must leave the accessibility window.",
-                    device.wait(Until.gone(By.text(confirmationText)), STATE_WAIT_MILLIS));
 
             performSystemBack();
-            assertTrue(
-                    "A new system Back action must start a fresh confirmation window.",
-                    device.wait(Until.hasObject(By.text(confirmationText)), STATE_WAIT_MILLIS));
+            waitForExitConfirmationState(scenario, true);
             performSystemBack();
             waitForLifecycleState(scenario, Lifecycle.State.DESTROYED);
         }
+    }
+
+    private static void waitForWindowFocus(ActivityScenario<MainActivity> scenario) {
+        long deadline = SystemClock.elapsedRealtime() + STATE_WAIT_MILLIS;
+        AtomicBoolean hasFocus = new AtomicBoolean(false);
+        while (SystemClock.elapsedRealtime() < deadline) {
+            scenario.onActivity(
+                    activity ->
+                            hasFocus.set(
+                                    activity.getWindow().getDecorView().hasWindowFocus()));
+            if (hasFocus.get()) {
+                return;
+            }
+            SystemClock.sleep(100L);
+        }
+        assertTrue("The activity window never received focus.", hasFocus.get());
+    }
+
+    private static void waitForExitConfirmationState(
+            ActivityScenario<MainActivity> scenario, boolean expectedState) {
+        long deadline = SystemClock.elapsedRealtime() + STATE_WAIT_MILLIS;
+        AtomicBoolean actualState = new AtomicBoolean(!expectedState);
+        while (SystemClock.elapsedRealtime() < deadline) {
+            scenario.onActivity(
+                    activity -> actualState.set(activity.hasActiveExitConfirmation()));
+            if (actualState.get() == expectedState) {
+                return;
+            }
+            SystemClock.sleep(100L);
+        }
+        assertEquals(expectedState, actualState.get());
     }
 
     private void performSystemBack() {

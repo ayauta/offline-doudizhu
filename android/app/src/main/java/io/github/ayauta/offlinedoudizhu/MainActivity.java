@@ -76,8 +76,7 @@ public final class MainActivity extends Activity {
 
     private void handleSystemBack() {
         long now = SystemClock.elapsedRealtime();
-        if (exitConfirmationStartedAt >= 0L
-                && now - exitConfirmationStartedAt <= EXIT_CONFIRMATION_WINDOW_MILLIS) {
+        if (hasActiveExitConfirmation(now)) {
             clearExitConfirmation();
             finishAndRemoveTask();
             return;
@@ -89,6 +88,15 @@ public final class MainActivity extends Activity {
         }
         exitToast = Toast.makeText(this, R.string.press_back_again_to_exit, Toast.LENGTH_SHORT);
         exitToast.show();
+    }
+
+    boolean hasActiveExitConfirmation() {
+        return hasActiveExitConfirmation(SystemClock.elapsedRealtime());
+    }
+
+    private boolean hasActiveExitConfirmation(long now) {
+        return exitConfirmationStartedAt >= 0L
+                && now - exitConfirmationStartedAt <= EXIT_CONFIRMATION_WINDOW_MILLIS;
     }
 
     private void clearExitConfirmation() {

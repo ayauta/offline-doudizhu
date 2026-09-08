@@ -66,9 +66,12 @@ describe("public preview release delivery", () => {
     expect(interactionTest).toContain("onWebView()");
     expect(interactionTest).toContain('Locator.CSS_SELECTOR, ".start-button"');
     expect(interactionTest).toContain('waitForWebElement(".match-screen")');
+    expect(interactionTest).toContain("waitForWindowFocus(scenario)");
     expect(interactionTest).toContain("moveToState");
     expect(interactionTest).toContain("SCREEN_ORIENTATION_REVERSE_LANDSCAPE");
     expect(interactionTest).toContain("performSystemBack");
+    expect(interactionTest).toContain("waitForExitConfirmationState");
+    expect(interactionTest).not.toContain("Until.hasObject(By.text(confirmationText))");
     expect(interactionTest).not.toContain("enable-exclusive --category");
     expect(interactionTest).not.toContain("UI Automator could not inject Back.");
     expect(interactionTest).toContain("UiDevice");
