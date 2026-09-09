@@ -5,8 +5,8 @@
 This repository builds 单机斗地主 (`offline-doudizhu`): a standards-based,
 offline PWA for one human and two local AI players. It is designed for older
 family members and prioritizes readability, direct operation, correctness,
-privacy, and maintainability. A future private Android package may wrap the
-static Web output, but is not part of the current implementation.
+privacy, and maintainability. A public-preview Android package wraps the same
+verified static Web output through the explicit embedded delivery entry.
 
 ## Hard constraints
 
@@ -28,11 +28,13 @@ static Web output, but is not part of the current implementation.
 ## Dependency direction
 
 `cards <- rules <- game <- app <- ui/composition`, with
-`ai -> game/rules/cards` and `platform/web -> app ports`.
+`ai -> game/rules/cards`, `platform/web -> app ports`, and delivery entries at
+the outer composition edge.
 
 The application session is authoritative. UI consumes read-only views and emits
-intents. Browser storage, lifecycle, and service-worker APIs remain in
-`src/platform/web`; `src/main.tsx` is the composition root.
+intents. Browser storage and lifecycle APIs remain in `src/platform/web`; PWA
+service-worker registration remains in `src/platform/pwa`; `src/main.tsx` is
+the shared composition root.
 
 ## Required workflow
 
@@ -48,8 +50,10 @@ Use small changes following:
 `spec -> tests -> implementation -> self-review -> browser/playable review -> commit`
 
 Rules changes require table-driven tests first. Every bug gets a regression test
-before its fix. UI changes require applicable Playwright acceptance and later
-real-phone review; build success alone is not playable acceptance.
+before its fix. UI changes require applicable Playwright acceptance. Public
+Android releases additionally require the automated emulator shell smoke;
+real-phone comfort/touch/heat review is useful non-blocking evidence and must
+not be represented as an automated capability.
 
 ## Commands
 
@@ -83,6 +87,6 @@ permission; do not change toolchains.
 
 A change is done only when its approved spec is satisfied, relevant deterministic
 and browser tests exist, `pnpm check` passes, dependency/privacy impact is
-reviewed, contract changes include documentation/ADR updates, applicable phone
-checks are recorded, and no generated output, browser binary, private config,
-secret, signing material, or PII is staged.
+reviewed, contract changes include documentation/ADR updates, applicable
+automated delivery checks pass, and no generated output, browser binary,
+private config, secret, signing material, or PII is staged.

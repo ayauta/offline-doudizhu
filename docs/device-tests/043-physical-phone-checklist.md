@@ -1,6 +1,6 @@
 # Spec 043 Physical-Phone Checklist
 
-Status: Prepared; not yet executed
+Status: Optional non-blocking device evidence under ADR 0012
 
 Prepared: 2026-09-04
 
@@ -20,6 +20,12 @@ CSS viewport before each run.
 
 - [ ] Load the reviewed production build once, then enable airplane mode and
       relaunch it from the installed PWA entry.
+- [ ] Install the exact candidate Android APK, keep airplane mode enabled, and
+      confirm it cold-starts directly to the embedded home screen. Press system
+      Back once and confirm `再按一次退出游戏` appears without leaving; wait
+      more than two seconds and confirm another single Back still does not exit.
+      Then press Back twice within two seconds, confirm the task exits, and
+      relaunch it. Record whether navigation buttons or gestures were used.
 - [ ] Confirm portrait shows only `请旋转手机`; rotate back during an AI beat
       and verify the exact deal, selection, turn, and pending action resume.
 - [ ] Check both landscape orientations for cutout/safe-area clearance, no page
@@ -70,8 +76,11 @@ CSS viewport before each run.
 - [ ] Repeat the essential flow with reduced motion and increased system text
       scale; record any overlap or missing information rather than relaxing the
       automated baseline.
-- [ ] Play continuously for at least 15 minutes and note visible stutter,
-      delayed taps, unexpected reloads, battery drain, and uncomfortable heat.
+- [ ] Run five cold starts, roughly 30 seconds of rapid continuous selection,
+      one representative round flow, and three background/rotation cycles.
+      Note visible stutter, delayed taps, unexpected reloads, battery drain, and
+      uncomfortable heat. Extend to a 15-minute continuous diagnostic only when
+      the quick run exposes a performance, reload, battery, or heat concern.
 
 For every failure, attach a screenshot or short screen recording, the exact
 step, device/environment fields, and a reproducible issue. Keep device

@@ -19,11 +19,11 @@ async function exists(relativePath: string): Promise<boolean> {
 }
 
 describe("repository configuration", () => {
-  it("identifies a private static Web/PWA package", async () => {
+  it("identifies the non-publishable Web/PWA and Android workspace", async () => {
     const packageConfig = await readJson("../../package.json");
 
     expect(packageConfig).toMatchObject({
-      description: "Offline, accessible Dou Dizhu Web/PWA",
+      description: "Offline, accessible Dou Dizhu Web/PWA and Android game",
       license: "Apache-2.0",
       name: "offline-doudizhu",
       private: true,
@@ -36,6 +36,7 @@ describe("repository configuration", () => {
     await expect(exists("../../project.config.example.json")).resolves.toBe(false);
     await expect(exists("../../tsconfig.wechat.json")).resolves.toBe(false);
     await expect(exists("../../index.html")).resolves.toBe(true);
+    await expect(exists("../../embedded.html")).resolves.toBe(true);
     await expect(exists("../../vite.config.ts")).resolves.toBe(true);
   });
 

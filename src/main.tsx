@@ -2,7 +2,6 @@ import { render } from "preact";
 
 import { createProductionSession } from "./app/session/production-session.js";
 import { createDeck, shuffle } from "./core/cards/index.js";
-import { registerOfflineWorker } from "./platform/web/offline.js";
 import {
   createWebRandomSource,
   scheduleWebPresentation,
@@ -26,4 +25,3 @@ const session = createProductionSession({
 });
 
 render(<ProductionTableApp session={session} />, root);
-registerOfflineWorker();

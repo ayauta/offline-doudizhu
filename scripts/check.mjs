@@ -22,6 +22,7 @@ run("strict TypeScript", join(repositoryRoot, "node_modules/typescript/bin/tsc")
 run("deterministic tests", join(repositoryRoot, "node_modules/vitest/vitest.mjs"), ["run"]);
 run("production build", join(repositoryRoot, "node_modules/vite/bin/vite.js"), ["build"]);
 run("build output", join(repositoryRoot, "scripts/check-bundle.mjs"));
+run("Android delivery", join(repositoryRoot, "scripts/check-android.mjs"));
 run("architecture boundaries", join(repositoryRoot, "scripts/check-boundaries.mjs"));
 run("privacy", join(repositoryRoot, "scripts/check-privacy.mjs"));
 run("Chromium acceptance", join(repositoryRoot, "scripts/run-browser-tests.mjs"), ["--skip-build"]);

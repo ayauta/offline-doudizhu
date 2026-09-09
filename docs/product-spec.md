@@ -55,9 +55,10 @@ kept out of the game-rule model so later localization remains possible.
   ratios, including the Redmi K60E and Redmi K70 Pro used for family review.
 - The first browser load may retrieve fixed same-origin static files. Once
   installed, the PWA must start and play offline.
-- A future private Android package may bundle the same static output and must
-  work offline from its first launch. Android wrapping and signing are separate
-  delivery work, not part of the Web application architecture.
+- The public-preview Android package bundles the same verified static
+  output and must work offline from its first launch. It loads the explicit
+  embedded entry without registering the PWA service worker. Android wrapping
+  and signing remain delivery work, not game-application architecture.
 - The game has no backend, business API, account, telemetry, or remote runtime
   content.
 

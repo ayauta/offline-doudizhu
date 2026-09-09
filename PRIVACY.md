@@ -9,6 +9,9 @@
 PWA 时，生成的 service worker 只可以取得构建时审查过的固定同源静态文件。
 安装完成后，完整版本必须离线启动和运行。
 
+官方公开 Web 预览由 GitHub Pages 静态托管。Pages 只是传送同源构建文件，
+不是游戏后端；应用不向它或其他服务上传牌局、设置或设备信息。
+
 应用源码禁止 `fetch`、XMLHttpRequest、WebSocket、EventSource、Beacon、
 外部字体/图片/脚本、远程日志和任何业务 API。不得把生成 worker 的静态安装
 例外扩大成通用网络能力。

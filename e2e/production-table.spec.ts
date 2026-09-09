@@ -180,6 +180,9 @@ async function expectCompactDesktopHand(
   const cards = hand.getByRole("button");
   await expect(cards).toHaveCount(expectedCount);
 
+  await hand.evaluate((element) =>
+    Promise.all(element.getAnimations().map(({ finished }) => finished)),
+  );
   const handBox = await hand.boundingBox();
   const firstBox = await cards.first().boundingBox();
   const secondBox = await cards.nth(1).boundingBox();
@@ -700,6 +703,17 @@ test("relaunches the installed build offline at home without claiming recovery",
   await expect(page.getByRole("button", { name: "开始游戏" })).toBeVisible();
   await expect(page.getByText(/继续游戏|继续牌局/)).toHaveCount(0);
   await expect(page.getByLabel("你的手牌")).toHaveCount(0);
+});
+
+test("starts the embedded build without registering a service worker", async ({ page }) => {
+  await useDeterministicRandom(page, 99);
+  await page.goto("/embedded.html");
+
+  await expect(page.getByRole("heading", { name: "单机斗地主" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "开始游戏" })).toBeVisible();
+  await expect.poll(() => page.evaluate(async () =>
+    (await navigator.serviceWorker.getRegistrations()).length,
+  )).toBe(0);
 });
 
 for (const viewport of [

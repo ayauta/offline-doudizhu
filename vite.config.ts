@@ -1,11 +1,19 @@
 import preact from "@preact/preset-vite";
+import { resolve } from "node:path";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
   base: "./",
   build: {
+    target: "chrome74",
     modulePreload: { polyfill: false },
+    rolldownOptions: {
+      input: {
+        embedded: resolve(import.meta.dirname, "embedded.html"),
+        pwa: resolve(import.meta.dirname, "index.html"),
+      },
+    },
     sourcemap: false,
   },
   plugins: [
@@ -38,6 +46,7 @@ export default defineConfig({
       workbox: {
         cleanupOutdatedCaches: true,
         clientsClaim: false,
+        globIgnores: ["embedded.html"],
         globPatterns: ["**/*.{css,html,js,svg,webmanifest}"],
         runtimeCaching: [],
         skipWaiting: false,

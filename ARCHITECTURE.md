@@ -7,12 +7,13 @@ Web integration, and verification
 
 ## 1. Outcome
 
-单机斗地主 is a static Web/PWA modular monolith around a deterministic pure
-TypeScript game engine. Semantic DOM and native CSS present the game. A thin
-application layer owns the session, while a narrow Web adapter owns browser
-capabilities. There is no backend, account, telemetry, remote content, runtime
-plugin system, event bus, dependency-injection container, or global state
-library.
+单机斗地主 is a static Web/PWA and public-preview Android modular monolith around a
+deterministic pure TypeScript game engine. Semantic DOM and native CSS present
+the game. A thin application layer owns the session, while narrow browser
+adapters own browser capabilities. Android is a permission-free native shell
+around the same reviewed static output. There is no backend, account,
+telemetry, remote content, runtime plugin system, event bus,
+dependency-injection container, or global state library.
 
 The priorities are correct rules, readable family use, offline reliability,
 privacy, and code whose authority and dependencies remain obvious.
@@ -28,9 +29,11 @@ semantic DOM UI --intent--> application session --> pure game core
           |                         +--> local AI -------+
           |                         +--> persistence port
           |
-Web adapter: lifecycle, localStorage, service-worker registration
+Web adapter: lifecycle, localStorage
+PWA delivery adapter: service-worker registration
 
-Generated service worker: fixed same-origin static assets only
+Generated service worker: fixed same-origin PWA static assets only
+Android delivery adapter: packaged dist -> WebViewAssetLoader -> embedded.html
 No backend, business API, account, ads, analytics, or remote content
 ```
 
@@ -42,12 +45,15 @@ cards <- rules <- game <- app <- ui/composition
    +---------+-------+--- ai
 
 app ports <- platform/web
+delivery/pwa -> main composition + platform/pwa
+delivery/embedded -> main composition
 ```
 
 Core never imports app, UI, platform, DOM, storage, timers, or network. UI
 consumes read-only application views and emits intents; it does not mutate
 engine state or call platform APIs. Platform adapters implement application
-ports and are wired only by `src/main.tsx`.
+ports and are wired by `src/main.tsx`. Delivery entry modules wrap that single
+composition root without adding game state or business behavior.
 
 ## 3. Layout and ownership
 
@@ -66,8 +72,14 @@ src/
     input/             pure pointer-selection state machine
     styles.css         native responsive styling
   platform/
-    web/               browser-only adapter implementations
-  main.tsx             composition root
+    web/               browser adapters shared by WebView and normal browsers
+    pwa/               generated-worker registration only
+  delivery/
+    pwa.ts             PWA delivery entry
+    embedded.ts        packaged-host delivery entry
+  main.tsx             shared application composition root
+
+android/               minimal native shell and Android packaging
 
 tests/                 deterministic unit/config tests
 e2e/                   Playwright Chromium acceptance
@@ -118,13 +130,12 @@ unavailable in portrait and exposes only the accessible rotate prompt. Layout
 uses safe-area insets and is verified at representative family-phone and narrow
 landscape viewports.
 
-## 6. Browser and offline boundary
+## 6. Browser, Android, and offline boundary
 
-`src/platform/web` is the only source area allowed to access `window`,
-`localStorage`, service workers, or lifecycle events. The first persistence
-adapter will store a versioned current snapshot, one recovery slot, and approved
-settings in `localStorage`; persistence is not implemented in the migration
-slice.
+`src/platform/web` owns browser primitives shared by normal browsers and
+WebView. `src/platform/pwa` alone owns service-worker registration. The first
+persistence adapter will store a versioned current snapshot, one recovery slot,
+and approved settings in `localStorage`; persistence is not implemented yet.
 
 Application source contains no request API. Vite emits portable static files.
 Pinned PWA tooling generates a precache worker for the reviewed same-origin
@@ -133,9 +144,16 @@ background sync, analytics, or remote configuration. An update never reloads an
 open session; it activates after old clients close and is used on a later
 launch.
 
-A future Android wrapper is packaging around `dist/`, not a new application
-architecture. It requires its own ADR for tool choice, signing, update channel,
-and device acceptance.
+One Vite invocation emits `index.html` for browser/PWA delivery and
+`embedded.html` for packaged delivery. Android packages the verified `dist/`
+and loads `embedded.html` with AndroidX `WebViewAssetLoader`. Its manifest has
+no permissions, its WebView blocks network/file/content access, and it has no
+JavaScript-native bridge. The native shell owns Android system-Back handling:
+all application screens use the same two-press task-exit behavior, while
+visible Web controls own navigation back to the game home screen. System Back
+is never delegated to WebView history. APK replacement under the owner's
+long-lived signing key is the Android update channel. ADR 0011 owns the shell
+boundary; ADR 0012 owns public distribution and release automation.
 
 ## 7. Verification
 
@@ -144,12 +162,20 @@ and device acceptance.
 - TypeScript strict mode and the boundary check enforce dependency direction.
 - The privacy check rejects network capability, secrets, remote assets, and
   unexpected generated-worker behavior.
-- Build inspection verifies manifest, relative output, precache coverage, and
-  absence of source maps/private paths.
+- Build inspection verifies manifest, relative output, PWA precache coverage
+  and embedded exclusion, plus absence of source maps/private paths.
 - Playwright Chromium verifies semantic behavior, orientation gating, target
-  viewports, gestures, and offline relaunch.
-- Redmi K60E and Redmi K70 Pro review is required before production UI
-  acceptance, but not before the architecture-validation slice is handed off.
+  viewports, gestures, PWA offline relaunch, and embedded startup without a
+  service-worker registration.
+- Android source checks enforce zero permissions, fixed identities, the local
+  asset URL, hardened WebView settings, and both system-Back implementations.
+  Android lint/build are supplemented by an exact-APK offline, rendering,
+  lifecycle, relaunch, and crash smoke on API 29/36 under ADR 0014.
+- Physical-phone release sampling covers comfort, touch feel, heat, both
+  landscape rotations, lifecycle continuity, and two-press system Back without
+  being represented as an automated capability.
+- GitHub Release and Pages delivery is tag-driven from protected `main` under
+  ADR 0012. Both public targets come from the same verified tag artifact.
 
 ## 8. Change rules
 

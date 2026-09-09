@@ -27,7 +27,7 @@ function assert(condition, message) {
 
 const files = await walk(distRoot);
 const relativePaths = files.map((path) => relative(distRoot, path).replaceAll("\\", "/"));
-for (const required of ["index.html", "manifest.webmanifest", "sw.js", "icon.svg"]) {
+for (const required of ["index.html", "embedded.html", "manifest.webmanifest", "sw.js", "icon.svg"]) {
   assert(relativePaths.includes(required), `missing ${required}`);
 }
 assert(relativePaths.some((path) => /^assets\/.+\.js$/.test(path)), "missing application JavaScript");
@@ -46,6 +46,11 @@ const indexHtml = await readFile(join(distRoot, "index.html"), "utf8");
 assert(!/["']\/(?:assets|src)\//.test(indexHtml), "index contains a root-absolute asset URL");
 assert(!indexHtml.includes(repositoryRoot), "index leaks a private local path");
 
+const embeddedHtml = await readFile(join(distRoot, "embedded.html"), "utf8");
+assert(!/["']\/(?:assets|src)\//.test(embeddedHtml), "embedded entry contains a root-absolute asset URL");
+assert(!embeddedHtml.includes(repositoryRoot), "embedded entry leaks a private local path");
+assert(!embeddedHtml.includes("sw.js"), "embedded entry directly references the PWA worker");
+
 const worker = await readFile(join(distRoot, "sw.js"), "utf8");
 assert(worker.includes("precacheAndRoute"), "worker has no precache route");
 if (/\bskipWaiting\s*\(/.test(worker)) {
@@ -61,11 +66,12 @@ const applicationJavaScript = await Promise.all(
 assert(!applicationJavaScript.some((source) => source.includes("SKIP_WAITING")), "application can force an update into the active session");
 
 const cacheablePaths = relativePaths.filter((path) =>
-  path !== "sw.js" && !/^workbox-[^/]+\.js$/.test(path),
+  path !== "embedded.html" && path !== "sw.js" && !/^workbox-[^/]+\.js$/.test(path),
 );
 for (const path of cacheablePaths) {
   assert(worker.includes(path), `${path} is absent from the precache manifest`);
 }
+assert(!worker.includes('url:"embedded.html"') && !worker.includes('url: "embedded.html"'), "embedded entry entered the PWA precache");
 
 for (const match of worker.matchAll(/url\s*:\s*["']([^"']+)["']/g)) {
   const url = match[1];
