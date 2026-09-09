@@ -1,7 +1,7 @@
 # Toolchain and Dependency Record
 
 Status: Approved Web and Android baseline
-Last updated: 2026-09-06
+Last updated: 2026-09-09
 
 All direct versions are exact and the lockfile is committed. Runtime gameplay
 has one possible renderer dependency; the remaining packages are development
@@ -20,16 +20,12 @@ or build-time only.
 | Android Gradle Plugin | `9.4.0` | Apache-2.0 | Android build-time packaging only; no application runtime code. |
 | Gradle wrapper | `9.6.0` | Apache-2.0 | Reproducible Android build runner; wrapper files only are committed. |
 | `androidx.webkit:webkit` | `1.17.0` | Apache-2.0 | Android-shell-only `WebViewAssetLoader`; no bridge or game dependency. |
-| `androidx.test:core` | `1.7.0` | Apache-2.0 | `androidTest`-only ActivityScenario lifecycle control; absent from runtime APKs. |
-| `androidx.test.ext:junit` | `1.3.0` | Apache-2.0 | `androidTest`-only JUnit 4 runner integration; absent from runtime APKs. |
-| AndroidX Espresso Core / Web | `3.7.0` | Apache-2.0 | `androidTest`-only synchronized WebView seam interaction; Playwright remains the complete Web acceptance. |
-| AndroidX UI Automator | `2.4.0` | Apache-2.0 | `androidTest`-only platform rotation, real Back interaction, state waits, and diagnostics. |
 | `actions/checkout` | commit `3d3c42e5aac5ba805825da76410c181273ba90b1` (`v7`) | MIT | GitHub-hosted source checkout in CI/release only. |
 | `actions/setup-node` | commit `820762786026740c76f36085b0efc47a31fe5020` (`v7`) | MIT | Installs exact Node 24.20.0 on GitHub-hosted runners. |
 | `actions/setup-java` | commit `dd06d9cba3e5552c54d9f8ea23572deb30010f7c` (`v6`) | MIT | Installs Temurin JDK 17 and caches Gradle inputs in CI. |
 | `actions/upload-artifact` / `download-artifact` | commits `b7c566a772e6b6bfb58ed0dc250532a479d7789f` (`v6`) / `37930b1c2abaa49bbe596cd826c3c89aef350131` (`v7`) | MIT | Transfers already-verified release assets between isolated release jobs. |
 | GitHub Pages actions | `configure-pages` `983d7736d9b0ae728b81ab479565c72886d7745b`, `upload-pages-artifact` `7b1f4a764d45c48632c6b24a0339c27f5614fb0b`, `deploy-pages` `d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e` | MIT | Official tag-only static Pages artifact and deployment path. |
-| `ReactiveCircus/android-emulator-runner` | commit `a421e43855164a8197daf9d8d40fe71c6996bb0d` (`v2`) | MIT | CI-only AVD lifecycle for Android instrumentation and exact-APK shell smoke; no application/runtime dependency. |
+| `ReactiveCircus/android-emulator-runner` | commit `a421e43855164a8197daf9d8d40fe71c6996bb0d` (`v2`) | MIT | CI-only AVD lifecycle for the exact-APK shell smoke; no application/runtime dependency. |
 
 ## Alternatives and costs
 
@@ -47,13 +43,13 @@ or build-time only.
   official loader provides reviewed origin-aware asset mapping. Plain platform
   `Activity` and Java avoid AppCompat, Compose, the Kotlin plugin, Capacitor,
   Tauri, and a general JavaScript-native bridge.
-- AndroidX Test is restricted to `androidTest`. Espresso-Web replaces
-  coordinate-based DOM tapping in shell scripts; UI Automator is limited to
-  system interaction that Espresso cannot own. Gradle managed devices were
-  considered, but retaining the already-pinned emulator action avoids a second
-  lifecycle migration, while ATD images remove SystemUI and hardware rendering
-  required by this acceptance. Cloud device farms add credentials, cost, and an
-  external service without value for this small permission-free shell.
+- AndroidX Test, Espresso-Web, ActivityScenario, and UI Automator were removed
+  under ADR 0014 after their facilitator/focus mechanics repeatedly dominated
+  failures in a thin wrapper. Playwright owns Web interaction; the
+  project-owned black-box smoke uses `adb` only for exact-APK installation,
+  offline launch, rendering, lifecycle, relaunch, and diagnostics. Cloud device
+  farms add credentials, cost, and an external service without proportional
+  value for this small permission-free shell.
 - GitHub-hosted Actions are pinned to immutable commits instead of floating
   tags. Direct shell setup was retained for pnpm and APK inspection; official
   actions are used only where they encapsulate runner authentication/artifact

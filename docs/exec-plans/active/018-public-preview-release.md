@@ -24,9 +24,9 @@ preview and matching Web/PWA from protected GitHub history.
    locally feasible release-script check.
 8. [x] Self-review tracked/generated files, history, privacy, permissions,
    workflow privilege, signing exclusions, and recovery instructions.
-9. [ ] Replace the unstable raw-adb interaction smoke under ADR 0013 with
-   layered API 29/36 instrumentation and exact-APK shell checks, retain failure
-   evidence, and rerun the complete local and hosted gates.
+9. [ ] Replace the unstable interaction instrumentation under ADR 0014 with
+   proportional API 29/36 exact-APK shell checks, retain failure evidence, and
+   rerun the complete local and hosted gates.
 10. [ ] Create the public GitHub repository, push the feature branch, let CI pass,
    merge to `main`, and enable branch protection/disable Issues.
 11. [ ] Generate the long-lived project signing identity, configure GitHub

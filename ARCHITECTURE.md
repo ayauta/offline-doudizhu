@@ -168,11 +168,12 @@ boundary; ADR 0012 owns public distribution and release automation.
   viewports, gestures, PWA offline relaunch, and embedded startup without a
   service-worker registration.
 - Android source checks enforce zero permissions, fixed identities, the local
-  asset URL, and hardened WebView settings. Android lint/build are supplemented
-  by API 29/36 instrumentation at the Android/WebView seam and an exact-APK
-  offline shell smoke under ADR 0013.
-- Physical-phone review remains valuable for comfort, touch feel, and heat but
-  is non-blocking evidence; automated gates are authoritative for releases.
+  asset URL, hardened WebView settings, and both system-Back implementations.
+  Android lint/build are supplemented by an exact-APK offline, rendering,
+  lifecycle, relaunch, and crash smoke on API 29/36 under ADR 0014.
+- Physical-phone release sampling covers comfort, touch feel, heat, both
+  landscape rotations, lifecycle continuity, and two-press system Back without
+  being represented as an automated capability.
 - GitHub Release and Pages delivery is tag-driven from protected `main` under
   ADR 0012. Both public targets come from the same verified tag artifact.
 

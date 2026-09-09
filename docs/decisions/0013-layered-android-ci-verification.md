@@ -1,6 +1,6 @@
 # ADR 0013: Layered Android CI Verification
 
-Status: Accepted
+Status: Superseded by ADR 0014
 Date: 2026-09-06
 Supersedes: ADR 0012 only for Android CI verification responsibilities
 

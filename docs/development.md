@@ -83,19 +83,21 @@ cd android
 `.debug` 包名，可以与正式版共存。APK、SDK 配置和所有 Android 构建目录都被
 忽略，不能提交。
 
-有模拟器运行时，Android 壳层交互测试使用：
+有模拟器运行时，可以对已经生成的具体 APK 执行同一项黑盒冒烟：
 
 ```bash
-cd android
-./gradlew connectedDebugAndroidTest
+ANDROID_TEST_ARTIFACT_DIR=test-results/android-local \
+  scripts/android-emulator-smoke.sh \
+  android/app/build/outputs/apk/debug/app-debug.apk \
+  io.github.ayauta.offlinedoudizhu.debug
 ```
 
-GitHub Actions 在 API 29 和 36 上运行这组 instrumentation：Espresso-Web 只
-抽样验证从嵌入首页进入牌局，ActivityScenario 验证前后台和状态恢复，UI
-Automator 负责两种横屏方向与系统返回。随后独立的 shell smoke 安装指定 APK，
-关闭可用网络、验证离线冷启动、画面、恢复、再次冷启动和 crash buffer。
-Playwright 仍负责完整游戏逻辑、DOM 交互和浏览器覆盖。失败时 CI 保留 Android
-测试报告、logcat 和最终截图。
+GitHub Actions 在 API 29 和 36 上安装指定 debug APK，关闭可用网络，并验证
+离线冷启动、横屏画面、前后台恢复、再次冷启动和 crash buffer；发布标签还会
+在 API 36 上对签名 release APK 运行同一检查。Playwright 负责完整游戏逻辑、
+DOM 交互、方向呈现和嵌入入口。Android 静态契约检查负责权限、WebView 加固和
+系统返回实现。CI 保留 logcat 和最终截图；两种横屏方向、连续使用感受和两次
+系统返回由发布前真机清单抽样，不宣称为自动化能力。
 
 ## 修改纪律
 
