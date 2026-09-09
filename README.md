@@ -7,9 +7,9 @@
 
 ## 在线试玩与下载
 
-- **GitHub Pages 在线版：** 首次 `v0.1.0` 发布完成后开放；安装为 PWA 后可离线启动。
-- **Android APK：** 从 GitHub Releases 下载 `offline-doudizhu-v0.1.0-android.apk`。
-- **源码仓库：** `ayauta/offline-doudizhu`。
+- **GitHub Pages 在线版：** [立即试玩](https://ayauta.github.io/offline-doudizhu/)；安装为 PWA 后可离线启动。
+- **Android APK：** 从 [`v0.1.0` Pre-release](https://github.com/ayauta/offline-doudizhu/releases/tag/v0.1.0) 下载 `offline-doudizhu-v0.1.0-android.apk`。
+- **源码仓库：** [ayauta/offline-doudizhu](https://github.com/ayauta/offline-doudizhu)。
 
 Android 没有上架应用商店。首次安装需要允许浏览器或文件管理器安装未知来源
 应用；安装后可以关闭该授权。APK 不申请 Android 权限，首次启动也不需要网络。
