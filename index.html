@@ -6,6 +6,15 @@
     <meta name="theme-color" content="#063f2d" />
     <meta name="description" content="完全本地、无账号、无广告的单机斗地主" />
     <title>单机斗地主</title>
+    <style>
+      /* Matches the --field token in src/ui/styles.css so the first paint is the
+         table colour instead of a white page. The stylesheet is a render-blocking
+         link in the build and the last import in development, so without this
+         the player sees a blank white screen until all of it has arrived. */
+      html {
+        background: #075344;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>

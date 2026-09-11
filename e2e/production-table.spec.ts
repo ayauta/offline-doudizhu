@@ -854,6 +854,32 @@ test("relaunches the installed build offline at home without claiming recovery",
   await expect(page.getByLabel("你的手牌")).toHaveCount(0);
 });
 
+// The stylesheet is a render-blocking link in the build and the last import in
+// development, so without a colour in the HTML itself the player stares at a
+// white page until the whole bundle has arrived. Aborting the stylesheet makes
+// the pre-CSS state permanent, so this asserts the HTML's own first paint and
+// cannot be satisfied by the stylesheet arriving in time.
+for (const entry of [
+  { path: "/", title: "the installed build" },
+  { path: "/embedded.html", title: "the embedded build" },
+]) {
+  test(`paints the table colour before the stylesheet arrives in ${entry.title}`, async ({ page }) => {
+    await page.route("**/assets/main-*.css", (route) => route.abort());
+
+    await page.goto(entry.path, { waitUntil: "commit" });
+
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          document.documentElement === null
+            ? "pending"
+            : getComputedStyle(document.documentElement).backgroundColor,
+        ),
+      )
+      .toBe("rgb(7, 83, 68)");
+  });
+}
+
 test("starts the embedded build without registering a service worker", async ({ page }) => {
   await useDeterministicRandom(page, 99);
   await page.goto("/embedded.html");

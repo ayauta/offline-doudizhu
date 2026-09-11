@@ -16,6 +16,18 @@ export default defineConfig({
     },
     sourcemap: false,
   },
+  server: {
+    // Development serves native ESM, so the first page load transforms ~48
+    // modules one request at a time. Transforming them as the server starts
+    // moves that cost off the critical path; measured cold first load from a
+    // Windows browser dropped from ~3.4 s to the warm figure.
+    //
+    // The entries must be modules, not HTML: warming a `.html` file only runs
+    // `transformIndexHtml` and never reaches its script graph.
+    warmup: {
+      clientFiles: ["./src/delivery/pwa.ts", "./src/delivery/embedded.ts"],
+    },
+  },
   plugins: [
     preact(),
     VitePWA({
