@@ -17,6 +17,13 @@ export default defineConfig({
     sourcemap: false,
   },
   server: {
+    // Bind and print the address explicitly. `localhost` resolves to both ::1
+    // and 127.0.0.1, and this server only listens on IPv4, so a browser that
+    // tries ::1 first waits out the failed attempt before falling back —
+    // measured at ~210 ms per new connection from a Windows browser against
+    // WSL. The default banner prints `localhost`, which sends developers at
+    // the slow address.
+    host: "127.0.0.1",
     // Development serves native ESM, so the first page load transforms ~48
     // modules one request at a time. Transforming them as the server starts
     // moves that cost off the critical path; measured cold first load from a
