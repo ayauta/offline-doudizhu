@@ -1,4 +1,10 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import {
+  expect,
+  test,
+  type BrowserContext,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 
 async function exposedPoint(locator: Locator) {
   const box = await locator.boundingBox();
@@ -242,75 +248,141 @@ test("moves from the quiet home into a complete narrow bidding table", async ({ 
   }
 });
 
-test("chooses and restores computer level through a calm direct home sheet", async ({ page }) => {
+test("chooses and restores computer level through a compact inline segmented control", async ({ page }) => {
   await page.setViewportSize({ width: 640, height: 340 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
 
-  const levelButton = page.getByRole("button", { name: /电脑水平.*默认/ });
-  const buttonBox = await levelButton.boundingBox();
-  expect(buttonBox).not.toBeNull();
-  expect(buttonBox!.height).toBeGreaterThanOrEqual(48);
-  const restingColor = await levelButton.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const control = page.getByRole("radiogroup", { name: "电脑水平" });
+  await expect(control.getByRole("radio")).toHaveCount(4);
+  await expect(control.getByRole("radio", { name: "默认" })).toBeChecked();
+  await expect(page.getByRole("dialog", { name: "电脑水平" })).toHaveCount(0);
+  const expert = control.getByRole("radio", { name: "高手" });
+  const expertBox = await expert.boundingBox();
+  expect(expertBox).not.toBeNull();
+  expect(expertBox!.height).toBeGreaterThanOrEqual(44);
+  const restingColor = await expert.evaluate((element) => getComputedStyle(element).backgroundColor);
 
-  await page.mouse.move(buttonBox!.x + buttonBox!.width / 2, buttonBox!.y + buttonBox!.height / 2);
+  await page.mouse.move(expertBox!.x + expertBox!.width / 2, expertBox!.y + expertBox!.height / 2);
   await page.mouse.down();
-  expect(await levelButton.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(restingColor);
+  expect(await expert.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(restingColor);
   await page.mouse.up();
-
-  const dialog = page.getByRole("dialog", { name: "电脑水平" });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("radio")).toHaveCount(4);
-  await expect(dialog.getByRole("radio", { name: "默认" })).toBeChecked();
-  await expect(dialog.getByText("适合日常对局")).toBeVisible();
-  await expect(dialog.getByText("适合轻松对局")).toHaveCount(0);
-
-  await dialog.getByRole("radio", { name: "高手" }).click();
-  await expect(dialog.getByRole("radio", { name: "高手" })).toBeChecked();
-  await expect(dialog.getByText("判断更加全面")).toBeVisible();
-  await expect(dialog).toHaveCSS("transform", "none");
+  await expect(expert).toBeChecked();
+  await expect(page.getByText(/适合日常对局|判断更加全面|推演更加深入/)).toHaveCount(0);
   if (process.env.VISUAL_REVIEW === "1") {
     await page.waitForTimeout(180);
     await page.screenshot({
-      path: "output/playwright/computer-level-sheet-640x340.png",
+      path: "output/playwright/computer-level-segments-640x340.png",
     });
   }
-  await dialog.getByRole("button", { name: "完成" }).click();
-  await expect(dialog).toBeHidden();
-  await expect(page.getByRole("button", { name: /电脑水平.*高手/ })).toBeVisible();
 
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("offline-doudizhu.settings")!))).toEqual({
     schemaVersion: 1,
     data: { aiType: "expert" },
   });
   await page.reload();
-  await expect(page.getByRole("button", { name: /电脑水平.*高手/ })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "高手" })).toBeChecked();
   await expectNoViewportOverflow(page);
   if (process.env.VISUAL_REVIEW === "1") {
     await page.setViewportSize({ width: 1_366, height: 768 });
-    await page.getByRole("button", { name: /电脑水平.*高手/ }).click();
-    await expect(page.getByRole("dialog", { name: "电脑水平" })).toBeVisible();
     await page.waitForTimeout(220);
     await page.screenshot({
-      path: "output/playwright/computer-level-sheet-1366x768.png",
+      path: "output/playwright/computer-level-segments-1366x768.png",
     });
   }
 });
 
-test("runs an enhanced opponent in the worker without exposing its level at the table", async ({ page }) => {
-  await page.setViewportSize({ width: 900, height: 400 });
+const UNAVAILABLE_NOTICE = "当前电脑水平暂不可用，本局已使用默认水平";
+
+// "The notice never appeared" is a property that only holds over time. The
+// notice shows at a presentation beat and fades 2.2 s later, so asserting
+// absence once — after the bottom cards are revealed — passes even when it was
+// shown, because by then it has already cleared. Watch the feedback output for
+// the whole test instead.
+async function recordUnavailableNotices(page: Page) {
+  await page.addInitScript((notice) => {
+    const scope = globalThis as { __unavailableNoticeSeen?: boolean };
+    scope.__unavailableNoticeSeen = false;
+    const scan = () => {
+      if ((document.querySelector(".live-feedback")?.textContent ?? "").includes(notice)) {
+        scope.__unavailableNoticeSeen = true;
+      }
+    };
+    const begin = () => {
+      new MutationObserver(scan).observe(document.documentElement, {
+        characterData: true,
+        childList: true,
+        subtree: true,
+      });
+      scan();
+    };
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", begin, { once: true });
+    } else {
+      begin();
+    }
+  }, UNAVAILABLE_NOTICE);
+}
+
+async function expectNoUnavailableNotice(page: Page) {
+  const seen = await page.evaluate(
+    () => (globalThis as { __unavailableNoticeSeen?: boolean }).__unavailableNoticeSeen,
+  );
+  expect(seen).toBe(false);
+}
+
+// The response window closes 480 ms after the request is made, and that timer
+// starts before the Worker asset is requested, so a delay past the window
+// always lands on the turn-level timeout rather than on the match-level
+// environment failure.
+//
+// `context.route` is required, not `page.route`: a Dedicated Worker script
+// request never reaches a page-level route, so a page-level interceptor is
+// never called and the delay silently does nothing.
+async function startMasterMatchWithDelayedWorker(
+  context: BrowserContext,
+  page: Page,
+  delayMs: number,
+) {
+  await context.route("**/assets/ai-worker-*.js", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    await route.continue();
+  });
+  await recordUnavailableNotices(page);
   await useIdentityDeck(page);
   await page.goto("/");
-  await page.getByRole("button", { name: /电脑水平.*默认/ }).click();
   await page.getByRole("radio", { name: "大师" }).click();
-  await page.getByRole("button", { name: "完成" }).click();
+  await page.getByRole("button", { name: "开始游戏" }).click();
+  await page.getByRole("button", { name: "不叫", exact: true }).click();
+}
+
+test("runs an enhanced opponent in the worker without exposing its level at the table", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 400 });
+  await recordUnavailableNotices(page);
+  await useIdentityDeck(page);
+  await page.goto("/");
+  await page.getByRole("radio", { name: "大师" }).click();
   await page.getByRole("button", { name: "开始游戏" }).click();
   await page.getByRole("button", { name: "不叫", exact: true }).click();
 
   await expect(page.locator(".bottom-cards--revealed")).toBeVisible({ timeout: 2_500 });
-  await expect(page.getByText("增强电脑暂不可用，本局已使用默认水平")).toHaveCount(0);
+  await expectNoUnavailableNotice(page);
   await expect(page.getByText(/休闲|默认|高手|大师/)).toHaveCount(0);
   await expectNoViewportOverflow(page);
+});
+
+test("does not claim Master is unavailable when the Worker asset loads slowly", async ({ context, page }) => {
+  await startMasterMatchWithDelayedWorker(context, page, 300);
+
+  await expect(page.locator(".bottom-cards--revealed")).toBeVisible({ timeout: 2_500 });
+  await expectNoUnavailableNotice(page);
+});
+
+test("stays silent when a late Worker result misses the response window", async ({ context, page }) => {
+  await startMasterMatchWithDelayedWorker(context, page, 900);
+
+  await expect(page.locator(".bottom-cards--revealed")).toBeVisible({ timeout: 2_500 });
+  await expectNoUnavailableNotice(page);
 });
 
 test("presents opponent counts as borderless noninteractive card-stack status", async ({ page }) => {

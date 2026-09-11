@@ -186,8 +186,8 @@ streaming, TTS service, background music, or network.
 Preserve the current production strategy as `默认` and add deterministic
 `休闲`, `高手`, and bounded sampled-search `大师` profiles. Enhanced opponent
 work runs in one Dedicated Worker; hints remain on the immediate default
-ranker. The independently versioned `localStorage` setting and restrained home
-selection sheet are included. Its active specification is
+ranker. The independently versioned `localStorage` setting and a compact inline
+home segmented control are included. Its active specification is
 `docs/specs/051-ai-difficulty/spec.md`.
 
 ### 052 — Further AI evaluation

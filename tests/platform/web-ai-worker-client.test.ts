@@ -78,11 +78,13 @@ describe("Web AI worker client", () => {
       nextSeed: () => 1,
       queue: (callback) => queued.push(callback),
     });
-    const outcomes: boolean[] = [];
-    unavailable.request("master", BID_CONTEXT, (outcome) => outcomes.push(outcome.ok));
+    const outcomes: string[] = [];
+    unavailable.request("master", BID_CONTEXT, (outcome) => outcomes.push(
+      outcome.ok ? "ok" : outcome.reason,
+    ));
     expect(outcomes).toEqual([]);
     queued.shift()?.();
-    expect(outcomes).toEqual([false]);
+    expect(outcomes).toEqual(["unavailable"]);
 
     const worker = new FakeWorker();
     const failing = createWebAiDecisionService({
@@ -90,24 +92,28 @@ describe("Web AI worker client", () => {
       nextSeed: () => 2,
       queue: (callback) => callback(),
     });
-    failing.request("expert", BID_CONTEXT, (outcome) => outcomes.push(outcome.ok));
+    failing.request("expert", BID_CONTEXT, (outcome) => outcomes.push(
+      outcome.ok ? "ok" : outcome.reason,
+    ));
     worker.onerror?.();
-    expect(outcomes).toEqual([false, false]);
+    expect(outcomes).toEqual(["unavailable", "unavailable"]);
     failing.dispose();
     expect(worker.terminated).toBe(true);
   });
 
   it("turns malformed responses and post failures into ordinary fallbacks", () => {
     const worker = new FakeWorker();
-    const outcomes: boolean[] = [];
+    const outcomes: string[] = [];
     const service = createWebAiDecisionService({
       createWorker: () => worker,
       nextSeed: () => 3,
       queue: (callback) => callback(),
     });
-    service.request("master", BID_CONTEXT, (outcome) => outcomes.push(outcome.ok));
+    service.request("master", BID_CONTEXT, (outcome) => outcomes.push(
+      outcome.ok ? "ok" : outcome.reason,
+    ));
     worker.onmessage?.({ data: { requestId: 1, outcome: "broken" } } as unknown as MessageEvent<EnhancedAiWorkerResponse>);
-    expect(outcomes).toEqual([false]);
+    expect(outcomes).toEqual(["failed"]);
 
     const throwingWorker = new FakeWorker();
     throwingWorker.postMessage = () => { throw new Error("clone failed"); };
@@ -116,7 +122,42 @@ describe("Web AI worker client", () => {
       nextSeed: () => 4,
       queue: (callback) => callback(),
     });
-    expect(() => throwing.request("expert", BID_CONTEXT, (outcome) => outcomes.push(outcome.ok))).not.toThrow();
-    expect(outcomes).toEqual([false, false]);
+    expect(() => throwing.request("expert", BID_CONTEXT, (outcome) => outcomes.push(
+      outcome.ok ? "ok" : outcome.reason,
+    ))).not.toThrow();
+    expect(outcomes).toEqual(["failed", "failed"]);
+  });
+
+  it("retries a previously unavailable worker only when a new match begins", () => {
+    const worker = new FakeWorker();
+    let attempts = 0;
+    const service = createWebAiDecisionService({
+      createWorker: () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error("cold construction failure");
+        }
+        return worker;
+      },
+      nextSeed: () => 5,
+      queue: (callback) => callback(),
+    });
+    const outcomes: string[] = [];
+
+    service.request("master", BID_CONTEXT, (outcome) => outcomes.push(
+      outcome.ok ? "ok" : outcome.reason,
+    ));
+    service.request("master", BID_CONTEXT, (outcome) => outcomes.push(
+      outcome.ok ? "ok" : outcome.reason,
+    ));
+    expect(attempts).toBe(1);
+    expect(outcomes).toEqual(["unavailable", "unavailable"]);
+
+    service.beginMatch();
+    service.request("master", BID_CONTEXT, (outcome) => outcomes.push(
+      outcome.ok ? "ok" : outcome.reason,
+    ));
+    expect(attempts).toBe(2);
+    expect(worker.requests).toHaveLength(1);
   });
 });

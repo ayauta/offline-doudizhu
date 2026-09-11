@@ -214,7 +214,7 @@ Every level is pure local TypeScript and chooses what its own evaluator judges
 best; no level injects deliberate mistakes. Enhanced computation never runs on
 the UI thread. It sees only the redacted player view, and sampled hidden hands
 exist only inside Master's possible worlds. Exact behavior, budgets, fallback,
-and evaluation requirements are owned by Spec 051 and ADR 0016.
+and evaluation requirements are owned by Spec 051, ADR 0016, and ADR 0017.
 
 ## 8. Assistance and accessibility
 

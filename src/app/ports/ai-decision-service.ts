@@ -6,11 +6,14 @@ export type { AiDecisionContext };
 
 export type EnhancedAiType = Exclude<AiType, "default">;
 
+export type AiDecisionFailureReason = "failed" | "unavailable";
+
 export type AiDecisionOutcome =
   | Readonly<{ ok: true; command: GameCommand }>
-  | Readonly<{ ok: false }>;
+  | Readonly<{ ok: false; reason: AiDecisionFailureReason }>;
 
 export interface EnhancedAiDecisionService {
+  readonly beginMatch: () => void;
   readonly request: (
     aiType: EnhancedAiType,
     context: AiDecisionContext,

@@ -2,14 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import {
   CASUAL_AI_STRATEGY,
-  EXPERT_AI_STRATEGY,
-  SCORING_CASUAL_AI_STRATEGY,
   createPlayerView,
-  rankMasterPlayActions,
-  rankScoredPlayActions,
   type AiDecisionContext,
   type AiStrategy,
 } from "../src/core/ai/index.js";
+import {
+  EXPERT_AI_STRATEGY,
+  SCORING_CASUAL_AI_STRATEGY,
+  rankMasterPlayActions,
+  rankScoredPlayActions,
+} from "../src/core/ai/enhanced.js";
 import {
   createDeck,
   shuffle,

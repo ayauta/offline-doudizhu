@@ -3,16 +3,18 @@ import { describe, expect, it } from "vitest";
 import {
   CASUAL_AI_STRATEGY,
   DEFAULT_AI_STRATEGY,
+  type AiDecisionContext,
+  type PlayingPlayerView,
+  type RemainingCardCounts,
+} from "../../src/core/ai/index.js";
+import {
   EXPERT_AI_STRATEGY,
   SCORING_CASUAL_AI_STRATEGY,
   createHandAnalyzer,
   rankMasterPlayActions,
   rankScoredPlayActions,
   samplePossibleWorld,
-  type AiDecisionContext,
-  type PlayingPlayerView,
-  type RemainingCardCounts,
-} from "../../src/core/ai/index.js";
+} from "../../src/core/ai/enhanced.js";
 import {
   STANDARD_RANKS,
   asCardId,

@@ -47,11 +47,11 @@ export function createWebAiDecisionService(options: ClientOptions = {}): Enhance
   let disposed = false;
   let worker: WorkerLike | null | undefined;
 
-  function failPending(): void {
+  function failPending(reason: "failed" | "unavailable"): void {
     const callbacks = [...pending.values()];
     pending.clear();
     for (const callback of callbacks) {
-      callback(Object.freeze({ ok: false }));
+      callback(Object.freeze({ ok: false, reason }));
     }
   }
 
@@ -68,7 +68,7 @@ export function createWebAiDecisionService(options: ClientOptions = {}): Enhance
     worker.onmessage = (event) => {
       const data: unknown = event.data;
       if (!isRecord(data) || typeof data.requestId !== "number") {
-        failPending();
+        failPending("failed");
         return;
       }
       const callback = pending.get(data.requestId);
@@ -77,8 +77,12 @@ export function createWebAiDecisionService(options: ClientOptions = {}): Enhance
       }
       pending.delete(data.requestId);
       const outcome = data.outcome;
-      if (!isRecord(outcome) || typeof outcome.ok !== "boolean") {
-        callback(Object.freeze({ ok: false }));
+      if (
+        !isRecord(outcome) ||
+        typeof outcome.ok !== "boolean" ||
+        (outcome.ok === false && outcome.reason !== "failed" && outcome.reason !== "unavailable")
+      ) {
+        callback(Object.freeze({ ok: false, reason: "failed" }));
         return;
       }
       callback(outcome as AiDecisionOutcome);
@@ -86,12 +90,17 @@ export function createWebAiDecisionService(options: ClientOptions = {}): Enhance
     worker.onerror = () => {
       worker?.terminate();
       worker = null;
-      failPending();
+      failPending("unavailable");
     };
     return worker;
   }
 
   return Object.freeze({
+    beginMatch() {
+      if (worker === null) {
+        worker = undefined;
+      }
+    },
     request(
       aiType: EnhancedAiType,
       context: AiDecisionContext,
@@ -99,7 +108,7 @@ export function createWebAiDecisionService(options: ClientOptions = {}): Enhance
     ) {
       const activeWorker = disposed ? null : ensureWorker();
       if (activeWorker === null) {
-        queue(() => complete(Object.freeze({ ok: false })));
+        queue(() => complete(Object.freeze({ ok: false, reason: "unavailable" })));
         return () => undefined;
       }
       const requestId = nextRequestId;
@@ -114,7 +123,7 @@ export function createWebAiDecisionService(options: ClientOptions = {}): Enhance
         }));
       } catch {
         pending.delete(requestId);
-        queue(() => complete(Object.freeze({ ok: false })));
+        queue(() => complete(Object.freeze({ ok: false, reason: "failed" })));
       }
       return () => {
         pending.delete(requestId);
@@ -127,7 +136,7 @@ export function createWebAiDecisionService(options: ClientOptions = {}): Enhance
       disposed = true;
       worker?.terminate();
       worker = null;
-      failPending();
+      failPending("unavailable");
     },
   });
 }

@@ -19,29 +19,29 @@ Hints remain immediate and independent of opponent difficulty.
 
 The persisted values and player-facing order are:
 
-| Stored value | Label | Selected description | Behavior |
-| --- | --- | --- | --- |
-| `casual` | 休闲 | 适合轻松对局 | basic deterministic scoring |
-| `default` | 默认 | 适合日常对局 | the existing `CASUAL_AI_STRATEGY`, unchanged |
-| `expert` | 高手 | 判断更加全面 | complete rule-based action scoring |
-| `master` | 大师 | 推演更加深入 | expert shortlist plus sampled shallow rollout |
+| Stored value | Label | Behavior |
+| --- | --- | --- |
+| `casual` | 休闲 | basic deterministic scoring |
+| `default` | 默认 | the existing `CASUAL_AI_STRATEGY`, unchanged |
+| `expert` | 高手 | complete rule-based action scoring |
+| `master` | 大师 | expert shortlist plus sampled shallow rollout |
 
 `default` is the initial and invalid-data fallback. One setting controls both
 AI seats. It is visible only on the home screen, saves immediately, and is
 captured when a new game starts. The level is not displayed or changeable
 during a game.
 
-The home screen keeps `开始游戏` as its only primary action. Beneath it, a
-secondary full-row control reads `电脑水平　<当前值> ›`. It opens a lightweight
-selection sheet. The four large rows contain only the level labels; the current
-row has a trailing checkmark and the sheet footer shows only that row's selected
-description. Choosing a row saves without closing the sheet; `完成`, the scrim,
-or ordinary dismissal closes it. Persistent full-row highlighting is not used.
+The home screen keeps `开始游戏` as its only primary action. Beneath it, one
+compact inline segmented control is labelled `电脑水平` and contains only
+`休闲 / 默认 / 高手 / 大师`. The current segment uses a calm filled highlight;
+there is no checkmark, description, disclosure row, sheet, scrim, or completion
+action. Choosing a segment saves immediately.
 
-Press feedback begins on pointer down. The sheet uses only transform, opacity,
-and simple color transitions, normally settles in about 180 ms, and removes
-movement under reduced-motion preference. No framework, icon dependency,
-glass/blur effect, bounce, spinner, or blocking overlay is added.
+Each segment retains a practical touch target at the narrow 640×340 landscape
+baseline. Press feedback begins on pointer down. The selection highlight uses
+only transform and color/opacity transitions, settles without bounce, and
+removes movement under reduced-motion preference. No framework, icon
+dependency, glass/blur effect, spinner, or blocking overlay is added.
 
 ## Compatibility and persistence
 
@@ -115,9 +115,10 @@ The default level continues to call `runAiTurn(state, CASUAL_AI_STRATEGY)` on
 the existing synchronous path. Its decisions and timing are regression-locked.
 
 Enhanced levels send a serializable `AiDecisionContext`, level, and request
-identity to the worker. A returned command is still cloned and submitted through
-the existing transition safety seam. Stale, malformed, late, or illegal results
-are ignored and replaced by the default strategy for that turn.
+identity to the worker. One deep enhanced-turn application module owns request
+lifecycle, the response window inside the presentation beat, cancellation,
+result validation, and fallback scope. A returned command is still cloned and
+submitted through the existing transition safety seam.
 
 Casual bidding uses a basic visible-hand threshold. Expert and Master share the
 full visible-hand bid evaluator. No bidding policy sees bottom cards before the
@@ -142,9 +143,18 @@ submits a play.
 - No enhanced AI task runs on the main thread.
 - Every level preserves the existing approximately 520 ms presentation beat;
   AI computation adds no deliberate delay.
-- Worker failure falls back immediately without freezing, retry loops, or a
-  modal. `增强电脑暂不可用，本局已使用默认水平` appears once and fades without
-  requiring confirmation.
+- Worker construction or execution failure changes the effective level to
+  Default for the rest of that match without freezing or retry loops.
+  `当前电脑水平暂不可用，本局已使用默认水平` appears once and fades without
+  requiring confirmation. The saved selection is retried on the next match.
+- A request timeout, stale/malformed response, computation failure, or illegal
+  command silently uses Default for that turn only. It must not display the
+  match-level unavailable notice.
+- Default AI is evaluated only when fallback is required; it is never
+  speculatively computed while the worker is pending.
+- A valid Worker result arriving before the main-thread safety margin is used
+  at the existing presentation beat even when cold module startup exceeds the
+  algorithm's own computation budget.
 
 Target-device browser and Android WebView release checks treat visible main-
 thread AI stalls as failures. Physical-device comfort, frame pacing, heat, and
@@ -161,11 +171,20 @@ The everyday `pnpm check` remains fast and covers:
 - landlord/farmer cooperation, pass, bomb, rocket, and direct-finish cases;
 - Master determinization card conservation, public-information-only inputs,
   fixed-budget termination, and seeded repeatability;
-- session locking, async cancellation, stale response, timeout fallback, one-time
-  notice, hint independence, and ordinary game termination;
-- home-sheet semantics, immediate pressed state, persistence/reload, reduced
-  motion, narrow landscape fit, worker build output, PWA offline loading, and
-  embedded startup.
+- session locking, async cancellation, stale results, match-scoped fallback when
+  the Worker is unavailable, a silent turn-scoped fallback on a single request
+  failure, one notice per match, hint independence, and ordinary game
+  termination;
+- home segmented-control semantics, immediate pressed state,
+  persistence/reload, reduced motion, narrow landscape fit, worker build
+  output, PWA offline loading, and embedded startup;
+- transitive runtime import closure: enhanced policy implementation is
+  unreachable from the main entries and reachable from the worker entry;
+- reviewed gzip budgets for main JavaScript, CSS, and the AI worker, each
+  anchored to a measured regression rather than a round number;
+- deterministic browser fault injection at two points on the response window:
+  a 300 ms delayed Worker asset, and a delay past the window, neither of which
+  may show the unavailable notice.
 
 A separate `pnpm bench:ai` runs a larger fixed-seed, role-balanced paired
 tournament and real timing sample during tuning or release—not on every edit.

@@ -4,7 +4,6 @@ import {
   rankCasualPlayActions,
   runAiTurn,
   type AiDecisionContext,
-  type AiStrategy,
   type AiTurnResult,
 } from "../../core/ai/index.js";
 import { getCard, type CardId } from "../../core/cards/index.js";
@@ -23,11 +22,11 @@ import {
   validatePlay,
   type PlayPatternKind,
 } from "../../core/rules/index.js";
-import type {
-  AiDecisionOutcome,
-  EnhancedAiDecisionService,
-  EnhancedAiType,
-} from "../ports/ai-decision-service.js";
+import {
+  createEnhancedAiTurnRunner,
+  ENHANCED_AI_PRESENTATION_BEAT_MS,
+} from "../ai/enhanced-ai-turn.js";
+import type { EnhancedAiDecisionService, EnhancedAiType } from "../ports/ai-decision-service.js";
 import type { SettingsStore } from "../ports/settings-store.js";
 import {
   AI_TYPES,
@@ -35,8 +34,7 @@ import {
   type AiType,
 } from "../settings/ai-settings.js";
 
-const AI_BEAT_MS = 520;
-const ENHANCED_AI_RESPONSE_MS = 180;
+const AI_BEAT_MS = ENHANCED_AI_PRESENTATION_BEAT_MS;
 const AI_FALLBACK_NOTICE_MS = 2_200;
 const TRICK_CLEAR_MS = 400;
 const RESULT_REVEAL_MS = 580;
@@ -246,6 +244,10 @@ export function createProductionSession(options: Readonly<{
   let pendingResult = false;
   let pendingRedeal = false;
   let view: ProductionView = Object.freeze({ screen: "home", aiType: selectedAiType });
+  const enhancedAiTurns = createEnhancedAiTurnRunner({
+    decisionService: options.aiDecisionService,
+    schedule,
+  });
 
   function syncPublicCountsAndHand(): void {
     if (!hasHands(state)) {
@@ -566,7 +568,6 @@ export function createProductionSession(options: Readonly<{
     }
     fallbackNoticeIssued = true;
     aiFallbackNotice = true;
-    publish();
     schedule(AI_FALLBACK_NOTICE_MS, () => {
       aiFallbackNotice = false;
       publish();
@@ -592,95 +593,29 @@ export function createProductionSession(options: Readonly<{
     queueAiIfNeeded();
   }
 
-  function resolveAiOutcome(
-    decisionState: GameState,
-    outcome: AiDecisionOutcome,
-  ): Readonly<{ result: AiTurnResult; usedFallback: boolean }> {
-    if (outcome.ok) {
-      const returnedStrategy: AiStrategy = Object.freeze({
-        chooseCommand(_context: AiDecisionContext) {
-          return outcome.command;
-        },
-      });
-      const returned = runAiTurn(decisionState, returnedStrategy);
-      if (returned.ok) {
-        return Object.freeze({ result: returned, usedFallback: false });
-      }
-    }
-    return Object.freeze({
-      result: runAiTurn(decisionState, CASUAL_AI_STRATEGY),
-      usedFallback: true,
-    });
-  }
-
   function queueEnhancedAi(
     decisionState: GameState,
     aiType: EnhancedAiType,
     context: AiDecisionContext,
   ): void {
-    let active = true;
-    let beatReady = false;
-    let decision: Extract<AiTurnResult, { readonly ok: true }> | null = null;
-    let beatCancel: () => void = () => undefined;
-    let timeoutCancel: () => void = () => undefined;
-    let requestCancel: () => void = () => undefined;
-
-    const cancelAll = () => {
-      if (!active) {
-        return;
-      }
-      active = false;
-      beatCancel();
-      timeoutCancel();
-      requestCancel();
-    };
-
-    const commitIfReady = () => {
-      if (!active || !beatReady || decision === null) {
-        return;
-      }
-      active = false;
-      timeoutCancel();
-      requestCancel();
-      pendingAiCancel = null;
-      applyAiResult(decision);
-    };
-
-    const complete = (outcome: AiDecisionOutcome) => {
-      if (!active || decision !== null) {
-        return;
-      }
-      timeoutCancel();
-      const resolved = resolveAiOutcome(decisionState, outcome);
-      const { result } = resolved;
-      if (!result.ok) {
-        selectionError = "retry-selection";
+    pendingAiCancel = enhancedAiTurns.request(
+      decisionState,
+      aiType,
+      context,
+      ({ result, fallbackScope }) => {
         pendingAiCancel = null;
-        active = false;
-        publish();
-        return;
-      }
-      decision = result;
-      if (resolved.usedFallback) {
-        showAiFallbackNotice();
-      }
-      commitIfReady();
-    };
-
-    pendingAiCancel = cancelAll;
-    beatCancel = schedule(AI_BEAT_MS, () => {
-      beatReady = true;
-      commitIfReady();
-    });
-    timeoutCancel = schedule(ENHANCED_AI_RESPONSE_MS, () => {
-      requestCancel();
-      complete(Object.freeze({ ok: false }));
-    });
-    if (options.aiDecisionService === undefined) {
-      complete(Object.freeze({ ok: false }));
-      return;
-    }
-    requestCancel = options.aiDecisionService.request(aiType, context, complete);
+        if (!result.ok) {
+          selectionError = "retry-selection";
+          publish();
+          return;
+        }
+        if (fallbackScope === "match") {
+          matchAiType = "default";
+          showAiFallbackNotice();
+        }
+        applyAiResult(result);
+      },
+    );
   }
 
   function queueAiIfNeeded(): void {
@@ -881,6 +816,10 @@ export function createProductionSession(options: Readonly<{
     }
     cancelScheduledWork();
     state = restarted.state;
+    matchAiType = selectedAiType;
+    if (matchAiType !== "default") {
+      enhancedAiTurns.beginMatch();
+    }
     resetTransientMatchState();
     inMatch = true;
     dealNext();
@@ -894,6 +833,9 @@ export function createProductionSession(options: Readonly<{
       case "start-game":
         if (!inMatch) {
           matchAiType = selectedAiType;
+          if (matchAiType !== "default") {
+            enhancedAiTurns.beginMatch();
+          }
           inMatch = true;
           resetTransientMatchState();
           dealNext();
@@ -993,7 +935,7 @@ export function createProductionSession(options: Readonly<{
       }
       disposed = true;
       cancelScheduledWork();
-      options.aiDecisionService?.dispose();
+      enhancedAiTurns.dispose();
       listeners.clear();
     },
     getView() {

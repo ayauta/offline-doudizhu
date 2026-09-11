@@ -3,8 +3,10 @@ import {
   SCORING_CASUAL_AI_STRATEGY,
   rankMasterPlayActions,
   rankScoredPlayActions,
-  type AiDecisionContext,
-  type AiStrategy,
+} from "../../core/ai/enhanced.js";
+import type {
+  AiDecisionContext,
+  AiStrategy,
 } from "../../core/ai/index.js";
 import type { GameCommand } from "../../core/game/index.js";
 import type {
@@ -114,6 +116,6 @@ export function decideEnhancedAi(
       command: actionCommand(context, ranked[0]?.action),
     });
   } catch {
-    return Object.freeze({ ok: false });
+    return Object.freeze({ ok: false, reason: "failed" });
   }
 }
