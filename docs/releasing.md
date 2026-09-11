@@ -55,13 +55,23 @@ Secrets 不能作为恢复备份：GitHub 不允许再次读取其明文。
 
 1. 更新 `package.json` 的 `version`。
 2. 更新 `android/app/build.gradle.kts` 的 `versionName`，并递增 `versionCode`。
-3. 新建对应的 `docs/release-notes/vX.Y.Z.md`。
-4. 更新 README 的已知限制和下载文件名。
-5. 运行 `pnpm check`、Android lint/debug build 和 APK 检查。
-6. 通过 Pull Request 合并到受保护的 `main`，等待必需 CI 全部通过。
+   **`versionCode` 必须严格递增**：它不变时 Android 会把新包当作降级并拒绝
+   安装，已装旧版的用户无法升级。`scripts/check-release-tag.mjs` 只检查它是
+   正整数，不会替你发现漏递增。
+3. 更新两个工作流里写死的版本号，它们不读 `package.json`：
+   - `.github/workflows/ci.yml` 的 debug APK 检查（形如 `0.2.0-debug`）；
+   - `.github/workflows/release.yml` 的 release APK 检查（形如 `0.2.0`）。
+   漏改会让 CI 或 Release 在检查 APK 版本名的那一步失败。
+4. 新建对应的 `docs/release-notes/vX.Y.Z.md`。
+5. 更新 README 的当前版本、下载链接与文件名、已知限制小节标题。
+6. 更新 `tests/config/public-release.test.ts` 里写死的版号与 `versionCode`。
+   这是有意的绊线：漏改时 `pnpm check` 会失败，而不是等你打完标签才发现。
+7. 运行 `pnpm check`、Android lint/debug build 和 APK 检查。
+8. 通过 Pull Request 合并到受保护的 `main`，等待必需 CI 全部通过。
 
-版本必须一致；例如首发三处分别是 `0.1.0`、`versionCode = 1` 和标签
-`v0.1.0`。`scripts/check-release-tag.mjs` 会在任何发布动作之前验证它们。
+版本必须在多处保持一致；`scripts/check-release-tag.mjs` 会在任何发布动作之前
+验证 `package.json`、`versionName` 与标签三者一致，以及 `versionCode` 是正整数。
+两个工作流里的写死值不在它的检查范围内，只能靠上面第 3 步。
 
 ## 创建发布
 
@@ -70,8 +80,8 @@ Secrets 不能作为恢复备份：GitHub 不允许再次读取其明文。
 ```bash
 git switch main
 git pull --ff-only
-git tag -a v0.1.0 -m "单机斗地主 v0.1.0"
-git push origin v0.1.0
+git tag -a vX.Y.Z -m "单机斗地主 vX.Y.Z"
+git push origin vX.Y.Z
 ```
 
 Actions 会确认标签提交属于远端 `main`。不要移动或覆盖已经公开的标签；修复后
@@ -81,7 +91,7 @@ Actions 会确认标签提交属于远端 `main`。不要移动或覆盖已经�
 
 ```bash
 gh run list --repo ayauta/offline-doudizhu --workflow Release
-gh release view v0.1.0 --repo ayauta/offline-doudizhu
+gh release view vX.Y.Z --repo ayauta/offline-doudizhu
 ```
 
 下载 APK 后用 `.sha256` 文件复核；Android 还应通过 `apksigner verify
