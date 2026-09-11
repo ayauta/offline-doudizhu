@@ -20,14 +20,20 @@ async function exists(relativePath: string): Promise<boolean> {
 
 describe("public preview release delivery", () => {
   it("keeps the public version consistent", async () => {
-    const [packageConfig, androidBuild] = await Promise.all([
+    const [packageConfig, androidBuild, readme] = await Promise.all([
       json("../../package.json"),
       source("../../android/app/build.gradle.kts"),
+      source("../../README.md"),
     ]);
 
-    expect(packageConfig.version).toBe("0.1.0");
-    expect(androidBuild).toContain('versionName = "0.1.0"');
-    expect(androidBuild).toContain("versionCode = 1");
+    // These literals are a tripwire: bumping a release means updating
+    // package.json, the Android versionName and versionCode, the README, and
+    // this test together. `versionCode` must increase, or Android rejects the
+    // new APK as a downgrade over an installed older release.
+    expect(packageConfig.version).toBe("0.2.0");
+    expect(androidBuild).toContain('versionName = "0.2.0"');
+    expect(androidBuild).toContain("versionCode = 2");
+    expect(readme).toContain("v0.2.0");
   });
 
   it("targets the WebView generation shipped with Android 10 emulator images", async () => {
@@ -116,11 +122,12 @@ describe("public preview release delivery", () => {
     expect(development).toContain("pnpm check");
     expect(releaseGuide).toContain("OFFLINE_DDZ_KEYSTORE_BASE64");
     expect(releaseGuide).toContain("versionCode");
-    expect(releaseGuide).toContain("v0.1.0");
+    // The guide uses a `vX.Y.Z` placeholder rather than a literal release, so
+    // assert the procedure it must keep documenting instead of a version.
+    expect(releaseGuide).toContain("git tag -a");
     expect(releaseGuide).toContain("恢复");
     expect(readme).toContain("GitHub Pages");
     expect(readme).toContain("Android 10");
-    expect(readme).toContain("v0.1.0");
     expect(gitignore).toContain("*-release-recovery.json");
   });
 });
