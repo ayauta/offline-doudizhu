@@ -213,7 +213,7 @@ test("moves from the quiet home into a complete narrow bidding table", async ({ 
   await expect(page.getByText("一人 · 两位本地 AI · 完全离线")).toBeVisible();
   await expect(page.getByLabel("三张牌背").getByRole("img", { name: "牌背" })).toHaveCount(3);
   await expect(page.getByRole("button", { name: "开始游戏" })).toBeVisible();
-  await expect(page.getByText(/调试|架构验证|电脑/)).toHaveCount(0);
+  await expect(page.getByText(/调试|架构验证/)).toHaveCount(0);
 
   const startBox = await page.getByRole("button", { name: "开始游戏" }).boundingBox();
   expect(startBox).not.toBeNull();
@@ -240,6 +240,77 @@ test("moves from the quiet home into a complete narrow bidding table", async ({ 
     expect(box!.x + box!.width).toBeLessThanOrEqual(641);
     expect(box!.y + box!.height).toBeLessThanOrEqual(341);
   }
+});
+
+test("chooses and restores computer level through a calm direct home sheet", async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 340 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+
+  const levelButton = page.getByRole("button", { name: /电脑水平.*默认/ });
+  const buttonBox = await levelButton.boundingBox();
+  expect(buttonBox).not.toBeNull();
+  expect(buttonBox!.height).toBeGreaterThanOrEqual(48);
+  const restingColor = await levelButton.evaluate((element) => getComputedStyle(element).backgroundColor);
+
+  await page.mouse.move(buttonBox!.x + buttonBox!.width / 2, buttonBox!.y + buttonBox!.height / 2);
+  await page.mouse.down();
+  expect(await levelButton.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(restingColor);
+  await page.mouse.up();
+
+  const dialog = page.getByRole("dialog", { name: "电脑水平" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("radio")).toHaveCount(4);
+  await expect(dialog.getByRole("radio", { name: "默认" })).toBeChecked();
+  await expect(dialog.getByText("适合日常对局")).toBeVisible();
+  await expect(dialog.getByText("适合轻松对局")).toHaveCount(0);
+
+  await dialog.getByRole("radio", { name: "高手" }).click();
+  await expect(dialog.getByRole("radio", { name: "高手" })).toBeChecked();
+  await expect(dialog.getByText("判断更加全面")).toBeVisible();
+  await expect(dialog).toHaveCSS("transform", "none");
+  if (process.env.VISUAL_REVIEW === "1") {
+    await page.waitForTimeout(180);
+    await page.screenshot({
+      path: "output/playwright/computer-level-sheet-640x340.png",
+    });
+  }
+  await dialog.getByRole("button", { name: "完成" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("button", { name: /电脑水平.*高手/ })).toBeVisible();
+
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("offline-doudizhu.settings")!))).toEqual({
+    schemaVersion: 1,
+    data: { aiType: "expert" },
+  });
+  await page.reload();
+  await expect(page.getByRole("button", { name: /电脑水平.*高手/ })).toBeVisible();
+  await expectNoViewportOverflow(page);
+  if (process.env.VISUAL_REVIEW === "1") {
+    await page.setViewportSize({ width: 1_366, height: 768 });
+    await page.getByRole("button", { name: /电脑水平.*高手/ }).click();
+    await expect(page.getByRole("dialog", { name: "电脑水平" })).toBeVisible();
+    await page.waitForTimeout(220);
+    await page.screenshot({
+      path: "output/playwright/computer-level-sheet-1366x768.png",
+    });
+  }
+});
+
+test("runs an enhanced opponent in the worker without exposing its level at the table", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 400 });
+  await useIdentityDeck(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: /电脑水平.*默认/ }).click();
+  await page.getByRole("radio", { name: "大师" }).click();
+  await page.getByRole("button", { name: "完成" }).click();
+  await page.getByRole("button", { name: "开始游戏" }).click();
+  await page.getByRole("button", { name: "不叫", exact: true }).click();
+
+  await expect(page.locator(".bottom-cards--revealed")).toBeVisible({ timeout: 2_500 });
+  await expect(page.getByText("增强电脑暂不可用，本局已使用默认水平")).toHaveCount(0);
+  await expect(page.getByText(/休闲|默认|高手|大师/)).toHaveCount(0);
+  await expectNoViewportOverflow(page);
 });
 
 test("presents opponent counts as borderless noninteractive card-stack status", async ({ page }) => {
@@ -312,7 +383,13 @@ test("plays a complete human-landlord round with selection feedback and the fina
   await expect(page.getByText("这些牌不能这样出")).toBeVisible();
   await expect(page.getByRole("button", { name: "出牌" })).toBeDisabled();
 
-  await page.getByRole("button", { name: "提示" }).click();
+  const hintButton = page.getByRole("button", { name: "提示" });
+  const hintBox = await hintButton.boundingBox();
+  expect(hintBox).not.toBeNull();
+  await page.mouse.move(hintBox!.x + hintBox!.width / 2, hintBox!.y + hintBox!.height / 2);
+  await page.mouse.down();
+  await expect(hintButton).toHaveCSS("opacity", "0.86");
+  await page.mouse.up();
   await expect(page.getByText("这些牌不能这样出")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "出牌" })).toBeEnabled();
   expect(await cards.evaluateAll((elements) =>

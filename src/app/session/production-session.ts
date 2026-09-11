@@ -3,6 +3,9 @@ import {
   createPlayerView,
   rankCasualPlayActions,
   runAiTurn,
+  type AiDecisionContext,
+  type AiStrategy,
+  type AiTurnResult,
 } from "../../core/ai/index.js";
 import { getCard, type CardId } from "../../core/cards/index.js";
 import {
@@ -20,8 +23,21 @@ import {
   validatePlay,
   type PlayPatternKind,
 } from "../../core/rules/index.js";
+import type {
+  AiDecisionOutcome,
+  EnhancedAiDecisionService,
+  EnhancedAiType,
+} from "../ports/ai-decision-service.js";
+import type { SettingsStore } from "../ports/settings-store.js";
+import {
+  AI_TYPES,
+  DEFAULT_AI_SETTINGS,
+  type AiType,
+} from "../settings/ai-settings.js";
 
 const AI_BEAT_MS = 520;
+const ENHANCED_AI_RESPONSE_MS = 180;
+const AI_FALLBACK_NOTICE_MS = 2_200;
 const TRICK_CLEAR_MS = 400;
 const RESULT_REVEAL_MS = 580;
 const REDEAL_NOTICE_MS = 600;
@@ -84,6 +100,7 @@ type SeatRecord<Value> = Readonly<Record<Seat, Value>>;
 
 export type HomeView = Readonly<{
   screen: "home";
+  aiType: AiType;
 }>;
 
 export type MatchView = Readonly<{
@@ -103,6 +120,7 @@ export type MatchView = Readonly<{
   playEnabled: boolean;
   selectionError: SelectionError | null;
   feedback: MatchFeedback | null;
+  aiFallbackNotice: boolean;
   exitConfirmation: boolean;
   result: GameResult | null;
   lowCardSeats: readonly Seat[];
@@ -112,6 +130,7 @@ export type ProductionView = HomeView | MatchView;
 
 export type ProductionIntent =
   | Readonly<{ type: "start-game" }>
+  | Readonly<{ type: "set-ai-type"; aiType: AiType }>
   | Readonly<{ type: "bid"; decision: BidDecision }>
   | Readonly<{
       type: "selection-change";
@@ -187,15 +206,29 @@ function activeCurrentPlay(state: GameState) {
 }
 
 export function createProductionSession(options: Readonly<{
+  aiDecisionService?: EnhancedAiDecisionService;
   deckSource: DeckSource;
   scheduler: PresentationScheduler;
+  settingsStore?: SettingsStore;
 }>): ProductionSession {
+  let selectedAiType: AiType = DEFAULT_AI_SETTINGS.aiType;
+  try {
+    const loaded = options.settingsStore?.load();
+    if (loaded !== undefined && (AI_TYPES as readonly string[]).includes(loaded.aiType)) {
+      selectedAiType = loaded.aiType;
+    }
+  } catch {
+    selectedAiType = DEFAULT_AI_SETTINGS.aiType;
+  }
   let state: GameState = INITIAL_GAME_STATE;
   let inMatch = false;
+  let matchAiType: AiType = selectedAiType;
   let disposed = false;
   let resultVisible = false;
   let exitConfirmation = false;
   let feedback: MatchFeedback | null = null;
+  let aiFallbackNotice = false;
+  let fallbackNoticeIssued = false;
   let selectionError: SelectionError | null = null;
   let selectionChecked = false;
   let hintIndex = 0;
@@ -212,7 +245,7 @@ export function createProductionSession(options: Readonly<{
   let pendingClear = false;
   let pendingResult = false;
   let pendingRedeal = false;
-  let view: ProductionView = Object.freeze({ screen: "home" });
+  let view: ProductionView = Object.freeze({ screen: "home", aiType: selectedAiType });
 
   function syncPublicCountsAndHand(): void {
     if (!hasHands(state)) {
@@ -298,7 +331,7 @@ export function createProductionSession(options: Readonly<{
 
   function buildView(): ProductionView {
     if (!inMatch) {
-      return freezeDeep({ screen: "home" } as const);
+      return freezeDeep({ screen: "home", aiType: selectedAiType } as const);
     }
 
     const stage: MatchView["stage"] =
@@ -342,6 +375,7 @@ export function createProductionSession(options: Readonly<{
       playEnabled: visibleControls.includes("play") && selectionIsLegal(),
       selectionError,
       feedback: noResponse ? "no-response" : feedback,
+      aiFallbackNotice,
       exitConfirmation,
       result: resultVisible && state.phase === "finished" ? { ...state.result } : null,
       lowCardSeats: SEAT_ORDER.filter((seat) => lowCardSeats.has(seat)),
@@ -379,17 +413,21 @@ export function createProductionSession(options: Readonly<{
   }
 
   function cancelScheduledWork(): void {
+    const cancelAi = pendingAiCancel;
+    pendingAiCancel = null;
+    cancelAi?.();
     for (const cancel of [...scheduledCancels]) {
       cancel();
     }
     scheduledCancels.clear();
-    pendingAiCancel = null;
   }
 
   function resetTransientMatchState(): void {
     resultVisible = false;
     exitConfirmation = false;
     feedback = null;
+    aiFallbackNotice = false;
+    fallbackNoticeIssued = false;
     selectionError = null;
     selectionChecked = false;
     hintIndex = 0;
@@ -522,6 +560,129 @@ export function createProductionSession(options: Readonly<{
     }
   }
 
+  function showAiFallbackNotice(): void {
+    if (fallbackNoticeIssued) {
+      return;
+    }
+    fallbackNoticeIssued = true;
+    aiFallbackNotice = true;
+    publish();
+    schedule(AI_FALLBACK_NOTICE_MS, () => {
+      aiFallbackNotice = false;
+      publish();
+    });
+  }
+
+  function applyAiResult(result: Extract<AiTurnResult, { readonly ok: true }>): void {
+    state = result.state;
+    processEvents(result.events);
+    syncPublicCountsAndHand();
+    publish();
+    if (pendingClear) {
+      scheduleTrickClear();
+    }
+    if (pendingResult) {
+      scheduleResultReveal();
+      return;
+    }
+    if (pendingRedeal) {
+      scheduleRedeal();
+      return;
+    }
+    queueAiIfNeeded();
+  }
+
+  function resolveAiOutcome(
+    decisionState: GameState,
+    outcome: AiDecisionOutcome,
+  ): Readonly<{ result: AiTurnResult; usedFallback: boolean }> {
+    if (outcome.ok) {
+      const returnedStrategy: AiStrategy = Object.freeze({
+        chooseCommand(_context: AiDecisionContext) {
+          return outcome.command;
+        },
+      });
+      const returned = runAiTurn(decisionState, returnedStrategy);
+      if (returned.ok) {
+        return Object.freeze({ result: returned, usedFallback: false });
+      }
+    }
+    return Object.freeze({
+      result: runAiTurn(decisionState, CASUAL_AI_STRATEGY),
+      usedFallback: true,
+    });
+  }
+
+  function queueEnhancedAi(
+    decisionState: GameState,
+    aiType: EnhancedAiType,
+    context: AiDecisionContext,
+  ): void {
+    let active = true;
+    let beatReady = false;
+    let decision: Extract<AiTurnResult, { readonly ok: true }> | null = null;
+    let beatCancel: () => void = () => undefined;
+    let timeoutCancel: () => void = () => undefined;
+    let requestCancel: () => void = () => undefined;
+
+    const cancelAll = () => {
+      if (!active) {
+        return;
+      }
+      active = false;
+      beatCancel();
+      timeoutCancel();
+      requestCancel();
+    };
+
+    const commitIfReady = () => {
+      if (!active || !beatReady || decision === null) {
+        return;
+      }
+      active = false;
+      timeoutCancel();
+      requestCancel();
+      pendingAiCancel = null;
+      applyAiResult(decision);
+    };
+
+    const complete = (outcome: AiDecisionOutcome) => {
+      if (!active || decision !== null) {
+        return;
+      }
+      timeoutCancel();
+      const resolved = resolveAiOutcome(decisionState, outcome);
+      const { result } = resolved;
+      if (!result.ok) {
+        selectionError = "retry-selection";
+        pendingAiCancel = null;
+        active = false;
+        publish();
+        return;
+      }
+      decision = result;
+      if (resolved.usedFallback) {
+        showAiFallbackNotice();
+      }
+      commitIfReady();
+    };
+
+    pendingAiCancel = cancelAll;
+    beatCancel = schedule(AI_BEAT_MS, () => {
+      beatReady = true;
+      commitIfReady();
+    });
+    timeoutCancel = schedule(ENHANCED_AI_RESPONSE_MS, () => {
+      requestCancel();
+      complete(Object.freeze({ ok: false }));
+    });
+    if (options.aiDecisionService === undefined) {
+      complete(Object.freeze({ ok: false }));
+      return;
+    }
+    requestCancel = options.aiDecisionService.request(aiType, context, complete);
+  }
+
   function queueAiIfNeeded(): void {
     if (
       disposed ||
@@ -534,7 +695,27 @@ export function createProductionSession(options: Readonly<{
       return;
     }
 
-    const result = runAiTurn(state, CASUAL_AI_STRATEGY);
+    const decisionState = state;
+    if (matchAiType !== "default") {
+      const playerView = createPlayerView(decisionState, decisionState.currentSeat);
+      if (playerView === null) {
+        return;
+      }
+      const context: AiDecisionContext = decisionState.phase === "bidding"
+        ? Object.freeze({ kind: "bid", view: playerView as Extract<typeof playerView, { phase: "bidding" }> })
+        : Object.freeze({
+            kind: "play",
+            view: playerView as Exclude<typeof playerView, { phase: "bidding" }>,
+            legalActions: generateLegalActions({
+              hand: playerView.hand,
+              currentPlay: playerView.phase === "bidding" ? null : playerView.currentPlay,
+            }),
+          });
+      queueEnhancedAi(decisionState, matchAiType, context);
+      return;
+    }
+
+    const result = runAiTurn(decisionState, CASUAL_AI_STRATEGY);
     if (!result.ok) {
       selectionError = "retry-selection";
       publish();
@@ -542,22 +723,7 @@ export function createProductionSession(options: Readonly<{
     }
     pendingAiCancel = schedule(AI_BEAT_MS, () => {
       pendingAiCancel = null;
-      state = result.state;
-      processEvents(result.events);
-      syncPublicCountsAndHand();
-      publish();
-      if (pendingClear) {
-        scheduleTrickClear();
-      }
-      if (pendingResult) {
-        scheduleResultReveal();
-        return;
-      }
-      if (pendingRedeal) {
-        scheduleRedeal();
-        return;
-      }
-      queueAiIfNeeded();
+      applyAiResult(result);
     });
   }
 
@@ -672,6 +838,7 @@ export function createProductionSession(options: Readonly<{
       return;
     }
     cancelScheduledWork();
+    aiFallbackNotice = false;
     exitConfirmation = true;
     publish();
   }
@@ -726,10 +893,23 @@ export function createProductionSession(options: Readonly<{
     switch (intent.type) {
       case "start-game":
         if (!inMatch) {
+          matchAiType = selectedAiType;
           inMatch = true;
           resetTransientMatchState();
           dealNext();
         }
+        return;
+      case "set-ai-type":
+        if (inMatch || !(AI_TYPES as readonly string[]).includes(intent.aiType)) {
+          return;
+        }
+        selectedAiType = intent.aiType;
+        try {
+          options.settingsStore?.save(Object.freeze({ aiType: selectedAiType }));
+        } catch {
+          // The in-memory setting remains usable when optional storage fails.
+        }
+        publish();
         return;
       case "bid":
         if (state.phase === "bidding" && state.currentSeat === "human" && !exitConfirmation) {
@@ -813,6 +993,7 @@ export function createProductionSession(options: Readonly<{
       }
       disposed = true;
       cancelScheduledWork();
+      options.aiDecisionService?.dispose();
       listeners.clear();
     },
     getView() {

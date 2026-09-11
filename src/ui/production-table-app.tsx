@@ -2,12 +2,14 @@ import type { TargetedPointerEvent } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 
 import type {
+  HomeView,
   MatchView,
   ProductionControl,
   ProductionSession,
   PublicTableAction,
   SeatRole,
 } from "../app/session/production-session.js";
+import type { AiType } from "../app/settings/ai-settings.js";
 import { asCardId, type CardId } from "../core/cards/index.js";
 import type { BidDecision } from "../core/game/index.js";
 import type { PlayPatternKind } from "../core/rules/index.js";
@@ -44,6 +46,27 @@ const BID_LABELS: Readonly<Record<BidDecision, string>> = {
   call: "叫地主",
   decline: "不叫",
 };
+
+const AI_TYPE_ORDER: readonly AiType[] = Object.freeze([
+  "casual",
+  "default",
+  "expert",
+  "master",
+]);
+
+const AI_TYPE_LABELS: Readonly<Record<AiType, string>> = Object.freeze({
+  casual: "休闲",
+  default: "默认",
+  expert: "高手",
+  master: "大师",
+});
+
+const AI_TYPE_DESCRIPTIONS: Readonly<Record<AiType, string>> = Object.freeze({
+  casual: "适合轻松对局",
+  default: "适合日常对局",
+  expert: "判断更加全面",
+  master: "推演更加深入",
+});
 
 interface ProductionTableAppProps {
   readonly session: ProductionSession;
@@ -412,7 +435,9 @@ function LiveFeedback({ view }: Readonly<{ view: MatchView }>) {
       ? "这手牌压不过桌上的牌"
       : view.selectionError === "retry-selection"
         ? "这手牌暂时不能出，请重新选择"
-        : view.feedback === "no-response"
+        : view.aiFallbackNotice
+          ? "增强电脑暂不可用，本局已使用默认水平"
+          : view.feedback === "no-response"
           ? "没有可以压过的牌"
           : view.feedback === "all-pass"
             ? "都不叫，重新发牌"
@@ -448,10 +473,28 @@ function ResultMessage({ view }: Readonly<{ view: MatchView }>) {
   );
 }
 
-function HomeScreen({ session }: ProductionTableAppProps) {
+function HomeScreen({
+  session,
+  view,
+}: Readonly<ProductionTableAppProps & { view: HomeView }>) {
+  const [levelSheetOpen, setLevelSheetOpen] = useState(false);
+  const levelButton = useRef<HTMLButtonElement>(null);
+  const doneButton = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (levelSheetOpen) {
+      doneButton.current?.focus();
+    }
+  }, [levelSheetOpen]);
+
+  function closeLevelSheet(): void {
+    setLevelSheetOpen(false);
+    levelButton.current?.focus();
+  }
+
   return (
     <main class="home-screen">
-      <section class="home-content">
+      <section aria-hidden={levelSheetOpen} class="home-content">
         <div class="home-hero" aria-label="三张牌背">
           <CardBack />
           <CardBack />
@@ -464,7 +507,75 @@ function HomeScreen({ session }: ProductionTableAppProps) {
         <button class="start-button" onClick={() => session.dispatch({ type: "start-game" })} type="button">
           开始游戏
         </button>
+        <button
+          aria-expanded={levelSheetOpen}
+          aria-haspopup="dialog"
+          class="computer-level-button"
+          onClick={() => setLevelSheetOpen(true)}
+          ref={levelButton}
+          type="button"
+        >
+          <span>电脑水平</span>
+          <span class="computer-level-button__value">
+            {AI_TYPE_LABELS[view.aiType]}
+            <span aria-hidden="true" class="computer-level-button__chevron">›</span>
+          </span>
+        </button>
       </section>
+      <div
+        aria-hidden={!levelSheetOpen}
+        class={`computer-level-layer${levelSheetOpen ? " is-open" : ""}`}
+      >
+        <button
+          aria-label="关闭电脑水平选择"
+          class="computer-level-scrim"
+          onClick={closeLevelSheet}
+          tabIndex={-1}
+          type="button"
+        />
+        <section
+          aria-describedby="computer-level-description"
+          aria-labelledby="computer-level-title"
+          aria-modal="true"
+          class="computer-level-sheet"
+          role="dialog"
+        >
+          <header class="computer-level-sheet__header">
+            <h2 id="computer-level-title">电脑水平</h2>
+            <button
+              class="computer-level-done"
+              onClick={closeLevelSheet}
+              ref={doneButton}
+              tabIndex={levelSheetOpen ? 0 : -1}
+              type="button"
+            >完成</button>
+          </header>
+          <div aria-label="选择电脑水平" class="computer-level-options" role="radiogroup">
+            {AI_TYPE_ORDER.map((aiType) => {
+              const checked = aiType === view.aiType;
+              return (
+                <button
+                  aria-checked={checked}
+                  class="computer-level-option"
+                  key={aiType}
+                  onClick={() => session.dispatch({ type: "set-ai-type", aiType })}
+                  role="radio"
+                  tabIndex={levelSheetOpen ? 0 : -1}
+                  type="button"
+                >
+                  <span>{AI_TYPE_LABELS[aiType]}</span>
+                  <span aria-hidden="true" class="computer-level-option__check">
+                    {checked ? "✓" : ""}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <p aria-live="polite" id="computer-level-description">
+            {AI_TYPE_DESCRIPTIONS[view.aiType]}
+          </p>
+        </section>
+      </div>
     </main>
   );
 }
@@ -511,7 +622,7 @@ export function ProductionTableApp({ session }: ProductionTableAppProps) {
       </section>
       <div class="landscape-surface">
         {view.screen === "home"
-          ? <HomeScreen session={session} />
+          ? <HomeScreen session={session} view={view} />
           : <MatchScreen session={session} view={view} />}
       </div>
     </div>

@@ -1,7 +1,7 @@
 # Architecture
 
 Status: Accepted  
-Last updated: 2026-09-04
+Last updated: 2026-09-11
 Source of truth for: module boundaries, dependency direction, state ownership,
 Web integration, and verification
 
@@ -26,8 +26,9 @@ touch / mouse
       v
 semantic DOM UI --intent--> application session --> pure game core
           ^                         |                    |
-          |                         +--> local AI -------+
-          |                         +--> persistence port
+          |                         +--> default AI -----+
+          |                         +--> enhanced-AI port --> dedicated worker
+          |                         +--> settings port
           |
 Web adapter: lifecycle, localStorage
 PWA delivery adapter: service-worker registration
@@ -66,7 +67,9 @@ src/
     ai/                strategies over redacted PlayerView
   app/
     session/           authoritative live session and read-only views
-    ports/             persistence/audio/lifecycle contracts when needed
+    ai/                enhanced-AI request handler and fixed budgets
+    ports/             AI/settings and future capability contracts
+    settings/          versioned settings codec and defaults
   ui/
     components/        semantic presentation
     input/             pure pointer-selection state machine
@@ -133,9 +136,21 @@ landscape viewports.
 ## 6. Browser, Android, and offline boundary
 
 `src/platform/web` owns browser primitives shared by normal browsers and
-WebView. `src/platform/pwa` alone owns service-worker registration. The first
-persistence adapter will store a versioned current snapshot, one recovery slot,
-and approved settings in `localStorage`; persistence is not implemented yet.
+WebView. It provides safe `localStorage` settings and one lazily created
+Dedicated Worker for enhanced AI. The application stores AI difficulty in its
+own versioned settings document; unfinished-game recovery remains unimplemented.
+Independent document schemas follow ADR 0015, so release version changes do not
+create migrations and unrelated future data can evolve separately.
+
+The existing default AI remains on its exact synchronous core path. Casual,
+Expert, and Master receive only a serializable redacted `PlayerView` through an
+application port; their computation is isolated from the main thread, bounded,
+cancelable, and submitted back through the normal engine transition. Failure,
+late results, and invalid commands fall back to the default strategy. Master
+samples possible hidden hands from public information only. ADR 0016 owns this
+worker and deadline boundary.
+
+`src/platform/pwa` alone owns service-worker registration.
 
 Application source contains no request API. Vite emits portable static files.
 Pinned PWA tooling generates a precache worker for the reviewed same-origin

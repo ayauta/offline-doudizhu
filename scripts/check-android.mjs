@@ -57,6 +57,8 @@ assert(rootBuild.includes('version "9.4.0"'), "unexpected Android Gradle Plugin 
 assert(wrapper.includes("gradle-9.6.0-bin.zip"), "unexpected Gradle wrapper version");
 
 for (const setting of [
+  "setJavaScriptEnabled(true)",
+  "setDomStorageEnabled(true)",
   "setBlockNetworkLoads(true)",
   "setAllowFileAccess(false)",
   "setAllowContentAccess(false)",

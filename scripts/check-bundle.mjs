@@ -32,6 +32,8 @@ for (const required of ["index.html", "embedded.html", "manifest.webmanifest", "
 }
 assert(relativePaths.some((path) => /^assets\/.+\.js$/.test(path)), "missing application JavaScript");
 assert(relativePaths.some((path) => /^assets\/.+\.css$/.test(path)), "missing application CSS");
+const aiWorkerPaths = relativePaths.filter((path) => /^assets\/ai-worker-[^/]+\.js$/.test(path));
+assert(aiWorkerPaths.length === 1, "enhanced AI must emit exactly one dedicated worker asset");
 assert(!relativePaths.some((path) => path.endsWith(".map")), "source maps must not be emitted");
 
 const manifest = JSON.parse(await readFile(join(distRoot, "manifest.webmanifest"), "utf8"));

@@ -1,7 +1,7 @@
 # Product Specification
 
 Status: Approved by product owner  
-Last updated: 2026-09-02  
+Last updated: 2026-09-11
 Product: 单机斗地主 (`offline-doudizhu`)
 
 ## 1. Purpose
@@ -23,7 +23,7 @@ In priority order:
 2. Correct and explainable classic rules
 3. Offline reliability and privacy
 4. Maintainability and auditability
-5. Modest, replaceable AI
+5. Responsive, replaceable local AI
 6. Visual polish
 
 The product must not optimize for engagement, monetization, competitive rank,
@@ -101,7 +101,7 @@ specifications:
 - production-quality accessible table UI.
 
 Optional local voice prompts are planned after the rules and interaction flow
-are stable. Multiple AI difficulty levels are a later enhancement.
+are stable. Rule-based AI difficulty is specified by Spec 051.
 
 ### 5.3 Explicitly out of scope
 
@@ -189,7 +189,8 @@ the rocket is the highest move.
 
 ## 7. AI product requirements
 
-The first playable AI should feel like a competent but forgiving family player:
+The unchanged default AI should feel like a competent but forgiving family
+player:
 
 - it must never access hidden cards belonging to another player;
 - it must act only through legal engine APIs;
@@ -201,8 +202,19 @@ The first playable AI should feel like a competent but forgiving family player:
 - decisions must be deterministic when given the same state and injected
   randomness.
 
-The AI strategy is replaceable. Later versions may expose casual, standard, and
-hard difficulty levels. Phase 1 does not implement that selector.
+The home screen exposes one global computer level for both AI seats:
+
+- `休闲` uses simpler deterministic hand and danger scoring;
+- `默认` is the unchanged production strategy and remains the initial choice;
+- `高手` adds bounded hand decomposition and full public-position scoring;
+- `大师` refines the Expert shortlist with bounded hidden-card sampling and
+  shallow rollout in one dedicated Web Worker.
+
+Every level is pure local TypeScript and chooses what its own evaluator judges
+best; no level injects deliberate mistakes. Enhanced computation never runs on
+the UI thread. It sees only the redacted player view, and sampled hidden hands
+exist only inside Master's possible worlds. Exact behavior, budgets, fallback,
+and evaluation requirements are owned by Spec 051 and ADR 0016.
 
 ## 8. Assistance and accessibility
 
@@ -233,8 +245,12 @@ ensure that every supported pattern has corresponding help content.
 
 ## 10. Local persistence
 
-The complete playable version should recover an unfinished game after the Web
-application is closed or reclaimed by the operating system.
+AI difficulty is stored locally in an independently versioned settings document
+as defined by ADR 0015. Missing, invalid, or unknown values use `默认`; a future
+unsupported schema is not overwritten. Storage failure never blocks play.
+
+Recovery of an unfinished game after the application is closed or reclaimed by
+the operating system remains deferred.
 
 Persist only:
 
@@ -247,9 +263,8 @@ Do not persist:
 - points, win rates, or engagement statistics;
 - device identifiers, account identifiers, or personal information.
 
-Persistence is an architectural constraint now, but implementation is deferred
-until the game state machine is stable. UI animation and transient card
-selection state do not belong in the persisted game state.
+Only the AI setting is implemented today. UI animation and transient card
+selection state do not belong in any future persisted game state.
 
 ## 11. Audio
 
