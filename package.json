@@ -12,6 +12,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "bench:ai": "vitest run --config vitest.benchmark.config.ts --reporter=verbose",
     "preview": "vite preview",
     "check:bundle": "node scripts/check-bundle.mjs",
     "test": "vitest run",

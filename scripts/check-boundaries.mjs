@@ -2,6 +2,15 @@ import { readFile, readdir } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  MAIN_FORBIDDEN_PATHS,
+  MAIN_RUNTIME_ENTRIES,
+  WORKER_ENTRY,
+  WORKER_FORBIDDEN_PREFIXES,
+  WORKER_REQUIRED_PATHS,
+} from "./ai-delivery-rules.mjs";
+import { runtimeImportClosure } from "./runtime-import-graph.mjs";
+
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 const sourceRoot = join(repositoryRoot, "src");
 
@@ -21,11 +30,13 @@ async function walk(directory) {
 
 const violations = [];
 const sourceFiles = await walk(sourceRoot);
+const sources = new Map();
 const requestCapability = /\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\b|\bsendBeacon\b/;
 
 for (const path of sourceFiles) {
   const source = await readFile(path, "utf8");
   const displayPath = relative(repositoryRoot, path);
+  sources.set(displayPath.replaceAll("\\", "/"), source);
   const segments = displayPath.split(sep);
   const layer = segments[1];
   const imports = [...source.matchAll(/(?:from\s*|import\s*\()\s*["']([^"']+)["']/g)]
@@ -88,6 +99,29 @@ for (const path of sourceFiles) {
       if (/(?:^|\/)(?:core|ui)(?:\/|$)/.test(specifier)) {
         violations.push(`${displayPath}: platform adapter imports ${specifier}`);
       }
+    }
+  }
+}
+
+for (const entryPath of MAIN_RUNTIME_ENTRIES) {
+  const closure = runtimeImportClosure(sources, entryPath);
+  for (const forbiddenPath of MAIN_FORBIDDEN_PATHS) {
+    if (closure.has(forbiddenPath)) {
+      violations.push(`${entryPath}: main runtime closure reaches enhanced-only ${forbiddenPath}`);
+    }
+  }
+}
+
+const workerClosure = runtimeImportClosure(sources, WORKER_ENTRY);
+for (const requiredPath of WORKER_REQUIRED_PATHS) {
+  if (!workerClosure.has(requiredPath)) {
+    violations.push(`${WORKER_ENTRY}: worker runtime closure is missing ${requiredPath}`);
+  }
+}
+for (const reachedPath of workerClosure) {
+  for (const prefix of WORKER_FORBIDDEN_PREFIXES) {
+    if (reachedPath.startsWith(prefix)) {
+      violations.push(`${WORKER_ENTRY}: worker runtime closure reaches ${reachedPath}`);
     }
   }
 }

@@ -1,7 +1,7 @@
 # Architecture
 
 Status: Accepted  
-Last updated: 2026-09-04
+Last updated: 2026-09-11
 Source of truth for: module boundaries, dependency direction, state ownership,
 Web integration, and verification
 
@@ -26,8 +26,9 @@ touch / mouse
       v
 semantic DOM UI --intent--> application session --> pure game core
           ^                         |                    |
-          |                         +--> local AI -------+
-          |                         +--> persistence port
+          |                         +--> default AI -----+
+          |                         +--> enhanced-AI port --> dedicated worker
+          |                         +--> settings port
           |
 Web adapter: lifecycle, localStorage
 PWA delivery adapter: service-worker registration
@@ -66,7 +67,9 @@ src/
     ai/                strategies over redacted PlayerView
   app/
     session/           authoritative live session and read-only views
-    ports/             persistence/audio/lifecycle contracts when needed
+    ai/                enhanced-AI request handler and fixed budgets
+    ports/             AI/settings and future capability contracts
+    settings/          versioned settings codec and defaults
   ui/
     components/        semantic presentation
     input/             pure pointer-selection state machine
@@ -133,9 +136,30 @@ landscape viewports.
 ## 6. Browser, Android, and offline boundary
 
 `src/platform/web` owns browser primitives shared by normal browsers and
-WebView. `src/platform/pwa` alone owns service-worker registration. The first
-persistence adapter will store a versioned current snapshot, one recovery slot,
-and approved settings in `localStorage`; persistence is not implemented yet.
+WebView. It provides safe `localStorage` settings and one lazily created
+Dedicated Worker for enhanced AI. The application stores AI difficulty in its
+own versioned settings document; unfinished-game recovery remains unimplemented.
+Independent document schemas follow ADR 0015, so release version changes do not
+create migrations and unrelated future data can evolve separately.
+
+The existing default AI remains on its exact synchronous core path. Casual,
+Expert, and Master receive only a serializable redacted `PlayerView` through an
+application port; their computation is isolated from the main thread, bounded,
+cancelable, and submitted back through the normal engine transition. Failure,
+late results, and invalid commands fall back to the default strategy. Master
+samples possible hidden hands from public information only. ADR 0016 owns this
+worker and deadline boundary; ADR 0017 owns how far a failure reaches and what
+the player is told.
+
+The supported runtime baseline is the Vite build target, `chrome74`; older
+browsers and Android WebView builds are not supported. The enhanced-AI Worker
+must stay a classic-script bundle: Vite emits IIFE output, and the client's
+`type: "module"` option is ignored as an unknown dictionary member where module
+workers are unsupported, so the worker still runs on the baseline browser.
+Emitting ES worker output would break those browsers silently, and no other
+check would catch it.
+
+`src/platform/pwa` alone owns service-worker registration.
 
 Application source contains no request API. Vite emits portable static files.
 Pinned PWA tooling generates a precache worker for the reviewed same-origin
@@ -160,13 +184,22 @@ boundary; ADR 0012 owns public distribution and release automation.
 - Vitest proves cards, rules, transitions, session behavior, input state
   machines, and repository contracts deterministically under Node.
 - TypeScript strict mode and the boundary check enforce dependency direction.
+  The boundary check computes the runtime import closure of both main delivery
+  entries and the AI worker, so enhanced policy implementation is unreachable
+  from the main thread and reachable only from the worker entry.
 - The privacy check rejects network capability, secrets, remote assets, and
   unexpected generated-worker behavior.
 - Build inspection verifies manifest, relative output, PWA precache coverage
-  and embedded exclusion, plus absence of source maps/private paths.
+  and embedded exclusion, absence of source maps/private paths, and reviewed
+  gzip budgets on the main JavaScript, CSS, and worker assets. Each budget is
+  anchored to a measured regression rather than a round number, and the build
+  is deterministic, so they are hard limits rather than flaky ones.
 - Playwright Chromium verifies semantic behavior, orientation gating, target
   viewports, gestures, PWA offline relaunch, and embedded startup without a
-  service-worker registration.
+  service-worker registration. It also injects a delayed Worker asset. That
+  interception must be installed on the context: a Dedicated Worker script
+  request never reaches a page-level route, so a page-level interceptor is
+  never called and the injected fault silently does not happen.
 - Android source checks enforce zero permissions, fixed identities, the local
   asset URL, hardened WebView settings, and both system-Back implementations.
   Android lint/build are supplemented by an exact-APK offline, rendering,

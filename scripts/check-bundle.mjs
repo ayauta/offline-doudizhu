@@ -1,6 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
 
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 const distRoot = join(repositoryRoot, "dist");
@@ -32,6 +33,8 @@ for (const required of ["index.html", "embedded.html", "manifest.webmanifest", "
 }
 assert(relativePaths.some((path) => /^assets\/.+\.js$/.test(path)), "missing application JavaScript");
 assert(relativePaths.some((path) => /^assets\/.+\.css$/.test(path)), "missing application CSS");
+const aiWorkerPaths = relativePaths.filter((path) => /^assets\/ai-worker-[^/]+\.js$/.test(path));
+assert(aiWorkerPaths.length === 1, "enhanced AI must emit exactly one dedicated worker asset");
 assert(!relativePaths.some((path) => path.endsWith(".map")), "source maps must not be emitted");
 
 const manifest = JSON.parse(await readFile(join(distRoot, "manifest.webmanifest"), "utf8"));
@@ -83,4 +86,53 @@ for (const path of files.filter((item) => /\.(?:css|html|js|json|svg|webmanifest
   assert(!contents.includes(repositoryRoot), `${basename(path)} leaks a private local path`);
 }
 
+/**
+ * Reviewed gzip budgets for the first-load payload.
+ *
+ * Production tree shaking removes an unused re-export, so no size budget can
+ * catch the development-only barrel problem — `scripts/check-boundaries.mjs`
+ * owns that through the runtime import closure. These budgets cover the other
+ * direction: enhanced policy reaching the main entry anyway, or the payload
+ * growing without anyone deciding to spend the bytes.
+ *
+ * Each limit is anchored to a measurement rather than a round number: the
+ * current baseline plus a third of the smallest regression worth catching.
+ * The build is deterministic (pinned toolchain, no source maps), so these are
+ * hard limits and never flake.
+ */
+const gzipBudgets = [
+  {
+    // 20 139 B baseline + 2 587 B (one enhanced module on the main entry) / 3.
+    label: "main JavaScript",
+    limitBytes: 21_001,
+    pattern: /^assets\/main-[^/]+\.js$/,
+  },
+  {
+    // 5 445 B baseline + 1 200 B (the removed computer-level sheet) / 3.
+    label: "application CSS",
+    limitBytes: 5_845,
+    pattern: /^assets\/main-[^/]+\.css$/,
+  },
+  {
+    // 8 355 B baseline + 2 587 B (one enhanced policy module) / 3.
+    label: "enhanced AI worker",
+    limitBytes: 9_217,
+    pattern: /^assets\/ai-worker-[^/]+\.js$/,
+  },
+];
+
+const gzipReport = [];
+for (const { label, limitBytes, pattern } of gzipBudgets) {
+  const matches = files.filter((path) => pattern.test(relative(distRoot, path).replaceAll("\\", "/")));
+  assert(matches.length === 1, `expected exactly one ${label} asset, found ${matches.length}`);
+  const bytes = gzipSync(await readFile(matches[0]), { level: 9 }).length;
+  const kib = (value) => (value / 1024).toFixed(2);
+  gzipReport.push(`${label} ${kib(bytes)}/${kib(limitBytes)} KiB gzip`);
+  assert(
+    bytes <= limitBytes,
+    `${label} is ${bytes} B gzip, ${bytes - limitBytes} B over the reviewed ${limitBytes} B budget`,
+  );
+}
+
 console.log(`Build output check passed (${relativePaths.length} files; complete local precache).`);
+console.log(`Reviewed gzip budgets: ${gzipReport.join("; ")}.`);

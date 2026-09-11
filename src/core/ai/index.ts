@@ -15,3 +15,4 @@ export {
   CASUAL_AI_STRATEGY,
   rankCasualPlayActions,
 } from "./casual-strategy.js";
+export { CASUAL_AI_STRATEGY as DEFAULT_AI_STRATEGY } from "./casual-strategy.js";

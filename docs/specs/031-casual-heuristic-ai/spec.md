@@ -135,17 +135,10 @@ copied or distributed.
 
 ## Deferred difficulty work
 
-Spec 031 does not add difficulty selection. The accepted later direction is
-`休闲 / 标准 / 挑战`, with `休闲` as the default. Before Spec 051 chooses the
-stronger implementations, a separate evaluation must compare enhanced
-heuristics, fixed-budget information-set Monte Carlo search, and any feasible
-lightweight model under license, bundle-size, deterministic-replay, phone
-performance, privacy, and maintenance constraints.
-
-The future hint initially uses this casual ranking and should eventually use
-the strongest accepted local evaluator independently of opponent difficulty. A
-single short explanation may be trialled in the UI, but must remain removable
-and is not an AI-core contract.
+This historical deferred direction is superseded by approved Spec 051. The
+strategy introduced here remains byte-for-byte behaviorally authoritative for
+the `默认` level and for immediate hint ranking. Spec 051 adds `休闲 / 默认 / 高手 /
+大师` around it without changing this strategy.
 
 ## Non-goals
 

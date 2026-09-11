@@ -181,13 +181,14 @@ is `docs/specs/045-public-preview-release/spec.md`.
 Add reviewed local audio assets and a local on/off setting. No microphone,
 streaming, TTS service, background music, or network.
 
-### 051 — Difficulty choices
+### 051 — Rule-based AI difficulty
 
-Add strategy profiles behind `AiStrategy`, with player-facing descriptions and
-evaluation fixtures. Begin with a bounded comparison of enhanced heuristics,
-fixed-budget information-set Monte Carlo search, and any feasible lightweight
-model before selecting the standard/challenge implementations. Difficulty must
-not change rules or expose hidden cards.
+Preserve the current production strategy as `默认` and add deterministic
+`休闲`, `高手`, and bounded sampled-search `大师` profiles. Enhanced opponent
+work runs in one Dedicated Worker; hints remain on the immediate default
+ranker. The independently versioned `localStorage` setting and a compact inline
+home segmented control are included. Its active specification is
+`docs/specs/051-ai-difficulty/spec.md`.
 
 ### 052 — Further AI evaluation
 

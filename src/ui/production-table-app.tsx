@@ -2,12 +2,14 @@ import type { TargetedPointerEvent } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 
 import type {
+  HomeView,
   MatchView,
   ProductionControl,
   ProductionSession,
   PublicTableAction,
   SeatRole,
 } from "../app/session/production-session.js";
+import type { AiType } from "../app/settings/ai-settings.js";
 import { asCardId, type CardId } from "../core/cards/index.js";
 import type { BidDecision } from "../core/game/index.js";
 import type { PlayPatternKind } from "../core/rules/index.js";
@@ -44,6 +46,20 @@ const BID_LABELS: Readonly<Record<BidDecision, string>> = {
   call: "叫地主",
   decline: "不叫",
 };
+
+const AI_TYPE_ORDER: readonly AiType[] = Object.freeze([
+  "casual",
+  "default",
+  "expert",
+  "master",
+]);
+
+const AI_TYPE_LABELS: Readonly<Record<AiType, string>> = Object.freeze({
+  casual: "休闲",
+  default: "默认",
+  expert: "高手",
+  master: "大师",
+});
 
 interface ProductionTableAppProps {
   readonly session: ProductionSession;
@@ -412,7 +428,9 @@ function LiveFeedback({ view }: Readonly<{ view: MatchView }>) {
       ? "这手牌压不过桌上的牌"
       : view.selectionError === "retry-selection"
         ? "这手牌暂时不能出，请重新选择"
-        : view.feedback === "no-response"
+        : view.aiFallbackNotice
+          ? "当前电脑水平暂不可用，本局已使用默认水平"
+          : view.feedback === "no-response"
           ? "没有可以压过的牌"
           : view.feedback === "all-pass"
             ? "都不叫，重新发牌"
@@ -448,7 +466,10 @@ function ResultMessage({ view }: Readonly<{ view: MatchView }>) {
   );
 }
 
-function HomeScreen({ session }: ProductionTableAppProps) {
+function HomeScreen({
+  session,
+  view,
+}: Readonly<ProductionTableAppProps & { view: HomeView }>) {
   return (
     <main class="home-screen">
       <section class="home-content">
@@ -464,6 +485,32 @@ function HomeScreen({ session }: ProductionTableAppProps) {
         <button class="start-button" onClick={() => session.dispatch({ type: "start-game" })} type="button">
           开始游戏
         </button>
+        <div class="computer-level-control">
+          <span class="computer-level-label" id="computer-level-label">
+            电脑水平
+          </span>
+          <div
+            aria-labelledby="computer-level-label"
+            class="computer-level-segments"
+            role="radiogroup"
+          >
+            {AI_TYPE_ORDER.map((aiType) => {
+              const checked = aiType === view.aiType;
+              return (
+                <button
+                  aria-checked={checked}
+                  class="computer-level-segment"
+                  key={aiType}
+                  onClick={() => session.dispatch({ type: "set-ai-type", aiType })}
+                  role="radio"
+                  type="button"
+                >
+                  {AI_TYPE_LABELS[aiType]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </section>
     </main>
   );
@@ -511,7 +558,7 @@ export function ProductionTableApp({ session }: ProductionTableAppProps) {
       </section>
       <div class="landscape-surface">
         {view.screen === "home"
-          ? <HomeScreen session={session} />
+          ? <HomeScreen session={session} view={view} />
           : <MatchScreen session={session} view={view} />}
       </div>
     </div>

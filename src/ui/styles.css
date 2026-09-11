@@ -39,6 +39,7 @@ body,
 button {
   font: inherit;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 button:focus-visible {
@@ -151,9 +152,74 @@ button:focus-visible {
 }
 
 .start-button:active,
+.computer-level-segment:active,
 .action-button:active,
 .back-button:active {
   transform: scale(0.97);
+}
+
+.start-button:active,
+.action-button:active:not(:disabled),
+.back-button:active {
+  opacity: 0.86;
+  transition-duration: 0s;
+}
+
+.computer-level-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(8px, 1.4vw, 13px);
+  min-inline-size: 0;
+}
+
+.computer-level-label {
+  flex: none;
+  color: var(--ivory-muted);
+  font-size: clamp(13px, 1.7vw, 16px);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.08em;
+}
+
+.computer-level-segments {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgb(255 248 232 / 30%);
+  border-radius: 15px;
+  background: rgb(4 60 51 / 46%);
+}
+
+.computer-level-segment {
+  min-width: clamp(56px, 11vw, 80px);
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 11px;
+  color: var(--ivory-muted);
+  background: transparent;
+  font-size: clamp(15px, 2vw, 18px);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition:
+    transform 100ms var(--ease-out),
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.computer-level-segment[aria-checked="true"] {
+  color: var(--graphite);
+  background: var(--ivory);
+  font-weight: var(--weight-semibold);
+}
+
+.computer-level-segment:active {
+  background: rgb(255 250 240 / 20%);
+  transition-duration: 0s;
+}
+
+.computer-level-segment[aria-checked="true"]:active {
+  background: var(--ivory-muted);
 }
 
 .match-topbar {
@@ -1073,6 +1139,7 @@ button:focus-visible {
 
   .human-hand .playing-card,
   .start-button,
+  .computer-level-segment,
   .action-button,
   .back-button {
     transition-property: border-color, box-shadow, color, background-color, opacity;
@@ -1082,6 +1149,7 @@ button:focus-visible {
   .human-hand .playing-card[aria-pressed="true"],
   .human-hand .playing-card[aria-pressed="true"]:active,
   .start-button:active,
+  .computer-level-segment:active,
   .action-button:active,
   .back-button:active {
     transform: none;
@@ -1095,11 +1163,13 @@ button:focus-visible {
   .exit-layer__scrim {
     transition: opacity 200ms ease;
   }
+
 }
 
 @media (prefers-contrast: more) {
   .action-button,
   .back-button,
+  .computer-level-segments,
   .exit-dialog {
     border-color: var(--ivory);
   }

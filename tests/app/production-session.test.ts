@@ -207,7 +207,7 @@ describe("production application session", () => {
     const observed: unknown[] = [];
     const unsubscribe = session.subscribe(() => observed.push(session.getView()));
 
-    expect(session.getView()).toEqual({ screen: "home" });
+    expect(session.getView()).toEqual({ screen: "home", aiType: "default" });
     session.dispatch({ type: "start-game" });
 
     const view = session.getView();
@@ -387,7 +387,7 @@ describe("production application session", () => {
     session.dispatch({ type: "bid", decision: "decline" });
     session.dispatch({ type: "request-exit" });
     session.dispatch({ type: "confirm-exit" });
-    expect(session.getView()).toEqual({ screen: "home" });
+    expect(session.getView()).toEqual({ screen: "home", aiType: "default" });
     expect(scheduler.pendingCount).toBe(0);
     session.dispatch({ type: "start-game" });
     expect(deckSource.calls).toBe(3);
@@ -561,7 +561,7 @@ describe("production application session", () => {
     expect(deckSource.calls).toBe(2);
     session.dispatch({ type: "request-exit" });
     session.dispatch({ type: "confirm-exit" });
-    expect(session.getView()).toEqual({ screen: "home" });
+    expect(session.getView()).toEqual({ screen: "home", aiType: "default" });
   });
 
   it("cancels listeners and queued AI work when disposed", () => {
