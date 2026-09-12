@@ -28,8 +28,10 @@
     "src/**/*.tsx",
     "tests/**/*.ts",
     "e2e/**/*.ts",
+    "benchmarks/**/*.ts",
     "playwright.config.ts",
     "vite.config.ts",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "vitest.benchmark.config.ts"
   ]
 }

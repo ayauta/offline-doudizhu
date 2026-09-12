@@ -190,11 +190,26 @@ ranker. The independently versioned `localStorage` setting and a compact inline
 home segmented control are included. Its active specification is
 `docs/specs/051-ai-difficulty/spec.md`.
 
-### 052 — Further AI evaluation
+### 052 — AI strength measurement and tier separation
 
-Only if family playtesting shows a real need, investigate stronger bounded
-heuristics or search under phone performance limits. Any dependency/model needs
-a new license, privacy, size, explainability, and maintenance assessment.
+Measure each computer level's strength and time cost on the shipped decision
+path. The opt-in benchmark reports latency percentiles, budget truncation,
+headroom against the 480 ms response window, and deal-clustered win rates with
+confidence intervals. The measurement showed the levels are not distinct —
+Expert reproduces Default rather than outplaying it — and that removing the
+cross-level ranking anchor that causes it makes Expert substantially *worse*,
+so no behaviour change ships. Weakening a level remains permitted only by giving
+it a simpler view of the position, never by deliberate mistakes. Its active
+specification is `docs/specs/052-ai-strength-evaluation/spec.md`.
+
+### 053 — Bounded hand planning experiment
+
+Preserve the family-validated Default and its initial selection while testing a
+feasible-partition estimate in the enhanced analyzer. The candidate fixes known
+small-hand underestimates but does not establish a strength gain on 400 paired
+discovery deals; it is rejected and production behavior is restored. The spec
+records the owner's agreed tier direction, the candidate/tests, and per-deal
+evidence: `docs/specs/053-ai-hand-planning/spec.md`.
 
 ## 8. Explicitly absent roadmap items
 
