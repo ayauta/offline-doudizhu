@@ -33,5 +33,36 @@ pnpm() {
   "$OFFLINE_DOUDIZHU_NODE" "$OFFLINE_DOUDIZHU_PNPM_CLI" "$@"
 }
 
+# Android toolchain, project-local and optional.
+#
+# Optional because CI provisions its own JDK and SDK, and because web-only work
+# must still activate on a checkout that has no local copy. These are real
+# directories under `.local/android/`, not symlinks into a sibling worktree:
+# the previous symlinks pointed outside this repository and vanished with the
+# worktree that owned them, which is why the build once looked impossible here.
+OFFLINE_DOUDIZHU_ANDROID="$OFFLINE_DOUDIZHU_ROOT/.local/android"
+export OFFLINE_DOUDIZHU_ANDROID
+
+if [[ -x "$OFFLINE_DOUDIZHU_ANDROID/jdk/bin/java" ]]; then
+  export JAVA_HOME="$OFFLINE_DOUDIZHU_ANDROID/jdk"
+  export PATH="$JAVA_HOME/bin:$PATH"
+fi
+
+if [[ -x "$OFFLINE_DOUDIZHU_ANDROID/sdk/platform-tools/adb" ]]; then
+  export ANDROID_HOME="$OFFLINE_DOUDIZHU_ANDROID/sdk"
+  export ANDROID_SDK_ROOT="$ANDROID_HOME"
+  export PATH="$ANDROID_HOME/platform-tools:$PATH"
+fi
+
+if [[ -d "$OFFLINE_DOUDIZHU_ANDROID/gradle-home" ]]; then
+  export GRADLE_USER_HOME="$OFFLINE_DOUDIZHU_ANDROID/gradle-home"
+fi
+
 hash -r
 echo "已激活 offline-doudizhu 工具链：Node $(node --version)，pnpm $(pnpm --version)"
+if [[ -n "${JAVA_HOME:-}" ]]; then
+  echo "  $(java -version 2>&1 | head -1)"
+fi
+if [[ -n "${ANDROID_HOME:-}" ]]; then
+  echo "  Android SDK：$ANDROID_HOME（adb 已在 PATH）"
+fi
