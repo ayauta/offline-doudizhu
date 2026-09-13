@@ -125,9 +125,9 @@ function sessionWith(aiType: AiType) {
 
 describe("production AI setting and worker integration", () => {
   it("loads and immediately saves a home-only selection, then locks it for the match", () => {
-    const fixture = sessionWith("expert");
+    const fixture = sessionWith("master");
 
-    expect(fixture.session.getView()).toEqual({ screen: "home", aiType: "expert" });
+    expect(fixture.session.getView()).toEqual({ screen: "home", aiType: "master" });
     fixture.session.dispatch({ type: "set-ai-type", aiType: "casual" });
     expect(fixture.session.getView()).toEqual({ screen: "home", aiType: "casual" });
     expect(fixture.settingsStore.saves).toEqual([{ aiType: "casual" }]);
@@ -141,7 +141,7 @@ describe("production AI setting and worker integration", () => {
   });
 
   it("starts enhanced work immediately but preserves the existing presentation beat", () => {
-    const fixture = sessionWith("expert");
+    const fixture = sessionWith("master");
     fixture.session.dispatch({ type: "start-game" });
     fixture.session.dispatch({ type: "bid", decision: "decline" });
     expect(fixture.aiDecisionService.requests).toHaveLength(1);

@@ -9,7 +9,7 @@ import type {
   PublicTableAction,
   SeatRole,
 } from "../app/session/production-session.js";
-import type { AiType } from "../app/settings/ai-settings.js";
+import { AI_TYPES, type AiType } from "../app/settings/ai-settings.js";
 import { asCardId, type CardId } from "../core/cards/index.js";
 import type { BidDecision } from "../core/game/index.js";
 import type { PlayPatternKind } from "../core/rules/index.js";
@@ -47,18 +47,13 @@ const BID_LABELS: Readonly<Record<BidDecision, string>> = {
   decline: "不叫",
 };
 
-const AI_TYPE_ORDER: readonly AiType[] = Object.freeze([
-  "casual",
-  "default",
-  "expert",
-  "master",
-]);
-
+// The selector maps `AI_TYPES` directly rather than repeating it: a second list
+// in the same order silently keeps compiling when a tier is dropped, and the
+// only thing that would notice is a hand-written e2e count.
 const AI_TYPE_LABELS: Readonly<Record<AiType, string>> = Object.freeze({
   casual: "休闲",
   default: "默认",
-  expert: "高手",
-  master: "大师",
+  master: "高手",
 });
 
 interface ProductionTableAppProps {
@@ -494,7 +489,7 @@ function HomeScreen({
             class="computer-level-segments"
             role="radiogroup"
           >
-            {AI_TYPE_ORDER.map((aiType) => {
+            {AI_TYPES.map((aiType) => {
               const checked = aiType === view.aiType;
               return (
                 <button

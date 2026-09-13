@@ -1,9 +1,16 @@
 # Architecture
 
 Status: Accepted  
-Last updated: 2026-09-11
+Last updated: 2026-09-12
 Source of truth for: module boundaries, dependency direction, state ownership,
 Web integration, and verification
+
+Current stronger-AI requirements are owned by
+[Spec 055](docs/specs/055-stronger-local-ai/spec.md) and
+[ADR 0018](docs/decisions/0018-outcome-based-local-ai.md). This document describes
+the shipped architecture. Its single-worker enhanced engine, fixed budgets and
+TypeScript-only policies are not restrictions on future AI candidates; concrete
+integration changes must update the relevant architecture and checks together.
 
 ## 1. Outcome
 
@@ -147,9 +154,9 @@ Expert, and Master receive only a serializable redacted `PlayerView` through an
 application port; their computation is isolated from the main thread, bounded,
 cancelable, and submitted back through the normal engine transition. Failure,
 late results, and invalid commands fall back to the default strategy. Master
-samples possible hidden hands from public information only. ADR 0016 owns this
-worker and deadline boundary; ADR 0017 owns how far a failure reaches and what
-the player is told.
+samples possible hidden hands from public information only. These are shipped
+implementation details; ADR 0018 governs future candidate architecture.
+ADR 0017 owns the implemented failure scope and notices.
 
 The supported runtime baseline is the Vite build target, `chrome74`; older
 browsers and Android WebView builds are not supported. The enhanced-AI Worker
@@ -161,7 +168,10 @@ check would catch it.
 
 `src/platform/pwa` alone owns service-worker registration.
 
-Application source contains no request API. Vite emits portable static files.
+Current application source contains no request API. ADR 0018 allows a future
+reviewed platform adapter to load installed local model/runtime assets, while
+preserving offline play and forbidding remote inference or data transfer.
+Vite emits portable static files.
 Pinned PWA tooling generates a precache worker for the reviewed same-origin
 build output only. It has no runtime API cache, external origin, push,
 background sync, analytics, or remote configuration. An update never reloads an

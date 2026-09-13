@@ -3,6 +3,10 @@
 This glossary names concepts that cross implementation modules. Product rules
 remain authoritative in `docs/product-spec.md` and feature specifications.
 
+This glossary describes shipped behavior. Current stronger-AI requirements are
+in [Spec 055](docs/specs/055-stronger-local-ai/spec.md); the historical enhanced
+timing and execution shape below do not constrain new candidates.
+
 ## Computer level
 
 The single home-screen preference used by both computer seats for the next
@@ -24,5 +28,6 @@ the selected level is unavailable.
 ## Presentation beat
 
 The existing minimum readable interval before a computer action is presented.
-Background AI work overlaps this interval and must not extend it or block the
-table.
+In the shipped implementation, background AI work overlaps this interval without
+extending it or blocking the table. New enhanced candidates use Spec 055's
+end-to-end waiting target; the Default presentation remains unchanged.

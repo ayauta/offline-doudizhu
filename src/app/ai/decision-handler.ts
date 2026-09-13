@@ -17,9 +17,31 @@ import type {
 export const ENHANCED_AI_BUDGET_MS: Readonly<Record<EnhancedAiType, number>> =
   Object.freeze({
     casual: 16,
-    expert: 40,
     master: 120,
   });
+
+/**
+ * Master's rollout sizing, named and exported because more than the handler
+ * reads it: the benchmark's world-cap canary and the device probe both measure
+ * against it. An inline literal here is how a shipped size and its check drift
+ * apart silently.
+ *
+ * 8 worlds, not the 32 an earlier tier shipped. Two paired-deal measurements
+ * put it here (both in docs/research/ai-experiment-results.md): cutting
+ * 32 → 8 → 4 moves the win rate by −0.17pp [−0.62, +0.29] and −0.42pp
+ * [−1.08, +0.25] over 400 deals, inside the harness's own resolution, while the
+ * target phone wants ~208 ms for 32 worlds against a 120 ms budget and ~45 ms
+ * for 8.
+ *
+ * The sample count is therefore a cost cap, not a strength knob. Do not derive
+ * it from the budget: `shouldContinue` already truncates the rollout at runtime,
+ * so deriving one from the other would encode the time cap twice.
+ */
+export const ENHANCED_AI_SEARCH = Object.freeze({
+  maxWorlds: 8,
+  rolloutDepth: 3,
+  rootAnalyzerNodes: 220,
+} as const);
 
 export type EnhancedAiWorkerRequest = Readonly<{
   requestId: number;
@@ -56,15 +78,19 @@ function strategyCommand(context: AiDecisionContext, strategy: AiStrategy): Game
   return strategy.chooseCommand(context);
 }
 
-function expertPlayCommand(
+/**
+ * What master answers when its own budget is already spent: the expert ranking
+ * it would have built its shortlist from, with no deadline of its own — there
+ * is no time left to interrupt. Exported so the test can compare against the
+ * real seam instead of re-deriving its `analyzerNodes`.
+ */
+export function expertFallbackPlayCommand(
   context: Extract<AiDecisionContext, { readonly kind: "play" }>,
-  shouldContinue?: () => boolean,
 ): GameCommand {
   return actionCommand(
     context,
     rankScoredPlayActions(context, "expert", {
-      analyzerNodes: 220,
-      ...(shouldContinue === undefined ? {} : { shouldContinue }),
+      analyzerNodes: ENHANCED_AI_SEARCH.rootAnalyzerNodes,
     })[0]?.action,
   );
 }
@@ -75,6 +101,14 @@ export function decideEnhancedAi(
 ): AiDecisionOutcome {
   try {
     const { context } = request;
+    // Refuse a tier this handler cannot price. The worker computes its deadline
+    // as `started + ENHANCED_AI_BUDGET_MS[aiType]`, so an unknown one gives
+    // `NaN`: every budget check compares false and the search quietly degrades
+    // to one candidate and zero rollout worlds, reported as `ok: true`. The
+    // caller's fallback is a real answer; this silence is not.
+    if (!Object.hasOwn(ENHANCED_AI_BUDGET_MS, request.aiType)) {
+      return Object.freeze({ ok: false, reason: "failed" });
+    }
     if (context.kind === "bid") {
       const strategy = request.aiType === "casual"
         ? SCORING_CASUAL_AI_STRATEGY
@@ -94,20 +128,12 @@ export function decideEnhancedAi(
         ),
       });
     }
-    if (request.aiType === "expert") {
-      return Object.freeze({
-        ok: true,
-        command: expertPlayCommand(context, () => runtime.now() < runtime.deadline),
-      });
-    }
     if (runtime.now() >= runtime.deadline) {
-      return Object.freeze({ ok: true, command: expertPlayCommand(context) });
+      return Object.freeze({ ok: true, command: expertFallbackPlayCommand(context) });
     }
 
     const ranked = rankMasterPlayActions(context, {
-      maxWorlds: 32,
-      rolloutDepth: 3,
-      rootAnalyzerNodes: 220,
+      ...ENHANCED_AI_SEARCH,
       seed: request.seed,
       shouldContinue: () => runtime.now() < runtime.deadline,
     });

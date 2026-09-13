@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   decideEnhancedAi,
+  ENHANCED_AI_SEARCH,
   type EnhancedAiWorkerRequest,
 } from "../../src/app/ai/decision-handler.js";
+import { rankScoredPlayActions } from "../../src/core/ai/enhanced.js";
 import type { EnhancedAiType } from "../../src/app/ports/ai-decision-service.js";
 import { createPlayerView, type AiDecisionContext } from "../../src/core/ai/index.js";
 import { createDeck } from "../../src/core/cards/index.js";
@@ -103,14 +105,14 @@ function playCompleteEnhancedGame(aiType: EnhancedAiType): number {
 }
 
 describe("enhanced AI request handler", () => {
-  it.each(["casual", "expert", "master"] as const)(
+  it.each(["casual", "master"] as const)(
     "finishes a deterministic full game with legal %s commands",
     (aiType) => {
       expect(playCompleteEnhancedGame(aiType)).toBeLessThan(256);
     },
   );
 
-  it.each(["casual", "expert", "master"] as const)(
+  it.each(["casual", "master"] as const)(
     "returns a legal serializable command for %s",
     (aiType) => {
       const context = playingContext();
@@ -142,14 +144,8 @@ describe("enhanced AI request handler", () => {
     },
   );
 
-  it("returns the expert fallback when the master deadline has already expired", () => {
+  it("returns the expert-ranked fallback when the master deadline has already expired", () => {
     const context = playingContext();
-    const expert = decideEnhancedAi({
-      requestId: 1,
-      aiType: "expert",
-      context,
-      seed: 8,
-    }, { deadline: 10, now: () => 0 });
     const master = decideEnhancedAi({
       requestId: 2,
       aiType: "master",
@@ -157,6 +153,20 @@ describe("enhanced AI request handler", () => {
       seed: 8,
     }, { deadline: 0, now: () => 1 });
 
-    expect(master).toEqual(expert);
+    // Built from the ranking, not from `expertFallbackPlayCommand`: asserting
+    // the handler equals the very function it calls would move with any change
+    // to that function's profile or node budget and could never fail. The node
+    // budget comes from the shipped constant so it cannot be retyped here.
+    const expected = rankScoredPlayActions(context, "expert", {
+      analyzerNodes: ENHANCED_AI_SEARCH.rootAnalyzerNodes,
+    })[0]?.action;
+
+    expect(master.ok).toBe(true);
+    if (!master.ok || master.command.type !== "play") {
+      throw new Error("expected the expired-deadline master to return a play command");
+    }
+    expect([...master.command.cards]).toEqual(
+      expected?.type === "play" ? [...expected.play.cards] : [],
+    );
   });
 });

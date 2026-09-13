@@ -1,7 +1,6 @@
 export const AI_TYPES = Object.freeze([
   "casual",
   "default",
-  "expert",
   "master",
 ] as const);
 

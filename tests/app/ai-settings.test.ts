@@ -37,11 +37,25 @@ describe("AI settings document", () => {
     });
   });
 
+  it("defaults every unknown tier, inherited object keys included", () => {
+    // A tier is resolved by membership, never by a string-keyed lookup table:
+    // `Object.prototype` is reachable by name from any plain object, so a table
+    // would resolve `"constructor"` to a function and hand it back as a tier.
+    for (const key of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
+      expect(
+        decodeAiSettingsDocument(JSON.stringify({
+          schemaVersion: 1,
+          data: { aiType: key },
+        })),
+      ).toEqual({ settings: DEFAULT_AI_SETTINGS, writable: true });
+    }
+  });
+
   it("does not authorize overwriting an unsupported future schema", () => {
     expect(
       decodeAiSettingsDocument(JSON.stringify({
         schemaVersion: 99,
-        data: { aiType: "expert" },
+        data: { aiType: "master" },
       })),
     ).toEqual({ settings: DEFAULT_AI_SETTINGS, writable: false });
   });

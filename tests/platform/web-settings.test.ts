@@ -27,9 +27,9 @@ describe("Web settings storage", () => {
     const store = createWebSettingsStore(storage);
 
     expect(store.load()).toBe(DEFAULT_AI_SETTINGS);
-    store.save({ aiType: "expert" });
+    store.save({ aiType: "master" });
 
-    expect(createWebSettingsStore(storage).load()).toEqual({ aiType: "expert" });
+    expect(createWebSettingsStore(storage).load()).toEqual({ aiType: "master" });
     expect(storage.writes).toBe(1);
   });
 

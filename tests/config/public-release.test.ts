@@ -30,10 +30,10 @@ describe("public preview release delivery", () => {
     // package.json, the Android versionName and versionCode, the README, and
     // this test together. `versionCode` must increase, or Android rejects the
     // new APK as a downgrade over an installed older release.
-    expect(packageConfig.version).toBe("0.2.0");
-    expect(androidBuild).toContain('versionName = "0.2.0"');
-    expect(androidBuild).toContain("versionCode = 2");
-    expect(readme).toContain("v0.2.0");
+    expect(packageConfig.version).toBe("0.3.0");
+    expect(androidBuild).toContain('versionName = "0.3.0"');
+    expect(androidBuild).toContain("versionCode = 3");
+    expect(readme).toContain("v0.3.0");
   });
 
   it("targets the WebView generation shipped with Android 10 emulator images", async () => {

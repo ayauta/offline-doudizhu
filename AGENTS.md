@@ -14,7 +14,10 @@ verified static Web output through the explicit embedded delivery entry.
   remote configuration, cloud service, or personal-data collection.
 - Runtime application source must not use request APIs or remote assets. Only
   generated PWA installation/update code may retrieve reviewed fixed
-  same-origin static build files.
+  same-origin static build files in the current implementation. ADR 0018 also
+  permits reviewed installed local model/runtime asset loading through future
+  delivery/platform adapters; no remote inference, post-install model download,
+  or upload is permitted.
 - Never commit hosting credentials, signing keys, tokens, cookies, real names,
   private email addresses, phone numbers, device identifiers, or other PII.
 - `src/core` is pure TypeScript: no DOM/browser APIs, storage, Node APIs,
@@ -38,12 +41,19 @@ the shared composition root.
 
 ## Required workflow
 
+For current AI work, start with `docs/specs/055-stronger-local-ai/spec.md` and
+ADR 0018. They supersede every earlier AI specification, plan or handoff; do not
+reintroduce their constraints. Failed experiments are recorded in
+`docs/research/ai-experiment-results.md` as evidence, not additional algorithm,
+budget or tier-count requirements.
+Existing executable checks are updated with the chosen integration, not bypassed.
+
 Before changing behavior, read:
 
 1. `docs/product-spec.md`
 2. `ARCHITECTURE.md`
 3. relevant files under `docs/decisions/`
-4. the active feature spec and execution plan
+4. the active feature spec under `docs/specs/`
 
 Use small changes following:
 
