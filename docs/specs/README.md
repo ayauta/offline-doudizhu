@@ -202,6 +202,20 @@ so no behaviour change ships. Weakening a level remains permitted only by giving
 it a simpler view of the position, never by deliberate mistakes. Its active
 specification is `docs/specs/052-ai-strength-evaluation/spec.md`.
 
+### 054 — Where the hand estimate changes the move
+
+Stop measuring aggregates and find where the enhanced AI's hand estimate changes
+what it plays. Sampling the positions where the shipped estimator and the
+archived candidate's estimator choose differently shows the divergence is
+concentrated in the opening and the wide midgame and is almost absent from the
+endgame — because at that per-candidate node allowance an endgame hand is solved
+exactly, so the search's starting bound stops mattering. In the two situations
+the owner named there, close endgames and a farmer feeding a nearly-out partner,
+the candidate is worth exactly nothing (0.0 pp over 5 and 10 deals); pooled it
+wins 5.1 points more often with an interval that spans zero. `src/` is unchanged
+and the archived candidate stays a probe. Its active specification is
+`docs/specs/054-ai-divergence-diagnosis/spec.md`.
+
 ### 053 — Bounded hand planning experiment
 
 Preserve the family-validated Default and its initial selection while testing a

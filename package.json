@@ -22,7 +22,8 @@
     "check:android": "node scripts/check-android.mjs",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:privacy": "node scripts/check-privacy.mjs",
-    "check": "node scripts/check.mjs"
+    "check": "node scripts/check.mjs",
+    "harvest:ai": "vitest run --config vitest.harvest.config.ts --reporter=verbose"
   },
   "dependencies": {
     "preact": "10.29.8"
