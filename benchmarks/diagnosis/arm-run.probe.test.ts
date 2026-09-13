@@ -15,9 +15,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   createRecorder,
+  isProfile,
   readConfig,
   runPairTournament,
-  type Profile,
 } from "../ai-tournament.js";
 
 const LABEL = process.env.AI_ARM_LABEL ?? "unnamed";
@@ -31,11 +31,18 @@ const OUT = process.env.AI_ARM_OUT;
  * truncates. It is part of the measurement configuration, not an accessory.
  */
 const UNBOUNDED_EVERY = Number(process.env.AI_ARM_UNBOUNDED_EVERY ?? "10");
-const PAIRS = (process.env.AI_ARM_PAIRS ?? "default:expert,casual:default")
+const PAIRS = (process.env.AI_ARM_PAIRS ?? "default:master,casual:default")
   .split(",")
   .map((pair) => {
     const [stronger, weaker] = pair.split(":");
-    return { stronger: stronger as Profile, weaker: weaker as Profile };
+    // Validate rather than cast. This harness parses its own env var, so
+    // `readConfig`'s guard never runs: a cast would let a removed tier through,
+    // and `ENHANCED_AI_BUDGET_MS` would answer `undefined`, giving `deadline:
+    // NaN` and a search that silently scores one candidate and no worlds.
+    if (!isProfile(stronger) || !isProfile(weaker)) {
+      throw new Error(`AI_ARM_PAIRS entry "${pair}" must name two shipped tiers.`);
+    }
+    return { stronger, weaker };
   });
 
 describe("arm run", () => {

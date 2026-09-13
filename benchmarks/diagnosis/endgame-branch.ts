@@ -137,6 +137,14 @@ export function stateForWorld(
 export type BranchProposal = Readonly<{
   /** The action the branch proposes, as a sorted card key or "pass". */
   choice: string;
+  /**
+   * The action the expected-value aggregate would have led with. Returned so a
+   * caller can compare the two aggregates by their choices: `maximin` is 0/1
+   * under the "wins in every world" reading, so comparing it against the
+   * expected *rate* answers a different question and reports a difference for
+   * every position where the two agree.
+   */
+  expectedChoice: string;
   maximin: number;
   expected: number;
   worlds: number;
@@ -223,6 +231,7 @@ export function proposeExact(
   }
   return Object.freeze({
     choice: bestMaximin.key,
+    expectedChoice: bestExpected.key,
     maximin: bestMaximin.value,
     expected: bestExpected.value,
     worlds,

@@ -11,6 +11,7 @@
  * Delete with the rest of `benchmarks/diagnosis/`.
  */
 
+import { ENHANCED_AI_SEARCH } from "../../src/app/ai/decision-handler.js";
 import type { CardId } from "../../src/core/cards/index.js";
 import { SEAT_ORDER, type PlayHistoryEntry, type Seat } from "../../src/core/game/index.js";
 import { generateLegalActions, type ClassifiedPlay, type ValidatedPlayAction } from "../../src/core/rules/index.js";
@@ -128,9 +129,11 @@ function sumUtility(rootView: PlayingPlayerView, state: Mutable): number {
   return (enemyTurns - friendlyTurns) * 220 + (enemyCards - friendlyCards) * 24;
 }
 
-const MAX_WORLDS = 32;
-const ROLLOUT_DEPTH = 3;
-const ROOT_NODES = 220;
+// Read from the shipped sizing: this stub exists to differ from production in
+// exactly one respect, and retyped rollout options quietly made it two.
+const MAX_WORLDS = ENHANCED_AI_SEARCH.maxWorlds;
+const ROLLOUT_DEPTH = ENHANCED_AI_SEARCH.rolloutDepth;
+const ROOT_NODES = ENHANCED_AI_SEARCH.rootAnalyzerNodes;
 const SHORTLIST = 3;
 
 function startState(rootView: PlayingPlayerView, worldHands: Record<Seat, readonly CardId[]>): Mutable {

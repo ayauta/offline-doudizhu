@@ -70,6 +70,15 @@ export function breaksControl(actionCards: readonly CardId[], hand: readonly Car
     if (available === 3 && count < 3) {
       return true;
     }
+    // A rocket is two singleton joker ranks, so neither count above can see it:
+    // spending one joker while still holding the other breaks the rocket. The
+    // doc comment claimed this case long before the code handled it.
+    if (count === 1 && (rank === "small-joker" || rank === "big-joker")) {
+      const other = rank === "small-joker" ? "big-joker" : "small-joker";
+      if ((held.get(other) ?? 0) > 0) {
+        return true;
+      }
+    }
   }
   return false;
 }

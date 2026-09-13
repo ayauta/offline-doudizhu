@@ -54,7 +54,6 @@ describe("spec 054 divergence probe", () => {
         "",
         `strong=${run.strongProfile} deals=${String(run.deals)} seeds=${String(SEED)}..${String(SEED + run.deals - 1)}`,
         `decisions=${String(run.decisions)} divergences=${String(run.divergences)} (${rate.toFixed(2)}%)`,
-        `order-only diffs=${String(run.orderOnlyDiffs)}`,
         `elapsed=${elapsed}s  (${(Number(elapsed) / run.deals).toFixed(2)}s/deal)`,
         "",
         "divergence by hand size",

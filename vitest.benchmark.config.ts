@@ -9,6 +9,11 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["benchmarks/**/*.test.ts"],
+    // `benchmarks/diagnosis/` is the harvest's suite, and its files carry no skip
+    // guards: without this the strength report also spends hours running the
+    // exact-endgame solver, the solver-verification layers and the arm run,
+    // which is exactly the mixing this config exists to prevent.
+    exclude: ["benchmarks/diagnosis/**"],
     passWithNoTests: false,
     // A backstop only. A fixed timeout next to a fixed deal target is how the
     // previous harness lost an 82-second run's entire report; the runner stops

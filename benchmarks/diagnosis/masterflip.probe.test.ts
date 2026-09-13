@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import { ENHANCED_AI_SEARCH } from "../../src/app/ai/decision-handler.js";
 import type { AiDecisionContext } from "../../src/core/ai/index.js";
 import { DEFAULT_AI_STRATEGY, createPlayerView } from "../../src/core/ai/index.js";
 import { rankMasterPlayActions } from "../../src/core/ai/enhanced.js";
@@ -18,7 +19,7 @@ import { rankWithSumUtility } from "./master-flip.js";
 
 const DEALS = Number(process.env.AI_FLIP_DEALS ?? "25");
 const SEED_BASE = Number(process.env.AI_FLIP_SEED ?? "301");
-const MASTER_OPTIONS = { maxWorlds: 32, rolloutDepth: 3 as const, rootAnalyzerNodes: 220 };
+const MASTER_OPTIONS = ENHANCED_AI_SEARCH;
 
 function actionKey(action: unknown): string {
   const candidate = action as { type?: string; play?: { cards: readonly number[] } };

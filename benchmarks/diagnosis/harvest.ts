@@ -14,7 +14,7 @@ import { estimateBasicHandTurns } from "../../src/core/ai/enhanced.js";
 import { createPlayerView } from "../../src/core/ai/index.js";
 import type { AiDecisionContext, AiStrategy, PlayingPlayerView } from "../../src/core/ai/index.js";
 import { currentPlaySeat } from "../../src/core/ai/state-evaluator.js";
-import { decideEnhancedAi } from "../../src/app/ai/decision-handler.js";
+import { ENHANCED_AI_SEARCH, decideEnhancedAi } from "../../src/app/ai/decision-handler.js";
 import type { AiDecisionRuntime } from "../../src/app/ai/decision-handler.js";
 import type { EnhancedAiType } from "../../src/app/ports/ai-decision-service.js";
 import { transition, type GameCommand, type Seat } from "../../src/core/game/index.js";
@@ -244,8 +244,6 @@ export type ProbeRecord = Readonly<{
   trueTurns: number | null;
   /** True when the arms choose different card sets, or one plays and one passes. */
   diverges: boolean;
-  /** True when the arms rank the same leading action but not the same order. */
-  orderOnlyDiffers: boolean;
 }>;
 
 export type Bucket = Readonly<{ at: number; decisions: number; divergences: number }>;
@@ -256,7 +254,6 @@ export type ProbeRun = Readonly<{
   deals: number;
   decisions: number;
   divergences: number;
-  orderOnlyDiffs: number;
   recordsKept: number;
   byHandSize: readonly Bucket[];
   byLegalActionCount: readonly Bucket[];
@@ -325,7 +322,9 @@ function createProbeStrategy(
         return shipped.command;
       }
 
-      const candidate = shadow.rankScoredPlayActions(context, "expert", { analyzerNodes: 220 });
+      const candidate = shadow.rankScoredPlayActions(context, "expert", {
+        analyzerNodes: ENHANCED_AI_SEARCH.rootAnalyzerNodes,
+      });
       const shippedChoice = shipped.ok && shipped.command.type === "play"
         ? actionKey({ type: "play", play: { cards: shipped.command.cards } })
         : "pass";
@@ -335,11 +334,11 @@ function createProbeStrategy(
       );
       const shippedEstimate = estimateBasicHandTurns(context.view.hand);
       // Mirror the shipped allowance exactly: one fresh analyzer per candidate,
-      // each with floor(220 / legalActions), because a shared node counter makes
-      // later candidates depend on generator order.
+      // each with floor(rootAnalyzerNodes / legalActions), because a shared node
+      // counter makes later candidates depend on generator order.
       const nodesPerAction = Math.max(
         1,
-        Math.floor(220 / Math.max(1, context.legalActions.length)),
+        Math.floor(ENHANCED_AI_SEARCH.rootAnalyzerNodes / Math.max(1, context.legalActions.length)),
       );
       const candidateEstimate = shadow
         .createHandAnalyzer({ maxNodes: nodesPerAction })
@@ -364,7 +363,6 @@ function createProbeStrategy(
         candidateEstimate,
         trueTurns,
         diverges: shippedChoice !== candidateChoice,
-        orderOnlyDiffers: false,
       });
       if (!shipped.ok) {
         throw new Error(`Shipped arm refused a decision: ${shipped.reason}`);
@@ -379,7 +377,6 @@ export async function runProbe(options: HarvestOptions): Promise<ProbeRun> {
   const records: ProbeRecord[] = [];
   let decisions = 0;
   let divergences = 0;
-  let orderOnlyDiffs = 0;
 
   for (let dealIndex = 0; dealIndex < options.deals; dealIndex += 1) {
     const dealSeed = options.seedBase + dealIndex;
@@ -411,9 +408,6 @@ export async function runProbe(options: HarvestOptions): Promise<ProbeRun> {
           if (record.diverges) {
             divergences += 1;
           }
-          if (record.orderOnlyDiffers) {
-            orderOnlyDiffs += 1;
-          }
           records.push(Object.freeze({ ...record, dealIndex, gameIndex, arm: game.arm }));
         },
       );
@@ -431,7 +425,6 @@ export async function runProbe(options: HarvestOptions): Promise<ProbeRun> {
     deals: options.deals,
     decisions,
     divergences,
-    orderOnlyDiffs,
     recordsKept: records.length,
     byHandSize: bucketInto(records, (record) => record.handSize),
     byLegalActionCount: bucketInto(records, (record) => record.legalActionCount),

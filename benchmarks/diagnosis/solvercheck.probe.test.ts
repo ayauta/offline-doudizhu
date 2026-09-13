@@ -8,6 +8,7 @@ import { createPlayerView, type PlayingPlayerView } from "../../src/core/ai/inde
 import { transition, type GameCommand, type GameState, type Seat } from "../../src/core/game/index.js";
 import { currentPlaySeat } from "../../src/core/ai/state-evaluator.js";
 import { generateLegalActions } from "../../src/core/rules/index.js";
+import { solve } from "./exact-solver.js";
 
 export function handsOf(state: GameState): Readonly<Record<Seat, readonly CardId[]>> {
   return (state as Extract<GameState, { readonly hands: unknown }>).hands;
@@ -52,28 +53,6 @@ function brute(state: GameState, budget: { left: number }): boolean {
   return !moverIsLandlord;
 }
 
-/** Memoised version, same logic. */
-function memo(state: GameState, table: Map<string, boolean>, budget: { left: number }): boolean {
-  if (state.phase === "finished") return state.winner === state.landlord;
-  const playing = playingOf(state);
-  if (playing === null) return false;
-  budget.left -= 1;
-  if (budget.left <= 0) throw new Error("memo budget exhausted");
-  const k = keyOf(state, playing.view);
-  const hit = table.get(k);
-  if (hit !== undefined) return hit;
-  const moverIsLandlord = playing.seat === playing.view.landlord;
-  let result = !moverIsLandlord;
-  for (const command of movesOf(playing.seat, playing.view)) {
-    const next = transition(state, command);
-    if (!next.ok) continue;
-    const child = memo(next.state, table, budget);
-    if (moverIsLandlord && child) { result = true; break; }
-    if (!moverIsLandlord && !child) { result = false; break; }
-  }
-  table.set(k, result);
-  return result;
-}
 
 describe("solver cross-check", () => {
   it("memoised and brute force agree", async () => {
@@ -94,9 +73,14 @@ describe("solver cross-check", () => {
       seen.add(k);
       checked += 1;
       let a: boolean, b: boolean;
-      try { a = memo(state, new Map(), { left: 2_000_000 }); } catch { continue; }
+      // The real solver, not a local reimplementation. This file's purpose is to
+      // cross-check the solver the feasibility conclusion rests on; comparing a
+      // local `memo` against a local `brute` only tests that pair's own logic.
+      const solved = solve(state);
+      if (!solved.completed) continue;
+      a = solved.landlordWins;
       try { b = brute(state, { left: 2_000_000 }); } catch { continue; }
-      if (a === b) agree += 1; else console.log(`MISMATCH pool=${pool} memo=${String(a)} brute=${String(b)}`);
+      if (a === b) agree += 1; else console.log(`MISMATCH pool=${pool} solve=${String(a)} brute=${String(b)}`);
     }
     console.log(`\ncross-check: ${String(agree)}/${String(checked)} distinct positions agree\n`);
     void armSchedule; void dealDeck; void startWithLandlord;

@@ -14,6 +14,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import { ENHANCED_AI_SEARCH } from "../../src/app/ai/decision-handler.js";
 import { createPlayerView } from "../../src/core/ai/index.js";
 import { rankMasterPlayActions } from "../../src/core/ai/enhanced.js";
 import { generateLegalActions } from "../../src/core/rules/index.js";
@@ -63,11 +64,11 @@ describe("spec 027 — does the branch change the move", () => {
         view,
         legalActions: generateLegalActions({ hand: view.hand, currentPlay: view.currentPlay }),
       });
-      // The shipped move, with the production master's own options.
+      // The shipped move, with the production master's own options. Read from
+      // the shipped constant: a retyped 32 measured a rollout four times the
+      // size the target phone can afford, under a comment claiming otherwise.
       const shipped = rankMasterPlayActions(context, {
-        maxWorlds: 32,
-        rolloutDepth: 3,
-        rootAnalyzerNodes: 220,
+        ...ENHANCED_AI_SEARCH,
         seed: 424_242,
       })[0]?.action;
       const shippedKey = shipped === undefined ? "pass" : keyOfCommand(shipped);
@@ -82,7 +83,10 @@ describe("spec 027 — does the branch change the move", () => {
       entry.compared += 1;
       entry.nodes += proposal.nodes;
       byBand.set(band, entry);
-      if (proposal.maximin / Math.max(1, proposal.worlds) === proposal.expected) {
+      // Compare the two aggregates by the action each led with. `maximin` is a
+      // 0/1 "wins in every world" flag, so dividing it by the world count and
+      // comparing to the expected rate measured nothing.
+      if (proposal.choice === proposal.expectedChoice) {
         sameAggregate += 1;
       }
       if (proposal.choice !== shippedKey) {
