@@ -39,12 +39,18 @@ import {
 import type { EnhancedAiType } from "../src/app/ports/ai-decision-service.js";
 import { ENHANCED_AI_RESPONSE_WINDOW_MS } from "../src/app/ai/enhanced-ai-turn.js";
 
-export type Profile = "casual" | "default" | "expert" | "master";
+/**
+ * The benchmark's profile space mirrors the shipped tiers plus the shipped
+ * default. Spec 055 merged the expert tier into master, so `"expert"` is no
+ * longer a nameable arm and must not stay in this union: `isEnhanced`'s type
+ * predicate below is unchecked by the compiler, so a stale `"expert"` would be
+ * narrowed to `EnhancedAiType` and silently measured as master.
+ */
+export type Profile = "casual" | "default" | "master";
 
 export const PROFILES: readonly Profile[] = Object.freeze([
   "casual",
   "default",
-  "expert",
   "master",
 ]);
 
@@ -104,8 +110,7 @@ export type BenchmarkConfig = Readonly<{
 
 export const ALL_PAIRS: ReadonlyArray<readonly [Profile, Profile]> = Object.freeze([
   Object.freeze(["casual", "default"] as const),
-  Object.freeze(["default", "expert"] as const),
-  Object.freeze(["expert", "master"] as const),
+  Object.freeze(["default", "master"] as const),
 ]);
 
 export const CONTROL_PAIR: readonly [Profile, Profile] = Object.freeze(["casual", "master"]);

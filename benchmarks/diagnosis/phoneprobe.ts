@@ -14,8 +14,9 @@
 
 import { createPlayerView } from "../../src/core/ai/index.js";
 import type { AiDecisionContext, PlayingPlayerView } from "../../src/core/ai/index.js";
-import { decideEnhancedAi } from "../../src/app/ai/decision-handler.js";
+import { decideEnhancedAi, ENHANCED_AI_BUDGET_MS } from "../../src/app/ai/decision-handler.js";
 import type { AiDecisionRuntime } from "../../src/app/ai/decision-handler.js";
+import type { EnhancedAiType } from "../../src/app/ports/ai-decision-service.js";
 import { transition } from "../../src/core/game/index.js";
 import type { GameState, Seat } from "../../src/core/game/index.js";
 import { generateLegalActions } from "../../src/core/rules/index.js";
@@ -58,14 +59,38 @@ function startGame(deck: readonly number[], landlord: Seat): GameState {
 
 import { INITIAL_GAME_STATE as INITIAL_STATE } from "../../src/core/game/index.js";
 
-type Sample = Readonly<{ aiType: "expert" | "master"; handSize: number; cards: number; ms: number }>;
+/**
+ * `unbounded` gives the handler a runtime that never expires, so it measures the
+ * whole designed workload. `shipped` gives it the real per-tier budget, so it
+ * measures the path the product actually runs. They answer different questions:
+ * the first is how much work master wants, the second is how much it gets.
+ */
+type Mode = "unbounded" | "shipped";
+
+type Sample = Readonly<{
+  aiType: EnhancedAiType;
+  mode: Mode;
+  handSize: number;
+  cards: number;
+  ms: number;
+}>;
+
+function runtimeFor(mode: Mode, aiType: EnhancedAiType, startedAt: number): AiDecisionRuntime {
+  if (mode === "unbounded") {
+    return NEVER;
+  }
+  return Object.freeze({
+    deadline: startedAt + ENHANCED_AI_BUDGET_MS[aiType],
+    now: () => performance.now(),
+  });
+}
 
 /**
  * Plays whole games with the shipped handler driving every seat, timing each
  * decision. Returns per-decision timings so a slow machine and a fast machine
  * can be compared on like-for-like work.
  */
-function measure(deals: number, aiType: "expert" | "master"): readonly Sample[] {
+function measure(deals: number, aiType: EnhancedAiType, mode: Mode): readonly Sample[] {
   const samples: Sample[] = [];
   for (let dealIndex = 0; dealIndex < deals; dealIndex += 1) {
     const deck = seededDeck(301 + dealIndex);
@@ -91,10 +116,16 @@ function measure(deals: number, aiType: "expert" | "master"): readonly Sample[] 
       const started = performance.now();
       const outcome = decideEnhancedAi(
         { requestId: commandCount, aiType, context, seed: 1234 + commandCount },
-        NEVER,
+        runtimeFor(mode, aiType, started),
       );
       const ms = performance.now() - started;
-      samples.push(Object.freeze({ aiType, handSize: view.hand.length, cards: context.legalActions.length, ms }));
+      samples.push(Object.freeze({
+        aiType,
+        mode,
+        handSize: view.hand.length,
+        cards: context.legalActions.length,
+        ms,
+      }));
       if (!outcome.ok) {
         break;
       }
@@ -110,19 +141,32 @@ function measure(deals: number, aiType: "expert" | "master"): readonly Sample[] 
 
 export function runPhoneProbe(deals = 3): unknown {
   const result: Record<string, unknown> = {};
-  for (const aiType of ["expert", "master"] as const) {
-    const samples = measure(deals, aiType);
-    const times = samples.map((sample) => sample.ms).sort((left, right) => left - right);
-    const at = (fraction: number): number =>
-      times.length === 0 ? 0 : (times[Math.min(times.length - 1, Math.floor(times.length * fraction))] ?? 0);
-    result[aiType] = {
-      decisions: samples.length,
-      p50: at(0.5),
-      p95: at(0.95),
-      p99: at(0.99),
-      max: times.at(-1) ?? 0,
-      total: times.reduce((sum, value) => sum + value, 0),
-    };
+  // Spec 055 merged the expert tier into master, so the shipped enhanced tier is
+  // a single one. Casual stays as the cheap reference point for the ratio.
+  // Master runs first on purpose. Whichever tier goes first pays the cold-engine
+  // cost, and the shipped first decision of a match is a cold one; running casual
+  // first would quietly warm V8 and report a hot number as if it were cold-start.
+  for (const aiType of ["master", "casual"] as const) {
+    const perMode: Record<string, unknown> = {};
+    for (const mode of ["unbounded", "shipped"] as const) {
+      const samples = measure(deals, aiType, mode);
+      const times = samples.map((sample) => sample.ms).sort((left, right) => left - right);
+      const at = (fraction: number): number =>
+        times.length === 0 ? 0 : (times[Math.min(times.length - 1, Math.floor(times.length * fraction))] ?? 0);
+      perMode[mode] = {
+        decisions: samples.length,
+        // The first decision of the run, kept separate from the quantiles: on a
+        // cold engine it is the only sample that has not been warmed by the ones
+        // before it, and the shipped first decision of a match is exactly that.
+        first: samples[0]?.ms ?? 0,
+        p50: at(0.5),
+        p95: at(0.95),
+        p99: at(0.99),
+        max: times.at(-1) ?? 0,
+        total: times.reduce((sum, value) => sum + value, 0),
+      };
+    }
+    result[aiType] = perMode;
   }
   return result;
 }

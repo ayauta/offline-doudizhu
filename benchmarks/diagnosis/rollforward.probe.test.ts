@@ -19,7 +19,8 @@ const CAP_MS = Number(process.env.AI_DIAG_SECONDS ?? "600") * 1000;
 
 describe("spec 054 roll-forward", () => {
   it(`rolls forward the divergences of ${String(DEALS)} deals`, async () => {
-    const harvest = await runProbe({ seedBase: SEED, deals: DEALS, strongProfile: "expert" });
+    // Spec 055 merged the expert tier into master; the strong arm is the merged tier.
+    const harvest = await runProbe({ seedBase: SEED, deals: DEALS, strongProfile: "master" });
     const diverging = harvest.records.filter((record) => record.diverges);
 
     console.log(
@@ -33,7 +34,11 @@ describe("spec 054 roll-forward", () => {
     // second policy while actually running the first.
     const run = rollForward({
       records: diverging,
-      continuationProfiles: ["expert"],
+      // Spec 055 merged the expert tier into master. The continuation must stay
+      // fixed, cheap, and independent of the patch under test — casual is the
+      // shipped tier that still qualifies; master would both cost ~100x more per
+      // decision and run the very rollout this probe holds constant.
+      continuationProfiles: ["casual"],
       seed: SEED * 1000,
       secondsCap: CAP_MS,
     });

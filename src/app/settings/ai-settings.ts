@@ -1,11 +1,24 @@
 export const AI_TYPES = Object.freeze([
   "casual",
   "default",
-  "expert",
   "master",
 ] as const);
 
 export type AiType = (typeof AI_TYPES)[number];
+
+/**
+ * Tiers that a shipped version persisted and a later version removed.
+ *
+ * Stored documents still carry these ids. Decoding them onto their surviving
+ * tier keeps the player's choice; falling back to `DEFAULT_AI_SETTINGS` would
+ * silently demote them. Bumping `AI_SETTINGS_SCHEMA_VERSION` is not an option:
+ * the version guard below resets *every* stored tier, including the ones that
+ * did not change.
+ */
+const LEGACY_AI_TYPE_ALIASES: Readonly<Record<string, AiType>> = Object.freeze({
+  // Spec 055 merged the expert and master tiers; master's search survived.
+  expert: "master",
+});
 
 export type AiSettings = Readonly<{
   aiType: AiType;
@@ -28,6 +41,14 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 
 function isAiType(value: unknown): value is AiType {
   return typeof value === "string" && (AI_TYPES as readonly string[]).includes(value);
+}
+
+function resolveAiType(value: unknown): AiType {
+  if (isAiType(value)) {
+    return value;
+  }
+  const alias = typeof value === "string" ? LEGACY_AI_TYPE_ALIASES[value] : undefined;
+  return alias ?? DEFAULT_AI_SETTINGS.aiType;
 }
 
 export function decodeAiSettingsDocument(raw: string | null): DecodedAiSettings {
@@ -57,9 +78,7 @@ export function decodeAiSettingsDocument(raw: string | null): DecodedAiSettings 
   }
 
   const data = payload.data;
-  const aiType = isRecord(data) && isAiType(data.aiType)
-    ? data.aiType
-    : DEFAULT_AI_SETTINGS.aiType;
+  const aiType = isRecord(data) ? resolveAiType(data.aiType) : DEFAULT_AI_SETTINGS.aiType;
   return Object.freeze({
     settings: Object.freeze({ aiType }),
     writable: true,

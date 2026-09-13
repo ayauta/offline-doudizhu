@@ -6,12 +6,14 @@
 
 import { describe, expect, it } from "vitest";
 
+import type { EnhancedAiType } from "../../src/app/ports/ai-decision-service.js";
 import { tally } from "./categories.js";
 import { runProbe } from "./harvest.js";
 
 const DEALS = Number(process.env.AI_DIAG_DEALS ?? "20");
 const SEED = Number(process.env.AI_DIAG_SEED ?? "301");
-const STRONG = (process.env.AI_DIAG_PROFILE ?? "expert") as "expert" | "master";
+// Spec 055 merged the expert tier into master; the strong arm is now the merged tier.
+const STRONG = (process.env.AI_DIAG_PROFILE ?? "master") as EnhancedAiType;
 
 function table(
   label: string,

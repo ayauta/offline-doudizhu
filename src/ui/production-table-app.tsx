@@ -50,15 +50,13 @@ const BID_LABELS: Readonly<Record<BidDecision, string>> = {
 const AI_TYPE_ORDER: readonly AiType[] = Object.freeze([
   "casual",
   "default",
-  "expert",
   "master",
 ]);
 
 const AI_TYPE_LABELS: Readonly<Record<AiType, string>> = Object.freeze({
   casual: "休闲",
   default: "默认",
-  expert: "高手",
-  master: "大师",
+  master: "高手",
 });
 
 interface ProductionTableAppProps {

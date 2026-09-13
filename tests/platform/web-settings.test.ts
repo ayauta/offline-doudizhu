@@ -27,10 +27,20 @@ describe("Web settings storage", () => {
     const store = createWebSettingsStore(storage);
 
     expect(store.load()).toBe(DEFAULT_AI_SETTINGS);
-    store.save({ aiType: "expert" });
+    store.save({ aiType: "master" });
 
-    expect(createWebSettingsStore(storage).load()).toEqual({ aiType: "expert" });
+    expect(createWebSettingsStore(storage).load()).toEqual({ aiType: "master" });
     expect(storage.writes).toBe(1);
+  });
+
+  it("loads a stored removed tier onto its surviving tier", () => {
+    const storage = new MemoryStorage();
+    storage.values.set(SETTINGS_STORAGE_KEY, JSON.stringify({
+      schemaVersion: 1,
+      data: { aiType: "expert" },
+    }));
+
+    expect(createWebSettingsStore(storage).load()).toEqual({ aiType: "master" });
   });
 
   it("preserves an unsupported future document instead of overwriting it", () => {

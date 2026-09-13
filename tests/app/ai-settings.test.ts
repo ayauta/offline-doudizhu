@@ -37,11 +37,23 @@ describe("AI settings document", () => {
     });
   });
 
+  it("decodes a removed tier onto its surviving tier instead of the default", () => {
+    expect(
+      decodeAiSettingsDocument(JSON.stringify({
+        schemaVersion: 1,
+        data: { aiType: "expert" },
+      })),
+    ).toEqual({
+      settings: Object.freeze({ aiType: "master" }),
+      writable: true,
+    });
+  });
+
   it("does not authorize overwriting an unsupported future schema", () => {
     expect(
       decodeAiSettingsDocument(JSON.stringify({
         schemaVersion: 99,
-        data: { aiType: "expert" },
+        data: { aiType: "master" },
       })),
     ).toEqual({ settings: DEFAULT_AI_SETTINGS, writable: false });
   });

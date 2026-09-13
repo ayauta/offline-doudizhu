@@ -1,8 +1,7 @@
 /** Narrows a solver/oracle divergence to the rule they disagree about. */
 import { describe, expect, it } from "vitest";
-import { asCardId, createDeck, type CardId } from "../../src/core/cards/index.js";
-import { transition, type GameState, type Seat } from "../../src/core/game/index.js";
-import { generateLegalActions } from "../../src/core/rules/index.js";
+import { asCardId, type CardId } from "../../src/core/cards/index.js";
+import type { GameState, Seat } from "../../src/core/game/index.js";
 import { commandsFrom, playingOf, solve } from "./exact-solver.js";
 import { countsOf, oraclePlaysFor, oracleLandlordWins, type OracleShape } from "./exact-oracle.js";
 
@@ -50,7 +49,7 @@ describe("divergence narrowing", () => {
       if (solver.landlordWins === oracle) continue;
 
       const engineMoves = commandsFrom(playing.seat, playing.view)
-        .map((c) => (c.type === "pass" ? "pass" : [...c.cards].sort((a, b) => a - b).join(",")));
+        .map((c) => (c.type === "play" ? [...c.cards].sort((a, b) => a - b).join(",") : "pass"));
       const oracleMoves = oraclePlaysFor(countsOf(hands[turn]), null)
         .map((s) => `${String(s.length)}x${String(s.size)}@${String(s.rank)}${s.isBomb ? " BOMB" : ""}`);
       console.log([

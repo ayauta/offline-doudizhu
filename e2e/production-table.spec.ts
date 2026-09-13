@@ -254,20 +254,20 @@ test("chooses and restores computer level through a compact inline segmented con
   await page.goto("/");
 
   const control = page.getByRole("radiogroup", { name: "电脑水平" });
-  await expect(control.getByRole("radio")).toHaveCount(4);
+  await expect(control.getByRole("radio")).toHaveCount(3);
   await expect(control.getByRole("radio", { name: "默认" })).toBeChecked();
   await expect(page.getByRole("dialog", { name: "电脑水平" })).toHaveCount(0);
-  const expert = control.getByRole("radio", { name: "高手" });
-  const expertBox = await expert.boundingBox();
-  expect(expertBox).not.toBeNull();
-  expect(expertBox!.height).toBeGreaterThanOrEqual(44);
-  const restingColor = await expert.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const strong = control.getByRole("radio", { name: "高手" });
+  const strongBox = await strong.boundingBox();
+  expect(strongBox).not.toBeNull();
+  expect(strongBox!.height).toBeGreaterThanOrEqual(44);
+  const restingColor = await strong.evaluate((element) => getComputedStyle(element).backgroundColor);
 
-  await page.mouse.move(expertBox!.x + expertBox!.width / 2, expertBox!.y + expertBox!.height / 2);
+  await page.mouse.move(strongBox!.x + strongBox!.width / 2, strongBox!.y + strongBox!.height / 2);
   await page.mouse.down();
-  expect(await expert.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(restingColor);
+  expect(await strong.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(restingColor);
   await page.mouse.up();
-  await expect(expert).toBeChecked();
+  await expect(strong).toBeChecked();
   await expect(page.getByText(/适合日常对局|判断更加全面|推演更加深入/)).toHaveCount(0);
   if (process.env.VISUAL_REVIEW === "1") {
     await page.waitForTimeout(180);
@@ -278,7 +278,7 @@ test("chooses and restores computer level through a compact inline segmented con
 
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("offline-doudizhu.settings")!))).toEqual({
     schemaVersion: 1,
-    data: { aiType: "expert" },
+    data: { aiType: "master" },
   });
   await page.reload();
   await expect(page.getByRole("radio", { name: "高手" })).toBeChecked();
@@ -351,7 +351,7 @@ async function startMasterMatchWithDelayedWorker(
   await recordUnavailableNotices(page);
   await useIdentityDeck(page);
   await page.goto("/");
-  await page.getByRole("radio", { name: "大师" }).click();
+  await page.getByRole("radio", { name: "高手" }).click();
   await page.getByRole("button", { name: "开始游戏" }).click();
   await page.getByRole("button", { name: "不叫", exact: true }).click();
 }
@@ -361,13 +361,13 @@ test("runs an enhanced opponent in the worker without exposing its level at the 
   await recordUnavailableNotices(page);
   await useIdentityDeck(page);
   await page.goto("/");
-  await page.getByRole("radio", { name: "大师" }).click();
+  await page.getByRole("radio", { name: "高手" }).click();
   await page.getByRole("button", { name: "开始游戏" }).click();
   await page.getByRole("button", { name: "不叫", exact: true }).click();
 
   await expect(page.locator(".bottom-cards--revealed")).toBeVisible({ timeout: 2_500 });
   await expectNoUnavailableNotice(page);
-  await expect(page.getByText(/休闲|默认|高手|大师/)).toHaveCount(0);
+  await expect(page.getByText(/休闲|默认|高手/)).toHaveCount(0);
   await expectNoViewportOverflow(page);
 });
 

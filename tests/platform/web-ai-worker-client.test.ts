@@ -50,14 +50,14 @@ describe("Web AI worker client", () => {
     const cancelFirst = service.request("casual", BID_CONTEXT, (outcome) => {
       outcomes.push(outcome.ok ? "first-ok" : "first-failed");
     });
-    service.request("expert", BID_CONTEXT, (outcome) => {
+    service.request("master", BID_CONTEXT, (outcome) => {
       outcomes.push(outcome.ok ? "second-ok" : "second-failed");
     });
     cancelFirst();
 
     expect(worker.requests.map(({ requestId, aiType, seed }) => ({ requestId, aiType, seed }))).toEqual([
       { requestId: 1, aiType: "casual", seed: 91 },
-      { requestId: 2, aiType: "expert", seed: 91 },
+      { requestId: 2, aiType: "master", seed: 91 },
     ]);
     worker.respond({
       requestId: 1,
@@ -92,7 +92,7 @@ describe("Web AI worker client", () => {
       nextSeed: () => 2,
       queue: (callback) => callback(),
     });
-    failing.request("expert", BID_CONTEXT, (outcome) => outcomes.push(
+    failing.request("master", BID_CONTEXT, (outcome) => outcomes.push(
       outcome.ok ? "ok" : outcome.reason,
     ));
     worker.onerror?.();
@@ -122,7 +122,7 @@ describe("Web AI worker client", () => {
       nextSeed: () => 4,
       queue: (callback) => callback(),
     });
-    expect(() => throwing.request("expert", BID_CONTEXT, (outcome) => outcomes.push(
+    expect(() => throwing.request("master", BID_CONTEXT, (outcome) => outcomes.push(
       outcome.ok ? "ok" : outcome.reason,
     ))).not.toThrow();
     expect(outcomes).toEqual(["failed", "failed"]);

@@ -201,18 +201,18 @@ describe("AI strength and bounded-time benchmark", () => {
     // Casual sits so far inside its budget (p99 well under a millisecond against
     // 16 ms) that its shipped and unlimited results must be identical. This
     // fails the moment a change makes that budget binding, which is a decision
-    // that should be made on purpose. Expert is reported, not asserted: it
-    // truncates on roughly one decision in a thousand, so demanding exact
-    // agreement would be asserting on a tail the run cannot control.
+    // that should be made on purpose. Master is reported, not asserted: it
+    // truncates on a large fraction of decisions, so demanding exact agreement
+    // would be asserting on a tail the run cannot control.
     const casualAgreement = agreementOf(recorder, "casual");
     if (casualAgreement.samples > 0) {
       expect(casualAgreement.agreed).toBe(casualAgreement.samples);
     }
-    const expertAgreement = agreementOf(recorder, "expert");
-    if (expertAgreement.samples > 0 && expertAgreement.agreed !== expertAgreement.samples) {
+    const masterAgreement = agreementOf(recorder, "master");
+    if (masterAgreement.samples > 0 && masterAgreement.agreed !== masterAgreement.samples) {
       report(
-        `note: expert's budget changed ${expertAgreement.samples - expertAgreement.agreed} of ` +
-        `${expertAgreement.samples} sampled decisions`,
+        `note: master's budget changed ${masterAgreement.samples - masterAgreement.agreed} of ` +
+        `${masterAgreement.samples} sampled decisions`,
       );
     }
 
@@ -419,7 +419,7 @@ describe("AI strength and bounded-time benchmark", () => {
         expect(worlds ?? -1).toBeGreaterThanOrEqual(0);
         expect(worlds ?? 1e9).toBeLessThanOrEqual(32);
         maxWorlds = Math.max(maxWorlds, worlds ?? 0);
-      } else if (record.profile === "casual" || record.profile === "expert") {
+      } else if (record.profile === "casual") {
         // One candidate is scored before the first check, then one check each.
         expect(record.polls).toBe(Math.max(0, record.legalActionCount - 1));
       }

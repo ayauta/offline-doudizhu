@@ -17,7 +17,6 @@ import type {
 export const ENHANCED_AI_BUDGET_MS: Readonly<Record<EnhancedAiType, number>> =
   Object.freeze({
     casual: 16,
-    expert: 40,
     master: 120,
   });
 
@@ -94,18 +93,12 @@ export function decideEnhancedAi(
         ),
       });
     }
-    if (request.aiType === "expert") {
-      return Object.freeze({
-        ok: true,
-        command: expertPlayCommand(context, () => runtime.now() < runtime.deadline),
-      });
-    }
     if (runtime.now() >= runtime.deadline) {
       return Object.freeze({ ok: true, command: expertPlayCommand(context) });
     }
 
     const ranked = rankMasterPlayActions(context, {
-      maxWorlds: 32,
+      maxWorlds: 8,
       rolloutDepth: 3,
       rootAnalyzerNodes: 220,
       seed: request.seed,
