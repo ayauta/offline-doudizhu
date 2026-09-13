@@ -42,9 +42,10 @@ the shared composition root.
 ## Required workflow
 
 For current AI work, start with `docs/specs/055-stronger-local-ai/spec.md` and
-ADR 0018. Conflicting historical AI documents have been removed. Failed
-experiments are recorded in `docs/research/ai-experiment-results.md` as evidence,
-not additional algorithm, budget or tier-count requirements.
+ADR 0018. They supersede every earlier AI specification, plan or handoff; do not
+reintroduce their constraints. Failed experiments are recorded in
+`docs/research/ai-experiment-results.md` as evidence, not additional algorithm,
+budget or tier-count requirements.
 Existing executable checks are updated with the chosen integration, not bypassed.
 
 Before changing behavior, read:

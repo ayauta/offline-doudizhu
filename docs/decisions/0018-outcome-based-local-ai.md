@@ -22,9 +22,9 @@ offline execution, responsive play and a modest installation increment.
 
 [Spec 055](../specs/055-stronger-local-ai/spec.md) is the single current product
 contract for AI selection and acceptance. Conflicting historical specifications,
-plans and handoffs have been removed from the working tree. Their useful
-experimental evidence is consolidated in the
-[experiment record](../research/ai-experiment-results.md), without additional bans.
+plans and handoffs are superseded by it. Their useful experimental evidence is
+consolidated in the [experiment record](../research/ai-experiment-results.md),
+without additional bans.
 
 Algorithm family, inference runtime, execution technology and worker count are
 candidate decisions. The existing worker is a starting implementation, not the
