@@ -20,6 +20,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import { ENHANCED_AI_SEARCH } from "../src/app/ai/decision-handler.js";
 import {
   ALL_PAIRS,
   CONTROL_PAIR,
@@ -417,13 +418,21 @@ describe("AI strength and bounded-time benchmark", () => {
         const worlds = masterWorldPolls(record);
         expect(worlds).not.toBeNull();
         expect(worlds ?? -1).toBeGreaterThanOrEqual(0);
-        expect(worlds ?? 1e9).toBeLessThanOrEqual(32);
+        expect(worlds ?? 1e9).toBeLessThanOrEqual(ENHANCED_AI_SEARCH.maxWorlds);
         maxWorlds = Math.max(maxWorlds, worlds ?? 0);
       } else if (record.profile === "casual") {
         // One candidate is scored before the first check, then one check each.
         expect(record.polls).toBe(Math.max(0, record.legalActionCount - 1));
       }
     }
-    expect(maxWorlds).toBe(32);
+    // Two assertions on purpose. The first pins the invariant this canary is
+    // for: what the decision path actually polled equals what it was configured
+    // with, so a rollout-loop change that drifts from the configured cap fails.
+    // The second pins the value, because reading the measurement and the
+    // configuration from one constant moves both sides together. 32 worlds want
+    // ~208 ms on the target phone against a 120 ms budget, so this must not
+    // drift back up; raise it only with a new measurement behind it.
+    expect(maxWorlds).toBe(ENHANCED_AI_SEARCH.maxWorlds);
+    expect(ENHANCED_AI_SEARCH.maxWorlds).toBeLessThanOrEqual(8);
   });
 });

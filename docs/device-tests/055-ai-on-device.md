@@ -35,6 +35,11 @@ node scripts/phone-probe.mjs --deals 3
 `first` 是这一轮的第一个决策，与分位数分开报：冷引擎上只有它没被前面的样本
 预热，而一局棋的第一个决策恰好就是冷的。
 
+**只有排在最前面的那个组合的 `first` 是冷启动。** 顺序是「按档位：master 先、
+casual 后；档位内：`shipped` 先、`unbounded` 后」，理由是产品里玩家真正遇到
+的第一个冷决策是 `shipped` 的。后面每一个组合的 `first` 都已经预热过，不能当
+冷启动读。
+
 耗时依赖设备状态，**只比较同一状态下的两次运行**：
 
 | 设备状态 | master `shipped` p50 |
@@ -47,18 +52,28 @@ node scripts/phone-probe.mjs --deals 3
 ## 2026-09-13 基线
 
 设备：小米 10S（`M2102J2SC`），Android 13，app 在前台，`maxWorlds=8`。
-源码与产物见同日提交；同一份探针产物也在开发机上跑过。
+同一份探针产物也在开发机上跑过。每次 5 副牌、两次连测，master 各 172 个决策。
 
 | 档 | 模式 | first | p50 | p95 | max |
 | --- | --- | ---: | ---: | ---: | ---: |
-| master | `shipped` | 108–133 ms | **44–50 ms** | 128–136 ms | 141–153 ms |
-| master | `unbounded` | 215–287 ms | 44–52 ms | 181–201 ms | 216–292 ms |
-| casual | `shipped` | 0.8 ms | 0.0 ms | 0.6 ms | 1.0 ms |
+| master | `shipped` | 121–151 ms | **51–56 ms** | 131–132 ms | 139–157 ms |
+| master | `unbounded` | 223–247 ms | 49–54 ms | 160–180 ms | 322–364 ms |
+| casual | `shipped` | 2.8–3.1 ms | 0.0 ms | 0.5 ms | 2.8 ms |
 
-开发机同一份产物：master `shipped` p50 约 11 ms。**这台手机约为开发机的 4.7 倍。**
+开发机同一份产物：master `shipped` p50 14.1 ms、`unbounded` p50 13.9 ms。
+**这台手机约为开发机的 3.7 倍。**
+
+冷启动是 `shipped` 的 `first` 对 `shipped` 的 p50：121–151 ms 对 51–56 ms，
+约 **2.4–2.7 倍**；被 120 ms 预算截断过，所以这是**低估**。
+（`unbounded` 排在后面，它的 first 223–247 ms 已经预热，不能当冷启动读。）
 
 连续 5 轮各 3 局，JS 堆稳定在 9.54 MB 不增长，master p50 无漂移——AI 与规则
 路径跨局不泄漏。
+
+**同日更正。** 本文先前记录的 122.5 ms、44–50 ms 等数字来自一版探针，它的本地
+`startGame` 写死了第一个叫牌，**导致传进来的每个 `landlord` 都被忽略、真人永远
+当地主**。那批数字只覆盖一种局面组合。现在探针复用 harness 的 `dealDeck` 与
+`startWithLandlord`，地主在三个座位上轮换；上表是更正后的值，与旧值不可直接比较。
 
 ## 这个流程覆盖不到什么
 

@@ -2,7 +2,7 @@
 /**
  * Measures the shipped AI decision path on a connected Android device.
  *
- * The probe source is `benchmarks/diagnosis/phoneprobe.ts`. It is bundled here
+ * The probe source is `benchmarks/phoneprobe.ts`. It is bundled here
  * with the same target the app uses, pushed into the installed app's WebView
  * over the Chrome DevTools Protocol, and run on the device. Because the *same
  * bundle bytes* also run on this machine, the dev-to-device ratio is meaningful
@@ -49,9 +49,13 @@ function buildBundle() {
   execFileSync(
     join(ROOT, "node_modules", ".bin", "esbuild"),
     [
-      join(ROOT, "benchmarks", "diagnosis", "phoneprobe.ts"),
+      join(ROOT, "benchmarks", "phoneprobe.ts"),
       "--bundle",
       "--format=iife",
+      // Keep in step with `build.target` in vite.config.ts. The premise of this
+      // bundle is that it transpiles the way the shipped one does, so the two
+      // drifting apart would silently make the dev-to-device ratio a different
+      // measurement.
       "--target=chrome74",
       `--outfile=${BUNDLE}`,
     ],
@@ -123,24 +127,27 @@ async function cdp() {
 }
 
 function report(label, value) {
-  const pct = (n) => `${n.toFixed(1)} ms`;
-  console.log(`  ${label.padEnd(18)} first=${pct(value.first)} p50=${pct(value.p50)} ` +
-    `p95=${pct(value.p95)} max=${pct(value.max)} (n=${value.decisions})`);
+  const ms = (n) => `${n.toFixed(1)} ms`;
+  console.log(
+    `  ${label.padEnd(10)} first=${ms(value.first)} p50=${ms(value.p50)} ` +
+    `p95=${ms(value.p95)} max=${ms(value.max)} ` +
+    `total=${(value.totalMs / 1000).toFixed(1)}s (n=${value.count})`,
+  );
 }
 
 buildBundle();
 const socket = attach();
 console.log(`attached: ${socket}, package ${packageId}, ${deals} deals`);
 const { evaluate, close } = await cdp();
-const loaded = await evaluate(readFileSync(BUNDLE, "utf8"));
-void loaded;
-const raw = await evaluate(
-  `JSON.stringify(globalThis.__probe.run(${deals}))`,
-);
-for (const tier of ["master", "casual"]) {
+await evaluate(readFileSync(BUNDLE, "utf8"));
+// Report whatever the probe returned rather than a retyped tier list: a tier it
+// drops or adds would otherwise become a TypeError or a silent gap. Object key
+// order preserves the probe's deliberate cold-first ordering.
+const run = await evaluate(`globalThis.__probe.run(${deals})`);
+for (const [tier, modes] of Object.entries(run)) {
   console.log(`${tier}:`);
-  for (const mode of ["shipped", "unbounded"]) {
-    report(mode, JSON.parse(raw)[tier][mode]);
+  for (const [mode, summary] of Object.entries(modes)) {
+    report(mode, summary);
   }
 }
 close();

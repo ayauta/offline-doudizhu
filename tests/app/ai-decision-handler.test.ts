@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   decideEnhancedAi,
+  ENHANCED_AI_SEARCH,
   type EnhancedAiWorkerRequest,
 } from "../../src/app/ai/decision-handler.js";
+import { rankScoredPlayActions } from "../../src/core/ai/enhanced.js";
 import type { EnhancedAiType } from "../../src/app/ports/ai-decision-service.js";
 import { createPlayerView, type AiDecisionContext } from "../../src/core/ai/index.js";
-import { rankScoredPlayActions } from "../../src/core/ai/enhanced.js";
 import { createDeck } from "../../src/core/cards/index.js";
 import {
   INITIAL_GAME_STATE,
@@ -145,7 +146,6 @@ describe("enhanced AI request handler", () => {
 
   it("returns the expert-ranked fallback when the master deadline has already expired", () => {
     const context = playingContext();
-    const expected = rankScoredPlayActions(context, "expert", { analyzerNodes: 220 })[0]?.action;
     const master = decideEnhancedAi({
       requestId: 2,
       aiType: "master",
@@ -153,12 +153,20 @@ describe("enhanced AI request handler", () => {
       seed: 8,
     }, { deadline: 0, now: () => 1 });
 
+    // Built from the ranking, not from `expertFallbackPlayCommand`: asserting
+    // the handler equals the very function it calls would move with any change
+    // to that function's profile or node budget and could never fail. The node
+    // budget comes from the shipped constant so it cannot be retyped here.
+    const expected = rankScoredPlayActions(context, "expert", {
+      analyzerNodes: ENHANCED_AI_SEARCH.rootAnalyzerNodes,
+    })[0]?.action;
+
     expect(master.ok).toBe(true);
     if (!master.ok || master.command.type !== "play") {
       throw new Error("expected the expired-deadline master to return a play command");
     }
-    expect(expected?.type === "play" ? [...expected.play.cards] : []).toEqual([
-      ...master.command.cards,
-    ]);
+    expect([...master.command.cards]).toEqual(
+      expected?.type === "play" ? [...expected.play.cards] : [],
+    );
   });
 });

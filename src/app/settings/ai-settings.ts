@@ -47,8 +47,15 @@ function resolveAiType(value: unknown): AiType {
   if (isAiType(value)) {
     return value;
   }
-  const alias = typeof value === "string" ? LEGACY_AI_TYPE_ALIASES[value] : undefined;
-  return alias ?? DEFAULT_AI_SETTINGS.aiType;
+  // `Object.hasOwn`, not a bare index: a plain object literal inherits from
+  // `Object.prototype`, so indexing alone would resolve a stored `"constructor"`
+  // or `"toString"` to an inherited function and hand it back typed as an
+  // `AiType`. The annotation cannot catch that — it is a lie about a runtime
+  // value, not about the shape of the table.
+  if (typeof value !== "string" || !Object.hasOwn(LEGACY_AI_TYPE_ALIASES, value)) {
+    return DEFAULT_AI_SETTINGS.aiType;
+  }
+  return LEGACY_AI_TYPE_ALIASES[value] ?? DEFAULT_AI_SETTINGS.aiType;
 }
 
 export function decodeAiSettingsDocument(raw: string | null): DecodedAiSettings {

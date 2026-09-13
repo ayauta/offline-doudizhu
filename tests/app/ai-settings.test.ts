@@ -49,6 +49,19 @@ describe("AI settings document", () => {
     });
   });
 
+  it("does not resolve an inherited object key as a removed tier", () => {
+    // `Object.prototype` is reachable by name from any plain object literal, so
+    // a bare index would return `Object` here and hand it back typed as a tier.
+    for (const key of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
+      expect(
+        decodeAiSettingsDocument(JSON.stringify({
+          schemaVersion: 1,
+          data: { aiType: key },
+        })),
+      ).toEqual({ settings: DEFAULT_AI_SETTINGS, writable: true });
+    }
+  });
+
   it("does not authorize overwriting an unsupported future schema", () => {
     expect(
       decodeAiSettingsDocument(JSON.stringify({

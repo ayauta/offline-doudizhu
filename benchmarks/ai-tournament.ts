@@ -3,11 +3,12 @@
  *
  * The one rule this file exists to enforce: measure what ships. Every enhanced
  * level is played by calling the real `decideEnhancedAi` with the real
- * `ENHANCED_AI_BUDGET_MS`, imported — never retyped. The previous benchmark
- * carried its own stand-in strategies and drifted from the product because of
- * it (it ran master at 4 sampled worlds while production runs 32).
+ * `ENHANCED_AI_BUDGET_MS` and `ENHANCED_AI_SEARCH`, imported — never retyped.
+ * The previous benchmark carried its own stand-in strategies and drifted from
+ * the product because of it, sampling a rollout size production did not use.
  *
- * Nothing here imports from or writes to `src/`; this is dev tooling.
+ * It reads the product's own types and constants on purpose, so the harness
+ * cannot drift from what ships. Nothing in `src/` imports from here.
  */
 
 import {
@@ -37,22 +38,19 @@ import {
   decideEnhancedAi,
 } from "../src/app/ai/decision-handler.js";
 import type { EnhancedAiType } from "../src/app/ports/ai-decision-service.js";
+import { AI_TYPES, type AiType } from "../src/app/settings/ai-settings.js";
 import { ENHANCED_AI_RESPONSE_WINDOW_MS } from "../src/app/ai/enhanced-ai-turn.js";
 
 /**
- * The benchmark's profile space mirrors the shipped tiers plus the shipped
- * default. Spec 055 merged the expert tier into master, so `"expert"` is no
- * longer a nameable arm and must not stay in this union: `isEnhanced`'s type
- * predicate below is unchecked by the compiler, so a stale `"expert"` would be
- * narrowed to `EnhancedAiType` and silently measured as master.
+ * The benchmark's profile space *is* the shipped tier list, taken from the
+ * product rather than retyped. A parallel union is how a removed tier survives
+ * as a nameable arm: `isEnhanced`'s type predicate below is unchecked by the
+ * compiler, so a stale `"expert"` would be narrowed to `EnhancedAiType` and
+ * silently measured as master.
  */
-export type Profile = "casual" | "default" | "master";
+export type Profile = AiType;
 
-export const PROFILES: readonly Profile[] = Object.freeze([
-  "casual",
-  "default",
-  "master",
-]);
+export const PROFILES: readonly Profile[] = AI_TYPES;
 
 export type TrialKind = "bid" | "play";
 
@@ -115,7 +113,7 @@ export const ALL_PAIRS: ReadonlyArray<readonly [Profile, Profile]> = Object.free
 
 export const CONTROL_PAIR: readonly [Profile, Profile] = Object.freeze(["casual", "master"]);
 
-function isProfile(value: string | undefined): value is Profile {
+export function isProfile(value: string | undefined): value is Profile {
   return value !== undefined && (PROFILES as readonly string[]).includes(value);
 }
 
