@@ -52,7 +52,7 @@ Before changing behavior, read:
 1. `docs/product-spec.md`
 2. `ARCHITECTURE.md`
 3. relevant files under `docs/decisions/`
-4. the active feature spec and execution plan
+4. the active feature spec under `docs/specs/`
 
 Use small changes following:
 

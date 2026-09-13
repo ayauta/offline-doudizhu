@@ -33,16 +33,6 @@ describe("Web settings storage", () => {
     expect(storage.writes).toBe(1);
   });
 
-  it("loads a stored removed tier onto its surviving tier", () => {
-    const storage = new MemoryStorage();
-    storage.values.set(SETTINGS_STORAGE_KEY, JSON.stringify({
-      schemaVersion: 1,
-      data: { aiType: "expert" },
-    }));
-
-    expect(createWebSettingsStore(storage).load()).toEqual({ aiType: "master" });
-  });
-
   it("preserves an unsupported future document instead of overwriting it", () => {
     const storage = new MemoryStorage();
     storage.values.set(SETTINGS_STORAGE_KEY, JSON.stringify({

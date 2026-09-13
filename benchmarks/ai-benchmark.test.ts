@@ -18,7 +18,9 @@
  * time and is meant for tuning and release verification, not every edit.
  */
 
-import { describe, expect, it } from "vitest";
+import { writeFileSync } from "node:fs";
+
+import { afterAll, describe, expect, it } from "vitest";
 
 import { ENHANCED_AI_SEARCH } from "../src/app/ai/decision-handler.js";
 import {
@@ -56,6 +58,10 @@ import {
 } from "./ai-stats.js";
 
 const config = readConfig();
+
+/** Where the optional per-deal dump goes; unset means the run only prints. */
+const BENCH_OUT = process.env.AI_BENCH_OUT;
+const benchRuns: Record<string, unknown> = {};
 
 function decisionsOf(recorder: Recorder, profile: Profile) {
   return recorder.forProfile(profile, "play");
@@ -278,6 +284,26 @@ describe("AI strength and bounded-time benchmark", () => {
     }
   });
 
+  // Per-deal arrays for a *paired* comparison of two configurations. The printed
+  // report carries each run's own interval, but comparing two runs needs the
+  // per-deal wins, and only the run that produced them can write them down.
+  // `AI_BENCH_OUT` decides whether that happens; nothing depends on it.
+  afterAll(() => {
+    if (BENCH_OUT === undefined) {
+      return;
+    }
+    writeFileSync(BENCH_OUT, `${JSON.stringify({
+      label: process.env.AI_BENCH_LABEL ?? "unnamed",
+      config: {
+        deals: config.deals,
+        seedBase: config.seedBase,
+        secondsCap: config.secondsCap,
+      },
+      runs: benchRuns,
+    }, null, 2)}\n`, "utf8");
+    report(`wrote ${BENCH_OUT}`);
+  });
+
   const pairs = config.pairs ?? ALL_PAIRS;
   it.each(pairs.map(([weaker, stronger]) => ({ weaker, stronger })))(
     "measures $stronger vs $weaker over mirrored deals",
@@ -286,6 +312,19 @@ describe("AI strength and bounded-time benchmark", () => {
       const run = runPairTournament(config, stronger, weaker, recorder);
       const gamesPerArm = 3;
       const pooled = run.perDealA.map((wins, index) => wins + (run.perDealB[index] ?? 0));
+
+      if (BENCH_OUT !== undefined) {
+        benchRuns[`${stronger}-${weaker}`] = {
+          stronger,
+          weaker,
+          requestedDeals: run.requestedDeals,
+          playedDeals: run.playedDeals,
+          stoppedEarly: run.stoppedEarly,
+          elapsedMs: run.elapsedMs,
+          perDealA: run.perDealA,
+          perDealB: run.perDealB,
+        };
+      }
 
       report(`\n-- ${stronger} vs ${weaker} --`);
       for (const [label, perDeal, gamesPerDeal] of [

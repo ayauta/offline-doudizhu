@@ -37,21 +37,10 @@ describe("AI settings document", () => {
     });
   });
 
-  it("decodes a removed tier onto its surviving tier instead of the default", () => {
-    expect(
-      decodeAiSettingsDocument(JSON.stringify({
-        schemaVersion: 1,
-        data: { aiType: "expert" },
-      })),
-    ).toEqual({
-      settings: Object.freeze({ aiType: "master" }),
-      writable: true,
-    });
-  });
-
-  it("does not resolve an inherited object key as a removed tier", () => {
-    // `Object.prototype` is reachable by name from any plain object literal, so
-    // a bare index would return `Object` here and hand it back typed as a tier.
+  it("defaults every unknown tier, inherited object keys included", () => {
+    // A tier is resolved by membership, never by a string-keyed lookup table:
+    // `Object.prototype` is reachable by name from any plain object, so a table
+    // would resolve `"constructor"` to a function and hand it back as a tier.
     for (const key of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
       expect(
         decodeAiSettingsDocument(JSON.stringify({

@@ -38,7 +38,7 @@ Android 没有上架应用商店。首次安装需要允许浏览器或文件管
 - [产品规格](docs/product-spec.md)
 - [当前 AI 目标：一个更强的本地对手](docs/specs/055-stronger-local-ai/spec.md)
 - [架构](ARCHITECTURE.md)
-- [规格路线图](docs/specs/README.md)
+- [决策记录](docs/decisions/)
 - [隐私说明](PRIVACY.md)
 - [安全说明](SECURITY.md)
 
