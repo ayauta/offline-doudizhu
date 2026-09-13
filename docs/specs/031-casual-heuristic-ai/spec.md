@@ -119,7 +119,8 @@ runtime network capability is added.
 ## Research provenance
 
 The implementation is project-owned and derived from this specification and
-tests. External work is reference-only:
+tests. The existing Default implementation used the following work as references;
+reuse for a stronger candidate is governed by Spec 055:
 
 - [`daimons/DouDiZhu-2`](https://github.com/daimons/DouDiZhu-2) motivates
   visible hand-strength and hand-burden features;
@@ -133,16 +134,13 @@ tests. External work is reference-only:
 No source, model, weights, assets, or generated data from those projects is
 copied or distributed.
 
-## Deferred difficulty work
+## Relationship to stronger AI
 
-This historical deferred direction is superseded by approved Spec 051. The
-strategy introduced here remains byte-for-byte behaviorally authoritative for
-the `默认` level and for immediate hint ranking. Spec 051 adds `休闲 / 默认 / 高手 /
-大师` around it without changing this strategy.
+The strategy introduced here remains behaviorally authoritative for the `默认`
+level and immediate hint ranking. Stronger AI work follows
+[Spec 055](../055-stronger-local-ai/spec.md) while preserving this Default path.
 
 ## Non-goals
 
-No game-tree search, MCTS, hidden-card inference, trained model, multiple
-profiles, difficulty selector, random personality, UI, hint cycling state,
-explanation strings, delay animation, timer, autoplay, persistence, scoring,
-audio, dependency, or ADR replacement is included.
+This specification covers the existing Default strategy only. It does not
+prescribe the algorithm, dependencies or execution architecture of stronger AI.

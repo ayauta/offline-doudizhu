@@ -1,7 +1,13 @@
 # Spec Roadmap
 
 Status: Approved sequencing baseline  
-Last updated: 2026-09-04
+Last updated: 2026-09-12
+
+Current AI work starts with [Spec 055](055-stronger-local-ai/spec.md): preserve
+Default and build one stronger, fair, offline phone opponent. Neural models and
+license-compatible existing implementations are allowed. Conflicting historical
+documents have been removed; useful results remain in the
+[experiment record](../research/ai-experiment-results.md).
 
 ## 1. Workflow
 
@@ -181,49 +187,14 @@ is `docs/specs/045-public-preview-release/spec.md`.
 Add reviewed local audio assets and a local on/off setting. No microphone,
 streaming, TTS service, background music, or network.
 
-### 051 — Rule-based AI difficulty
+### 055 — One stronger local AI (current)
 
-Preserve the current production strategy as `默认` and add deterministic
-`休闲`, `高手`, and bounded sampled-search `大师` profiles. Enhanced opponent
-work runs in one Dedicated Worker; hints remain on the immediate default
-ranker. The independently versioned `localStorage` setting and a compact inline
-home segmented control are included. Its active specification is
-`docs/specs/051-ai-difficulty/spec.md`.
-
-### 052 — AI strength measurement and tier separation
-
-Measure each computer level's strength and time cost on the shipped decision
-path. The opt-in benchmark reports latency percentiles, budget truncation,
-headroom against the 480 ms response window, and deal-clustered win rates with
-confidence intervals. The measurement showed the levels are not distinct —
-Expert reproduces Default rather than outplaying it — and that removing the
-cross-level ranking anchor that causes it makes Expert substantially *worse*,
-so no behaviour change ships. Weakening a level remains permitted only by giving
-it a simpler view of the position, never by deliberate mistakes. Its active
-specification is `docs/specs/052-ai-strength-evaluation/spec.md`.
-
-### 054 — Where the hand estimate changes the move
-
-Stop measuring aggregates and find where the enhanced AI's hand estimate changes
-what it plays. Sampling the positions where the shipped estimator and the
-archived candidate's estimator choose differently shows the divergence is
-concentrated in the opening and the wide midgame and is almost absent from the
-endgame — because at that per-candidate node allowance an endgame hand is solved
-exactly, so the search's starting bound stops mattering. In the two situations
-the owner named there, close endgames and a farmer feeding a nearly-out partner,
-the candidate is worth exactly nothing (0.0 pp over 5 and 10 deals); pooled it
-wins 5.1 points more often with an interval that spans zero. `src/` is unchanged
-and the archived candidate stays a probe. Its active specification is
-`docs/specs/054-ai-divergence-diagnosis/spec.md`.
-
-### 053 — Bounded hand planning experiment
-
-Preserve the family-validated Default and its initial selection while testing a
-feasible-partition estimate in the enhanced analyzer. The candidate fixes known
-small-hand underestimates but does not establish a strength gain on 400 paired
-discovery deals; it is rejected and production behavior is restored. The spec
-records the owner's agreed tier direction, the candidate/tests, and per-deal
-evidence: `docs/specs/053-ai-hand-planning/spec.md`.
+The owner has reset AI requirements around measured strength, fair inputs,
+offline phone execution, responsive play and a modest installation increment.
+The current contract is `docs/specs/055-stronger-local-ai/spec.md`; ADR 0018
+supersedes fixed enhanced implementation constraints. Preserve failed
+experiments as evidence and evaluate candidate implementations without inheriting
+their old algorithm bans or treating move divergence as proof of strength.
 
 ## 8. Explicitly absent roadmap items
 

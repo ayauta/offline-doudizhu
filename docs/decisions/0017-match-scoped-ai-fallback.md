@@ -4,13 +4,13 @@ Status: Accepted
 
 Date: 2026-09-11
 
-Supersedes ADR 0016 for the failure-scope clause only. The bounded single
-Worker, its computation budgets and delivery margin, lazy worker creation, and
-the runtime import closure and asset budgets remain owned by ADR 0016.
+Replaces the former turn-only failure scope. ADR 0018 owns the
+transition to outcome-based stronger-AI requirements. The failure behavior
+below remains implemented; it does not fix future computation or asset budgets.
 
 ## Context
 
-ADR 0016 recorded that any enhanced-AI failure would show one notice and fall
+The earlier worker design specified that any enhanced-AI failure would show one notice and fall
 back to the default strategy for that turn only.
 
 That produced a defect the interface could not truthfully describe. The

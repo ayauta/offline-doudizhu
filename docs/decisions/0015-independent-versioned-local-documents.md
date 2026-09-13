@@ -47,7 +47,7 @@ than relying on a growing chain of release-by-release mutations. A document
 with an unsupported future schema is not overwritten. Corrupt or unavailable
 storage falls back safely and never prevents play.
 
-Only the AI setting is implemented by Spec 051. Unfinished-game recovery and
+Only the AI setting is currently implemented. Unfinished-game recovery and
 its key remain deferred to a dedicated specification.
 
 ## Consequences

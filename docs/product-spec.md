@@ -1,7 +1,7 @@
 # Product Specification
 
 Status: Approved by product owner  
-Last updated: 2026-09-11
+Last updated: 2026-09-12
 Product: 单机斗地主 (`offline-doudizhu`)
 
 ## 1. Purpose
@@ -101,7 +101,8 @@ specifications:
 - production-quality accessible table UI.
 
 Optional local voice prompts are planned after the rules and interaction flow
-are stable. Rule-based AI difficulty is specified by Spec 051.
+are stable. Spec 055 owns current stronger-AI
+requirements and supersedes historical algorithm restrictions.
 
 ### 5.3 Explicitly out of scope
 
@@ -112,9 +113,7 @@ are stable. Rule-based AI difficulty is specified by Spec 051.
 - ads, payment, shops, currency, rewards, events, or daily tasks;
 - analytics, telemetry, tracking, or remote configuration;
 - wild-card, two-player, no-shuffle, or commercial rule variants;
-- autoplay, trusteeship, or turn timers;
-- MCTS, neural-network AI, or other advanced search in the first playable
-  version.
+- autoplay, trusteeship, or turn timers.
 
 ## 6. Confirmed game rules
 
@@ -202,7 +201,7 @@ player:
 - decisions must be deterministic when given the same state and injected
   randomness.
 
-The home screen exposes one global computer level for both AI seats:
+The shipped home screen exposes one global computer level for both AI seats:
 
 - `休闲` uses simpler deterministic hand and danger scoring;
 - `默认` is the unchanged production strategy and remains the initial choice;
@@ -210,11 +209,18 @@ The home screen exposes one global computer level for both AI seats:
 - `大师` refines the Expert shortlist with bounded hidden-card sampling and
   shallow rollout in one dedicated Web Worker.
 
-Every level is pure local TypeScript and chooses what its own evaluator judges
-best; no level injects deliberate mistakes. Enhanced computation never runs on
-the UI thread. It sees only the redacted player view, and sampled hidden hands
-exist only inside Master's possible worlds. Exact behavior, budgets, fallback,
-and evaluation requirements are owned by Spec 051, ADR 0016, and ADR 0017.
+The owner has validated Default through family play and wants it, including its
+initial selection, preserved. Keep an easier option and prioritize one clearly
+stronger local opponent; the final tier count is not a requirement to reproduce
+the four shipped algorithm profiles.
+
+Spec 055 is the current AI product contract. Small pretrained neural models,
+search and license-compatible existing code or weights may be evaluated. AI
+must use only its own hand and public information, run offline on the phone,
+return legal actions and keep interaction responsive. Spec 055 owns the agreed
+end-to-end waiting and installation-increment targets. ADR 0018 replaces the
+historical fixed enhanced budgets and implementation restrictions.
+ADR 0017 describes the shipped fallback behavior until integration.
 
 ## 8. Assistance and accessibility
 
@@ -296,8 +302,10 @@ The product design guarantees:
 Application source must not use `fetch`, XMLHttpRequest, WebSocket,
 EventSource, Beacon, login, advertising, analytics, remote configuration, or
 equivalent network capability. Generated PWA installation/update code is the
-only exception and may retrieve only the reviewed, fixed, same-origin static
-build files.
+existing exception and may retrieve only the reviewed, fixed, same-origin static
+build files. ADR 0018 additionally permits reviewed installed model/runtime
+asset loading through delivery/platform adapters for a future AI integration;
+it does not permit remote inference, model downloads after installation or uploads.
 
 The public repository must not contain hosting credentials, Android signing
 keys, API keys, tokens, cookies, sessions, private email addresses, unapproved
@@ -316,10 +324,13 @@ may be modified only when the user explicitly requests that change.
 - Project license: Apache License 2.0.
 - The public copyright identity must be approved before the license and first
   commit are created.
-- Third-party projects are reference-only by default.
+- Third-party projects are reference-only by default, except for the explicitly
+  authorized evaluation and reuse of license-compatible AI code/model weights
+  under Spec 055.
 - Direct reuse requires an explicit source/version record, verified compatible
   license, material engineering value, preserved attribution, and separate
-  approval.
+  approval. The owner has already granted AI reuse authorization through Spec
+  055; source, version and code/weight license review remain required.
 - Code with an unclear license must not be copied.
 - GPL or AGPL code must not be incorporated without explicit acceptance of the
   resulting licensing consequences.
