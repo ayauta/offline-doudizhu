@@ -6,21 +6,19 @@ import {
   type AiDecisionContext,
   type AiTurnResult,
 } from "../../core/ai/index.js";
-import { getCard, type CardId } from "../../core/cards/index.js";
+import { type CardId } from "../../core/cards/index.js";
 import {
   INITIAL_GAME_STATE,
   SEAT_ORDER,
   transition,
   type BidDecision,
   type GameEvent,
-  type GameResult,
   type GameState,
   type Seat,
 } from "../../core/game/index.js";
 import {
   generateLegalActions,
   validatePlay,
-  type PlayPatternKind,
 } from "../../core/rules/index.js";
 import {
   createEnhancedAiTurnRunner,
@@ -33,29 +31,22 @@ import {
   DEFAULT_AI_SETTINGS,
   type AiType,
 } from "../settings/ai-settings.js";
+import {
+  activeCurrentPlay,
+  deriveView,
+  isImpactPattern,
+  selectionIsLegal,
+  type MatchFeedback,
+  type ProductionView,
+  type PublicTableAction,
+  type SelectionError,
+} from "./table-view.js";
 
 const AI_BEAT_MS = ENHANCED_AI_PRESENTATION_BEAT_MS;
 const AI_FALLBACK_NOTICE_MS = 2_200;
 const TRICK_CLEAR_MS = 400;
 const RESULT_REVEAL_MS = 580;
 const REDEAL_NOTICE_MS = 600;
-const HAND_RANK_ORDER = [
-  "3",
-  "4",
-  "5",
-  "6",
-  "7",
-  "8",
-  "9",
-  "10",
-  "J",
-  "Q",
-  "K",
-  "A",
-  "2",
-  "small-joker",
-  "big-joker",
-] as const;
 
 export interface DeckSource {
   readonly nextDeck: () => readonly CardId[];
@@ -65,66 +56,16 @@ export interface PresentationScheduler {
   readonly schedule: (delayMs: number, callback: () => void) => () => void;
 }
 
-export type ProductionControl =
-  | "bid-decline"
-  | "bid-call"
-  | "pass"
-  | "hint"
-  | "play"
-  | "home"
-  | "restart";
-
-export type SelectionError =
-  | "unsupported-selection"
-  | "does-not-beat"
-  | "retry-selection";
-
-export type MatchFeedback = "all-pass" | "no-response";
-export type SeatRole = "landlord" | "farmer";
-
-export type PublicTableAction =
-  | Readonly<{
-      type: "pass";
-    }>
-  | Readonly<{
-      type: "play";
-      cards: readonly CardId[];
-      pattern: PlayPatternKind;
-      leading: boolean;
-      weight: "normal" | "impact";
-    }>;
-
-type SeatRecord<Value> = Readonly<Record<Seat, Value>>;
-
-export type HomeView = Readonly<{
-  screen: "home";
-  aiType: AiType;
-}>;
-
-export type MatchView = Readonly<{
-  screen: "match";
-  stage: "bidding" | "playing" | "result";
-  humanHand: readonly CardId[];
-  selectedCardIds: readonly CardId[];
-  bottomCardCount: 3;
-  bottomCards: readonly CardId[] | null;
-  currentSeat: Seat | null;
-  landlord: Seat | null;
-  roles: SeatRecord<SeatRole | null>;
-  remainingCardCounts: SeatRecord<number>;
-  biddingActions: SeatRecord<BidDecision | null>;
-  tableActions: SeatRecord<PublicTableAction | null>;
-  controls: readonly ProductionControl[];
-  playEnabled: boolean;
-  selectionError: SelectionError | null;
-  feedback: MatchFeedback | null;
-  aiFallbackNotice: boolean;
-  exitConfirmation: boolean;
-  result: GameResult | null;
-  lowCardSeats: readonly Seat[];
-}>;
-
-export type ProductionView = HomeView | MatchView;
+export type {
+  HomeView,
+  MatchFeedback,
+  MatchView,
+  ProductionControl,
+  ProductionView,
+  PublicTableAction,
+  SeatRole,
+  SelectionError,
+} from "./table-view.js";
 
 export type ProductionIntent =
   | Readonly<{ type: "start-game" }>
@@ -150,57 +91,12 @@ export interface ProductionSession {
   readonly subscribe: (listener: () => void) => () => void;
 }
 
-function freezeDeep<T>(value: T): T {
-  if (typeof value !== "object" || value === null || Object.isFrozen(value)) {
-    return value;
-  }
-  for (const nested of Object.values(value)) {
-    freezeDeep(nested);
-  }
-  return Object.freeze(value);
-}
-
 function emptySeatRecord<Value>(value: Value): Record<Seat, Value> {
   return {
     human: value,
     "ai-one": value,
     "ai-two": value,
   };
-}
-
-function sortHandForDisplay(cards: readonly CardId[]): CardId[] {
-  return [...cards].sort((left, right) => {
-    const leftCard = getCard(left);
-    const rightCard = getCard(right);
-    const rankDifference = HAND_RANK_ORDER.indexOf(rightCard.rank) - HAND_RANK_ORDER.indexOf(leftCard.rank);
-    // Canonical standard-card IDs ascend clubs, diamonds, hearts, spades;
-    // descending IDs therefore define the stable display order inside a rank.
-    return rankDifference === 0 ? right - left : rankDifference;
-  });
-}
-
-function copyTableAction(action: PublicTableAction | null): PublicTableAction | null {
-  if (action === null || action.type === "pass") {
-    return action;
-  }
-  return {
-    ...action,
-    cards: [...action.cards],
-  };
-}
-
-function isImpactPattern(pattern: PlayPatternKind): boolean {
-  return pattern === "bomb" || pattern === "rocket";
-}
-
-function hasHands(
-  state: GameState,
-): state is Extract<GameState, { readonly hands: unknown }> {
-  return state.phase !== "awaiting-deal";
-}
-
-function activeCurrentPlay(state: GameState) {
-  return state.phase === "playing" ? state.currentPlay : null;
 }
 
 export function createProductionSession(options: Readonly<{
@@ -230,8 +126,6 @@ export function createProductionSession(options: Readonly<{
   let selectionError: SelectionError | null = null;
   let selectionChecked = false;
   let hintIndex = 0;
-  let humanHand: readonly CardId[] = [];
-  let remainingCardCounts: Record<Seat, number> = emptySeatRecord(0);
   let bottomCards: readonly CardId[] | null = null;
   let biddingActions: Record<Seat, BidDecision | null> = emptySeatRecord(null);
   let tableActions: Record<Seat, PublicTableAction | null> = emptySeatRecord(null);
@@ -249,139 +143,26 @@ export function createProductionSession(options: Readonly<{
     schedule,
   });
 
-  function syncPublicCountsAndHand(): void {
-    if (!hasHands(state)) {
-      return;
-    }
-    humanHand = sortHandForDisplay(state.hands.human);
-    remainingCardCounts = {
-      human: state.hands.human.length,
-      "ai-one": state.hands["ai-one"].length,
-      "ai-two": state.hands["ai-two"].length,
-    };
-  }
-
-  function roles(): Record<Seat, SeatRole | null> {
-    const landlord = "landlord" in state ? state.landlord : null;
-    if (landlord === null) {
-      return emptySeatRecord(null);
-    }
-    return {
-      human: landlord === "human" ? "landlord" : "farmer",
-      "ai-one": landlord === "ai-one" ? "landlord" : "farmer",
-      "ai-two": landlord === "ai-two" ? "landlord" : "farmer",
-    };
-  }
-
-  function legalHumanActions() {
-    if (
-      (state.phase !== "ready-to-play" && state.phase !== "playing") ||
-      state.currentSeat !== "human"
-    ) {
-      return Object.freeze([]);
-    }
-    return generateLegalActions({
-      hand: state.hands.human,
-      currentPlay: activeCurrentPlay(state),
-    });
-  }
-
-  function selectionIsLegal(): boolean {
-    if (!selectionChecked || selected.size === 0) {
-      return false;
-    }
-    if (
-      (state.phase !== "ready-to-play" && state.phase !== "playing") ||
-      state.currentSeat !== "human"
-    ) {
-      return false;
-    }
-    return validatePlay(
-      {
-        hand: state.hands.human,
-        currentPlay: activeCurrentPlay(state),
-      },
-      { type: "play", cards: [...selected] },
-    ).ok;
-  }
-
-  function controls(): readonly ProductionControl[] {
-    if (exitConfirmation || pendingClear || pendingRedeal || pendingResult) {
-      return [];
-    }
-    if (state.phase === "finished") {
-      return resultVisible ? ["home", "restart"] : [];
-    }
-    if (state.phase === "bidding" && state.currentSeat === "human") {
-      return ["bid-decline", "bid-call"];
-    }
-    if (
-      (state.phase !== "ready-to-play" && state.phase !== "playing") ||
-      state.currentSeat !== "human"
-    ) {
-      return [];
-    }
-    const legalActions = legalHumanActions();
-    const hasPlay = legalActions.some((action) => action.type === "play");
-    if (!hasPlay) {
-      return ["pass"];
-    }
-    return activeCurrentPlay(state) === null
-      ? ["hint", "play"]
-      : ["pass", "hint", "play"];
-  }
-
   function buildView(): ProductionView {
-    if (!inMatch) {
-      return freezeDeep({ screen: "home", aiType: selectedAiType } as const);
-    }
-
-    const stage: MatchView["stage"] =
-      state.phase === "bidding" || state.phase === "awaiting-deal"
-        ? "bidding"
-        : state.phase === "finished" && resultVisible
-          ? "result"
-          : "playing";
-    const currentSeat =
-      state.phase === "bidding" ||
-      state.phase === "ready-to-play" ||
-      state.phase === "playing"
-        ? state.currentSeat
-        : null;
-    const landlord = "landlord" in state ? state.landlord : null;
-    const visibleControls = controls();
-    const noResponse =
-      stage === "playing" &&
-      currentSeat === "human" &&
-      visibleControls.length === 1 &&
-      visibleControls[0] === "pass";
-
-    return freezeDeep({
-      screen: "match",
-      stage,
-      humanHand: [...humanHand],
-      selectedCardIds: humanHand.filter((cardId) => selected.has(cardId)),
-      bottomCardCount: 3,
-      bottomCards: bottomCards === null ? null : [...bottomCards],
-      currentSeat,
-      landlord,
-      roles: roles(),
-      remainingCardCounts: { ...remainingCardCounts },
-      biddingActions: { ...biddingActions },
-      tableActions: {
-        human: copyTableAction(tableActions.human),
-        "ai-one": copyTableAction(tableActions["ai-one"]),
-        "ai-two": copyTableAction(tableActions["ai-two"]),
-      },
-      controls: [...visibleControls],
-      playEnabled: visibleControls.includes("play") && selectionIsLegal(),
+    return deriveView({
+      state,
+      aiType: selectedAiType,
+      inMatch,
+      resultVisible,
+      selectionChecked,
+      selected,
+      bottomCards,
       selectionError,
-      feedback: noResponse ? "no-response" : feedback,
+      feedback,
       aiFallbackNotice,
       exitConfirmation,
-      result: resultVisible && state.phase === "finished" ? { ...state.result } : null,
-      lowCardSeats: SEAT_ORDER.filter((seat) => lowCardSeats.has(seat)),
-    } as const);
+      pendingClear,
+      pendingRedeal,
+      pendingResult,
+      biddingActions,
+      tableActions,
+      lowCardSeats,
+    });
   }
 
   function publish(): void {
@@ -434,8 +215,6 @@ export function createProductionSession(options: Readonly<{
     selectionChecked = false;
     hintIndex = 0;
     selected = new Set();
-    humanHand = [];
-    remainingCardCounts = emptySeatRecord(0);
     bottomCards = null;
     biddingActions = emptySeatRecord(null);
     tableActions = emptySeatRecord(null);
@@ -464,7 +243,6 @@ export function createProductionSession(options: Readonly<{
     tableActions = emptySeatRecord(null);
     lowCardSeats.clear();
     pendingRedeal = false;
-    syncPublicCountsAndHand();
     publish();
   }
 
@@ -577,7 +355,6 @@ export function createProductionSession(options: Readonly<{
   function applyAiResult(result: Extract<AiTurnResult, { readonly ok: true }>): void {
     state = result.state;
     processEvents(result.events);
-    syncPublicCountsAndHand();
     publish();
     if (pendingClear) {
       scheduleTrickClear();
@@ -670,7 +447,6 @@ export function createProductionSession(options: Readonly<{
     }
     state = result.state;
     processEvents(result.events);
-    syncPublicCountsAndHand();
     publish();
     if (pendingClear) {
       scheduleTrickClear();
@@ -755,7 +531,7 @@ export function createProductionSession(options: Readonly<{
   }
 
   function playSelected(): void {
-    if (!selectionIsLegal()) {
+    if (!selectionIsLegal(state, selected, selectionChecked)) {
       validateSelection();
       return;
     }
