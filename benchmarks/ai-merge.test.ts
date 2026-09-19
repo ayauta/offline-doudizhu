@@ -65,9 +65,14 @@ function joinByDealIndex(
   let gaps = 0;
   let overlaps = 0;
   const ordered = [...shards].sort((left, right) => left.dealStart - right.dealStart);
+  // A deal window does not have to start at zero — the discovery pools start at
+  // 20001, 5001 and 301. Indexing by the absolute deal index would leave a hole
+  // the size of the window's base and trip the gap guard on a perfectly good
+  // run, so arrays are placed relative to the first deal any shard covers.
+  const base = ordered[0]?.dealStart ?? 0;
   for (const shard of ordered) {
     shard.values.forEach((value, offset) => {
-      const index = shard.dealStart + offset;
+      const index = shard.dealStart + offset - base;
       if (written.has(index)) {
         overlaps += 1;
       }
@@ -81,7 +86,10 @@ function joinByDealIndex(
     }
   }
   if (gaps > 0 || overlaps > 0) {
-    report(`!! ${what}: ${gaps} uncovered deal index(es), ${overlaps} overlapping write(s)`);
+    report(
+      `!! ${what}: ${gaps} uncovered deal index(es), ${overlaps} overlapping write(s)` +
+      ` (deals ${base}..${base + values.length - 1})`,
+    );
   }
   return { values, gaps, overlaps };
 }
