@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { expectDeepFrozen } from "../support/harness.js";
+
 import {
   BASELINE_AI_STRATEGY,
   createPlayerView,
@@ -46,16 +48,6 @@ function readyWithAiOneLandlord(): ReadyToPlayState {
     throw new Error("Expected ai-one to become landlord.");
   }
   return called.state;
-}
-
-function expectDeepFrozen(value: unknown): void {
-  if (typeof value !== "object" || value === null) {
-    return;
-  }
-  expect(Object.isFrozen(value)).toBe(true);
-  for (const nested of Object.values(value)) {
-    expectDeepFrozen(nested);
-  }
 }
 
 describe("redacted AI player views", () => {

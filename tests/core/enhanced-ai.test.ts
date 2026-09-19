@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { cardIds } from "../support/harness.js";
+
 import {
   CASUAL_AI_STRATEGY,
   DEFAULT_AI_STRATEGY,
@@ -16,11 +18,8 @@ import {
   samplePossibleWorld,
 } from "../../src/core/ai/enhanced.js";
 import {
-  STANDARD_RANKS,
-  asCardId,
   createDeck,
   type CardId,
-  type Rank,
 } from "../../src/core/cards/index.js";
 import type { Seat } from "../../src/core/game/index.js";
 import {
@@ -28,23 +27,6 @@ import {
   generateLegalActions,
   type ClassifiedPlay,
 } from "../../src/core/rules/index.js";
-
-type CardGroup = readonly [rank: Rank, count: number];
-
-function cardIds(...groups: readonly CardGroup[]): CardId[] {
-  const cards: CardId[] = [];
-  for (const [rank, count] of groups) {
-    if (rank === "small-joker" || rank === "big-joker") {
-      cards.push(asCardId(rank === "small-joker" ? 52 : 53));
-      continue;
-    }
-    const rankIndex = STANDARD_RANKS.indexOf(rank);
-    for (let suit = 0; suit < count; suit += 1) {
-      cards.push(asCardId(rankIndex * 4 + suit));
-    }
-  }
-  return cards;
-}
 
 function classified(cards: readonly CardId[]): ClassifiedPlay {
   const result = classifyPlay(cards);

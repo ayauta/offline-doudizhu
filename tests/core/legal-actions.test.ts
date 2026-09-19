@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { cardIds, type CardGroup } from "../support/harness.js";
+
 import {
   STANDARD_RANKS,
   asCardId,
@@ -14,27 +16,6 @@ import {
   type PlayPatternKind,
   type ValidatedPlayAction,
 } from "../../src/core/rules/index.js";
-
-type CardGroup = readonly [rank: Rank, count: number];
-
-function cardIds(...groups: readonly CardGroup[]): CardId[] {
-  const result: CardId[] = [];
-  for (const [rank, count] of groups) {
-    if (rank === "small-joker" || rank === "big-joker") {
-      result.push(asCardId(rank === "small-joker" ? 52 : 53));
-      continue;
-    }
-
-    const rankIndex = STANDARD_RANKS.indexOf(rank);
-    if (rankIndex < 0 || count < 1 || count > 4) {
-      throw new Error(`Invalid test card group: ${rank} x ${count}.`);
-    }
-    for (let suitIndex = 0; suitIndex < count; suitIndex += 1) {
-      result.push(asCardId(rankIndex * 4 + suitIndex));
-    }
-  }
-  return result;
-}
 
 function semanticKey(action: ValidatedPlayAction): string {
   if (action.type === "pass") {

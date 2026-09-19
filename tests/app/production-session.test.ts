@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { expectDeepFrozen, seededRandom } from "../support/harness.js";
+
 import {
   CASUAL_AI_STRATEGY,
   runAiTurn,
@@ -14,7 +16,6 @@ import {
   createDeck,
   shuffle,
   type CardId,
-  type RandomSource,
 } from "../../src/core/cards/index.js";
 import {
   INITIAL_GAME_STATE,
@@ -91,16 +92,6 @@ function queuedDeckSource(decks: readonly (readonly CardId[])[]): DeckSource & {
   };
 }
 
-function seededRandom(seed: number): RandomSource {
-  let state = seed >>> 0;
-  return {
-    next() {
-      state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
-      return state / 0x1_0000_0000;
-    },
-  };
-}
-
 function deal(deck: readonly CardId[]): GameState {
   const result = transition(INITIAL_GAME_STATE, { type: "deal", deck });
   if (!result.ok) {
@@ -143,16 +134,6 @@ function findAllPassDeck(): readonly CardId[] {
     }
   }
   throw new Error("Expected the deterministic corpus to include an all-pass deal.");
-}
-
-function expectDeepFrozen(value: unknown): void {
-  if (typeof value !== "object" || value === null) {
-    return;
-  }
-  expect(Object.isFrozen(value)).toBe(true);
-  for (const nested of Object.values(value)) {
-    expectDeepFrozen(nested);
-  }
 }
 
 function playHumanTurn(

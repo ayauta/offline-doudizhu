@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { expectDeepFrozen } from "../support/harness.js";
+
 import {
   asCardId,
   createDeck,
@@ -19,16 +21,6 @@ function deal(deck = createDeck()): BiddingState {
     throw new Error("Expected a successful deal into bidding.");
   }
   return result.state;
-}
-
-function expectDeepFrozen(value: unknown): void {
-  if (typeof value !== "object" || value === null) {
-    return;
-  }
-  expect(Object.isFrozen(value)).toBe(true);
-  for (const nested of Object.values(value)) {
-    expectDeepFrozen(nested);
-  }
 }
 
 describe("bidding and deal state", () => {

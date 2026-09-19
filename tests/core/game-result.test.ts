@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { expectDeepFrozen } from "../support/harness.js";
+
 import {
   asCardId,
   createDeck,
@@ -47,16 +49,6 @@ function finishRound(landlord: Seat, winner: Seat): FinishedState {
     throw new Error("Expected the final card to finish the round.");
   }
   return result.state;
-}
-
-function expectDeepFrozen(value: unknown): void {
-  if (typeof value !== "object" || value === null) {
-    return;
-  }
-  expect(Object.isFrozen(value)).toBe(true);
-  for (const nested of Object.values(value)) {
-    expectDeepFrozen(nested);
-  }
 }
 
 describe("game result", () => {
