@@ -297,7 +297,7 @@ selection-on-discovery 的风险随暴露次数累积，而不是被预登记消
 | --- | --- | --- |
 | **301–700** | **已退休**（Discovery V1，暴露计数 = 2） | historical / regression / 假设生成。**不得再决定 KEEP / REVERT** |
 | 5001–5400 | calibration | 只做机械 preflight 与离线重放 |
-| **20001–20400** | **Discovery V2，暴露计数 = 0** | 下一条正式机制实验的首次 paired A/B |
+| **20001–20400** | **Discovery V2，暴露计数 = 1**（E4） | 下一条正式机制实验的首次 paired A/B |
 | 10001–10400 | final validation | KEEP 前独立复核，**至今从未消耗** |
 
 **301–700 于 2026-09-19 退休。** 它被两个正式机制实验用过（E1、E3），而这两次结果
