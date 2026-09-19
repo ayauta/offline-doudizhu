@@ -106,7 +106,7 @@ export function decideEnhancedAi(
     // `NaN`: every budget check compares false and the search quietly degrades
     // to one candidate and zero rollout worlds, reported as `ok: true`. The
     // caller's fallback is a real answer; this silence is not.
-    if (!Object.hasOwn(ENHANCED_AI_BUDGET_MS, request.aiType)) {
+    if (!Object.prototype.hasOwnProperty.call(ENHANCED_AI_BUDGET_MS, request.aiType)) {
       return Object.freeze({ ok: false, reason: "failed" });
     }
     if (context.kind === "bid") {

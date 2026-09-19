@@ -1,13 +1,12 @@
-import { STANDARD_RANKS, getCard, type CardId, type Rank } from "../cards/index.js";
+import { getCard, type CardId, type Rank } from "../cards/index.js";
 import type { Seat } from "../game/index.js";
-import type { PlayPattern, ValidatedPlayAction } from "../rules/index.js";
+import {
+  RANK_ORDER,
+  rankStrength,
+  type PlayPattern,
+  type ValidatedPlayAction,
+} from "../rules/index.js";
 import type { PlayingPlayerView } from "./ai.js";
-
-const RANKS: readonly Rank[] = Object.freeze([
-  ...STANDARD_RANKS,
-  "small-joker",
-  "big-joker",
-]);
 
 export function isSameSide(left: Seat, right: Seat, landlord: Seat): boolean {
   return left === landlord ? right === landlord : right !== landlord;
@@ -24,7 +23,7 @@ export function currentPlaySeat(view: PlayingPlayerView): Seat | null {
 }
 
 export function mainRankStrength(pattern: PlayPattern): number {
-  return pattern.kind === "rocket" ? RANKS.length : RANKS.indexOf(pattern.mainRank);
+  return pattern.kind === "rocket" ? RANK_ORDER.length : rankStrength(pattern.mainRank);
 }
 
 function opposingSeats(view: PlayingPlayerView): readonly Seat[] {
@@ -107,8 +106,8 @@ function publicControlScore(view: PlayingPlayerView, pattern: PlayPattern): numb
   const strength = mainRankStrength(pattern);
   const seen = seenRankCounts(view);
   let unseenHigher = 0;
-  for (let index = strength + 1; index < RANKS.length; index += 1) {
-    const rank = RANKS[index];
+  for (let index = strength + 1; index < RANK_ORDER.length; index += 1) {
+    const rank = RANK_ORDER[index];
     if (rank !== undefined) {
       const total = rank === "small-joker" || rank === "big-joker" ? 1 : 4;
       unseenHigher += Math.max(0, total - (seen.get(rank) ?? 0));

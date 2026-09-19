@@ -1,4 +1,5 @@
-import { STANDARD_RANKS, getCard, type CardId, type Rank } from "../cards/index.js";
+import { getCard, type CardId, type Rank } from "../cards/index.js";
+import { rankStrength } from "../rules/index.js";
 import type { GameCommand } from "../game/index.js";
 import type { PlayPattern, ValidatedPlayAction } from "../rules/index.js";
 import type { AiDecisionContext, AiStrategy } from "./ai.js";
@@ -18,12 +19,6 @@ export type ScoredPlayAction = Readonly<{
 }>;
 
 type PlayContext = Extract<AiDecisionContext, { readonly kind: "play" }>;
-
-const RANKS: readonly Rank[] = Object.freeze([
-  ...STANDARD_RANKS,
-  "small-joker",
-  "big-joker",
-]);
 
 function groupCounts(cards: readonly CardId[]): Map<Rank, number> {
   const counts = new Map<Rank, number>();
@@ -61,7 +56,7 @@ function shapeValue(pattern: PlayPattern): number {
 function highCardCost(cards: readonly CardId[]): number {
   let cost = 0;
   for (const cardId of cards) {
-    const strength = RANKS.indexOf(getCard(cardId).rank);
+    const strength = rankStrength(getCard(cardId).rank);
     if (strength >= 11) {
       cost += (strength - 10) * 34;
     }

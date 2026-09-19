@@ -1,11 +1,10 @@
 import {
-  STANDARD_RANKS,
   compareCardIds,
   getCard,
   type CardId,
   type Rank,
 } from "../cards/index.js";
-import { RANK_ORDER, rankStrength } from "./ranks.js";
+import { RANK_ORDER, SEQUENCE_RANKS, rankStrength } from "./ranks.js";
 import type { PlayPattern, PlayPatternKind } from "./types.js";
 import {
   validatePlay,
@@ -34,8 +33,6 @@ const PATTERN_KIND_ORDER: readonly PlayPatternKind[] = Object.freeze([
   "bomb",
   "rocket",
 ]);
-
-const SEQUENCE_RANKS = STANDARD_RANKS.slice(0, -1);
 
 function groupHand(hand: readonly CardId[]): readonly RankGroup[] {
   const byRank = new Map<Rank, CardId[]>();

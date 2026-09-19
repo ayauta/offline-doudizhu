@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { cardIds, seededRandom } from "../support/harness.js";
+
 import {
   BASELINE_AI_STRATEGY,
   CASUAL_AI_STRATEGY,
@@ -13,13 +15,9 @@ import {
   type RemainingCardCounts,
 } from "../../src/core/ai/index.js";
 import {
-  STANDARD_RANKS,
-  asCardId,
   createDeck,
   shuffle,
   type CardId,
-  type RandomSource,
-  type Rank,
 } from "../../src/core/cards/index.js";
 import {
   INITIAL_GAME_STATE,
@@ -34,30 +32,6 @@ import {
   generateLegalActions,
   type ClassifiedPlay,
 } from "../../src/core/rules/index.js";
-
-type CardGroup = readonly [rank: Rank, count: number];
-
-function cardIds(...groups: readonly CardGroup[]): CardId[] {
-  const result: CardId[] = [];
-  for (const [rank, count] of groups) {
-    if (rank === "small-joker" || rank === "big-joker") {
-      if (count !== 1) {
-        throw new Error("A joker test group must contain exactly one card.");
-      }
-      result.push(asCardId(rank === "small-joker" ? 52 : 53));
-      continue;
-    }
-
-    const rankIndex = STANDARD_RANKS.indexOf(rank);
-    if (rankIndex < 0 || count < 1 || count > 4) {
-      throw new Error(`Invalid test card group: ${rank} x ${count}.`);
-    }
-    for (let suitIndex = 0; suitIndex < count; suitIndex += 1) {
-      result.push(asCardId(rankIndex * 4 + suitIndex));
-    }
-  }
-  return result;
-}
 
 function classified(cards: readonly CardId[]): ClassifiedPlay {
   const result = classifyPlay(cards);
@@ -135,16 +109,6 @@ function playingContext(options: {
     view,
     legalActions: generateLegalActions({ hand: view.hand, currentPlay }),
   });
-}
-
-function seededRandom(seed: number): RandomSource {
-  let state = seed >>> 0;
-  return {
-    next(): number {
-      state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
-      return state / 2 ** 32;
-    },
-  };
 }
 
 function strategyCommand(state: GameState, strategy: AiStrategy): GameCommand {

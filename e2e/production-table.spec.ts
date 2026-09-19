@@ -406,6 +406,33 @@ test("presents opponent counts as borderless noninteractive card-stack status", 
   }
 });
 
+test("refuses to select interface text while playing", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 400 });
+  await useDeterministicRandom(page, 3);
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始游戏" }).click();
+  await page.getByRole("button", { name: "叫地主" }).click();
+
+  const back = page.getByRole("button", { name: "返回", exact: true });
+  await expect(back).toBeVisible();
+  await expect(back).toHaveCSS("user-select", "none");
+
+  // A press on the table that drags onto a label must not start a selection; on a
+  // touch device the same gesture raises the platform selection handles and the
+  // copy/share bar over the table.
+  const viewport = page.viewportSize();
+  const box = await back.boundingBox();
+  if (viewport === null || box === null) {
+    throw new Error("Expected a viewport and a back-button box.");
+  }
+  await page.mouse.move(viewport.width / 2, viewport.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
+  await page.mouse.up();
+
+  expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
+});
+
 test("centers larger overlapping hands and opponent anchors on desktop", async ({ page }) => {
   await useDeterministicRandom(page, 4);
 
@@ -588,6 +615,27 @@ test("continuously selects and deselects exposed cards without reordering the ha
   )).toEqual(idsBefore);
 });
 
+test("keeps continuous selection working without post-WebView-90 built-ins", async ({ page }) => {
+  await page.addInitScript(() => {
+    Reflect.deleteProperty(Array.prototype, "at");
+    Reflect.deleteProperty(Object, "hasOwn");
+  });
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await useIdentityDeck(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始游戏" }).click();
+  await page.getByRole("button", { name: "叫地主" }).click();
+
+  const cards = page.getByLabel("你的手牌").getByRole("button");
+  await swipeInOneMove(page, cards.nth(3), cards.nth(6));
+
+  for (const index of [3, 4, 5, 6]) {
+    await expect(cards.nth(index)).toHaveAttribute("aria-pressed", "true");
+  }
+  expect(pageErrors).toEqual([]);
+});
+
 test("settles the origin with the rest while continuous deselection is still held", async ({ page }) => {
   await useIdentityDeck(page);
   await page.goto("/");
@@ -689,6 +737,14 @@ test("naturally narrows and smoothly regroups the hand only after an accepted pl
     duration: 180,
     easing: "cubic-bezier(0.77, 0, 0.175, 1)",
   });
+  expect(await hand.getByRole("button").first().evaluate((element) => {
+    const animation = element.getAnimations().find(({ id }) => id === "hand-regroup");
+    const frames = (animation?.effect as KeyframeEffect | null)?.getKeyframes() ?? [];
+    return frames.length === 2 && frames.every((frame) =>
+      typeof frame.transform === "string" &&
+      !Object.prototype.hasOwnProperty.call(frame, "translate")
+    );
+  })).toBe(true);
 });
 
 test("makes hand regroup immediate when reduced motion is requested", async ({ page }) => {

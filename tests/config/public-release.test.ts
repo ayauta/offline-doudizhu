@@ -30,10 +30,22 @@ describe("public preview release delivery", () => {
     // package.json, the Android versionName and versionCode, the README, and
     // this test together. `versionCode` must increase, or Android rejects the
     // new APK as a downgrade over an installed older release.
-    expect(packageConfig.version).toBe("0.3.0");
-    expect(androidBuild).toContain('versionName = "0.3.0"');
-    expect(androidBuild).toContain("versionCode = 3");
-    expect(readme).toContain("v0.3.0");
+    expect(packageConfig.version).toBe("0.4.0");
+    expect(androidBuild).toContain('versionName = "0.4.0"');
+    expect(androidBuild).toContain("versionCode = 4");
+    expect(readme).toContain("v0.4.0");
+  });
+
+  it("keeps apk inspection from closing the pipe it is still reading", async () => {
+    const inspection = await source("../../scripts/inspect-android-apk.sh");
+
+    // `grep -q` exits on its first match while `unzip` is still writing the
+    // listing, so unzip takes SIGPIPE and `pipefail` fails the whole gate. That
+    // makes a release-blocking check fail intermittently rather than never, which
+    // is the worst shape for a gate: it can pass a dozen runs and then fail a
+    // public release. Reading every line asserts the same thing and cannot race.
+    expect(inspection).toContain("set -euo pipefail");
+    expect(inspection).not.toMatch(/\|\s*grep\s+-[A-Za-z]*q\b/);
   });
 
   it("targets the WebView generation shipped with Android 10 emulator images", async () => {

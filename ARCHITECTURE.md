@@ -132,8 +132,14 @@ repositions DOM or uses drag-and-drop.
 The product defines no dedicated keyboard model, key bindings, focus-navigation
 scheme, or keyboard acceptance requirement. Semantic controls keep any native
 browser keyboard behavior they receive; that incidental behavior is neither
-disabled nor claimed as a complete way to play a match. ADR 0010 supersedes the
-earlier keyboard-completeness requirement in ADR 0008.
+disabled nor claimed as a complete way to play a match, with one deliberate
+exception: text selection is disabled across the whole shell. Every label is a
+button or a status readout, so nothing is worth copying, and a press that drags
+onto a neighbouring control would otherwise start a selection and, on a touch
+device, raise the platform selection handles and copy bar over the table. The
+regression test drags from the table onto the back control and requires an empty
+selection. ADR 0010 supersedes the earlier keyboard-completeness requirement in
+ADR 0008.
 
 Landscape is the only functional orientation. CSS makes the complete table
 unavailable in portrait and exposes only the accessible rotate prompt. Layout
@@ -158,9 +164,12 @@ samples possible hidden hands from public information only. These are shipped
 implementation details; ADR 0018 governs future candidate architecture.
 ADR 0017 owns the implemented failure scope and notices.
 
-The supported runtime baseline is the Vite build target, `chrome74`; older
-browsers and Android WebView builds are not supported. The enhanced-AI Worker
-must stay a classic-script bundle: Vite emits IIFE output, and the client's
+The Android runtime capability floor is Chrome/System WebView 90. Vite keeps
+the more conservative `chrome74` syntax target, while TypeScript uses the
+ES2021 library ceiling and a project compatibility check rejects later runtime
+built-ins and reviewed DOM/CSS incompatibilities. Syntax transpilation does not
+polyfill built-ins. The enhanced-AI Worker must stay a classic-script bundle:
+Vite emits IIFE output, and the client's
 `type: "module"` option is ignored as an unknown dictionary member where module
 workers are unsupported, so the worker still runs on the baseline browser.
 Emitting ES worker output would break those browsers silently, and no other
@@ -197,6 +206,10 @@ boundary; ADR 0012 owns public distribution and release automation.
   The boundary check computes the runtime import closure of both main delivery
   entries and the AI worker, so enhanced policy implementation is unreachable
   from the main thread and reachable only from the worker entry.
+- The WebView 90 compatibility check rejects unsupported runtime built-ins,
+  independent transform properties, and dynamic viewport units without their
+  legacy fallback. Playwright also runs the continuous-selection path with
+  post-WebView-90 built-ins removed.
 - The privacy check rejects network capability, secrets, remote assets, and
   unexpected generated-worker behavior.
 - Build inspection verifies manifest, relative output, PWA precache coverage
@@ -216,7 +229,11 @@ boundary; ADR 0012 owns public distribution and release automation.
   lifecycle, relaunch, and crash smoke on API 29/36 under ADR 0014.
 - Physical-phone release sampling covers comfort, touch feel, heat, both
   landscape rotations, lifecycle continuity, and two-press system Back without
-  being represented as an automated capability.
+  being represented as an automated capability. A developer-operated ADB/CDP
+  probe can additionally report runtime capabilities and check forward/reverse
+  continuous selection plus discrete tap on the connected WebView; it is a
+  focused diagnostic, not a replacement for the manual sampling or emulator
+  artifact smoke.
 - GitHub Release and Pages delivery is tag-driven from protected `main` under
   ADR 0012. Both public targets come from the same verified tag artifact.
 

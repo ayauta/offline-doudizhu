@@ -1,6 +1,6 @@
 {
   "name": "offline-doudizhu",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Offline, accessible Dou Dizhu Web/PWA and Android game",
   "license": "Apache-2.0",
@@ -13,8 +13,10 @@
     "dev": "vite",
     "build": "vite build",
     "bench:ai": "vitest run --config vitest.benchmark.config.ts --reporter=verbose",
+    "probe:phone:compat": "node scripts/phone-probe.mjs --compat",
     "preview": "vite preview",
     "check:bundle": "node scripts/check-bundle.mjs",
+    "check:compat": "node scripts/check-webview-compat.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:browser": "node scripts/run-browser-tests.mjs",

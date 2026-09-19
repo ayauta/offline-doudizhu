@@ -41,14 +41,14 @@ function CardArtwork({ cardId }: Readonly<{ cardId: CardId }>) {
   );
 }
 
-function cardName(cardId: CardId): string {
+export function cardName(cardId: CardId): string {
   const card = getCard(cardId);
   return card.kind === "joker"
     ? card.rank === "big-joker" ? "大王" : "小王"
     : `${SUIT_NAMES[card.suit]}${card.rank}`;
 }
 
-function isRed(cardId: CardId): boolean {
+export function isRed(cardId: CardId): boolean {
   const card = getCard(cardId);
   return card.kind === "joker"
     ? card.rank === "big-joker"

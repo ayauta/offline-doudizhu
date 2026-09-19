@@ -2,6 +2,12 @@ export { classifyPlay } from "./classify-play.js";
 export { comparePlays } from "./compare-plays.js";
 export { generateLegalActions } from "./generate-legal-actions.js";
 export {
+  MAX_SEQUENCE_RANK_STRENGTH,
+  RANK_ORDER,
+  SEQUENCE_RANKS,
+  rankStrength,
+} from "./ranks.js";
+export {
   validatePlay,
   type PlayAction,
   type PlayContext,

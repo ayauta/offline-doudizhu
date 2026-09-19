@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { expectDeepFrozen } from "../support/harness.js";
+
 import {
   asCardId,
   createDeck,
@@ -84,16 +86,6 @@ function deckWithWinningHumanLandlord(): CardId[] {
 
   deck.push(...bottomCards);
   return deck;
-}
-
-function expectDeepFrozen(value: unknown): void {
-  if (typeof value !== "object" || value === null) {
-    return;
-  }
-  expect(Object.isFrozen(value)).toBe(true);
-  for (const nested of Object.values(value)) {
-    expectDeepFrozen(nested);
-  }
 }
 
 describe("playing state machine", () => {

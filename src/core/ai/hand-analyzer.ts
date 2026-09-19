@@ -3,16 +3,13 @@ import {
   asCardId,
   getCard,
   type CardId,
-  type Rank,
 } from "../cards/index.js";
-import { generateLegalActions } from "../rules/index.js";
-
-const RANKS: readonly Rank[] = Object.freeze([
-  ...STANDARD_RANKS,
-  "small-joker",
-  "big-joker",
-]);
-const SEQUENCE_RANKS = STANDARD_RANKS.slice(0, -1);
+import {
+  RANK_ORDER,
+  SEQUENCE_RANKS,
+  generateLegalActions,
+  rankStrength,
+} from "../rules/index.js";
 
 export type HandEvaluation = Readonly<{
   minimumTurns: number;
@@ -42,12 +39,10 @@ export interface HandAnalyzer {
 type RankCounts = readonly number[];
 
 function rankCounts(cards: readonly CardId[]): RankCounts {
-  const counts = Array.from({ length: RANKS.length }, () => 0);
+  const counts = Array.from({ length: RANK_ORDER.length }, () => 0);
   for (const cardId of cards) {
-    const index = RANKS.indexOf(getCard(cardId).rank);
-    if (index >= 0) {
-      counts[index] = (counts[index] ?? 0) + 1;
-    }
+    const index = rankStrength(getCard(cardId).rank);
+    counts[index] = (counts[index] ?? 0) + 1;
   }
   return counts;
 }
