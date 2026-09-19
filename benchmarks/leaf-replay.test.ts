@@ -25,7 +25,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { estimateBasicHandTurns } from "../src/core/ai/hand-analyzer.js";
-import { formatPercent } from "./ai-stats.js";
+import { createHandTurnSolver } from "../src/core/ai/hand-turns.js";
+import { formatPercent, percentile, quantileIsReportable } from "./ai-stats.js";
 import { report } from "./ai-tournament.js";
 import {
   cardsDifference,
@@ -45,12 +46,22 @@ const REPLAY_DIR = process.env.AI_BENCH_REPLAY;
 /** Which evaluator plays `d_new`. Add the new one to `EVALUATORS`. */
 const NEW_EVALUATOR_NAME = process.env.AI_BENCH_REPLAY_EVALUATOR ?? "shipped";
 
-const EVALUATORS: Readonly<Record<string, TurnEvaluator>> = Object.freeze({
+/**
+ * Named evaluators, each a factory called once per decision so that a
+ * stateful evaluator's memo lives exactly as long as the decision does — the
+ * same lifetime production gives it.
+ */
+const EVALUATORS: Readonly<Record<string, () => TurnEvaluator>> = Object.freeze({
   /**
    * The shipped hand-turn estimate. Replaying it must reproduce every recorded
    * choice exactly — that equality is what proves this replay is faithful.
    */
-  shipped: (hand: Parameters<TurnEvaluator>[0]) => estimateBasicHandTurns(hand),
+  shipped: () => (hand) => estimateBasicHandTurns(hand),
+  /** The E1 candidate: exact minimum number of plays. */
+  minimum: () => {
+    const solver = createHandTurnSolver();
+    return (hand) => solver.minimumHands(hand);
+  },
 });
 
 /** Root blend weight, matching `rankMasterPlayActions`. */
@@ -109,36 +120,33 @@ function newUtility(
   return turns * ROOT_UTILITY_TURNS_WEIGHT + cards * ROOT_UTILITY_CARDS_WEIGHT;
 }
 
-/** The shipped ranking rule, including its tie-break (lowest index wins). */
-function rankIndex(
+/** Candidate indices best-first, with the shipped tie-break (lowest index wins). */
+function rankOrder(
   decision: CorpusDecision,
   value: (leaf: CorpusLeaf) => number,
-): number {
+): readonly number[] {
   const totals = decision.expertScores.map(() => 0);
   const counts = decision.expertScores.map(() => 0);
   for (const leaf of decision.leaves) {
     totals[leaf.candidate] = (totals[leaf.candidate] ?? 0) + value(leaf);
     counts[leaf.candidate] = (counts[leaf.candidate] ?? 0) + 1;
   }
-  let best = 0;
-  let bestScore = Number.NEGATIVE_INFINITY;
-  for (let index = 0; index < decision.expertScores.length; index += 1) {
-    const mean = (counts[index] ?? 0) === 0 ? 0 : (totals[index] ?? 0) / (counts[index] ?? 1);
-    const score = (decision.expertScores[index] ?? 0) + ROOT_BLEND_WEIGHT * mean;
-    if (score > bestScore) {
-      bestScore = score;
-      best = index;
-    }
-  }
-  return best;
+  return decision.expertScores
+    .map((expertScore, index) => ({
+      index,
+      score: expertScore +
+        ROOT_BLEND_WEIGHT * ((counts[index] ?? 0) === 0 ? 0 : (totals[index] ?? 0) / (counts[index] ?? 1)),
+    }))
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .map((entry) => entry.index);
 }
 
 describe.runIf(REPLAY_DIR !== undefined)("E1 leaf corpus replay", () => {
   it("reports d moments, the affine calibration, and the effect gate", () => {
-    const evaluateNew = EVALUATORS[NEW_EVALUATOR_NAME];
-    expect(evaluateNew, `unknown evaluator "${NEW_EVALUATOR_NAME}"`).toBeDefined();
-    const evaluate = evaluateNew as TurnEvaluator;
-    const shipped = EVALUATORS.shipped as TurnEvaluator;
+    const makeNew = EVALUATORS[NEW_EVALUATOR_NAME];
+    expect(makeNew, `unknown evaluator "${NEW_EVALUATOR_NAME}"`).toBeDefined();
+    const makeNewEvaluator = makeNew as () => TurnEvaluator;
+    const makeShipped = EVALUATORS.shipped as () => TurnEvaluator;
 
     const shards = loadShards(REPLAY_DIR as string);
     expect(shards.length).toBeGreaterThan(0);
@@ -147,11 +155,16 @@ describe.runIf(REPLAY_DIR !== undefined)("E1 leaf corpus replay", () => {
     // leaves carry no turns term, so they are counted but excluded here.
     const dOld: number[] = [];
     const dNew: number[] = [];
+    const deltas: number[] = [];
     let decisions = 0;
     let leaves = 0;
     let terminalLeaves = 0;
     let shortShortlists = 0;
     for (const decision of eachDecision(shards)) {
+      // Fresh evaluators per decision: a stateful one's memo must live exactly
+      // as long as production lets it.
+      const shipped = makeShipped();
+      const evaluate = makeNewEvaluator();
       decisions += 1;
       if (decision.expertScores.length < 3) {
         shortShortlists += 1;
@@ -162,8 +175,11 @@ describe.runIf(REPLAY_DIR !== undefined)("E1 leaf corpus replay", () => {
           terminalLeaves += 1;
           continue;
         }
-        dOld.push(turnsOf(decision, leaf, shipped));
-        dNew.push(turnsOf(decision, leaf, evaluate));
+        const oldValue = turnsOf(decision, leaf, shipped);
+        const newValue = turnsOf(decision, leaf, evaluate);
+        dOld.push(oldValue);
+        dNew.push(newValue);
+        deltas.push(newValue - oldValue);
       }
     }
 
@@ -187,18 +203,56 @@ describe.runIf(REPLAY_DIR !== undefined)("E1 leaf corpus replay", () => {
     report(`d_new           mean=${newMoments.mean.toFixed(4)} sd=${newMoments.sd.toFixed(4)}`);
     report(`affine          k=${k.toFixed(6)} b=${b.toFixed(6)}`);
     report(`correlation     ${correlation(dOld, dNew).toFixed(6)}`);
+    {
+      const differing = deltas.filter((value) => value !== 0).length;
+      let deltaMin = Number.POSITIVE_INFINITY;
+      let deltaMax = Number.NEGATIVE_INFINITY;
+      for (const value of deltas) {
+        if (value < deltaMin) deltaMin = value;
+        if (value > deltaMax) deltaMax = value;
+      }
+      const quantile = (fraction: number) =>
+        quantileIsReportable(deltas.length, fraction)
+          ? percentile(deltas, fraction).toFixed(3)
+          : "n/a";
+      report(
+        `delta new-old   min=${deltaMin.toFixed(0)} p05=${quantile(0.05)} ` +
+        `p25=${quantile(0.25)} p50=${quantile(0.5)} p75=${quantile(0.75)} ` +
+        `p95=${quantile(0.95)} max=${deltaMax.toFixed(0)}`,
+      );
+      report(
+        `delta non-zero  ${formatPercent(deltas.length === 0 ? 0 : differing / deltas.length)} ` +
+        `of ${deltas.length} leaves`,
+      );
+    }
 
     // Pass 2 — the effect gate, on the real candidate sets.
     let replayMismatches = 0;
     let flips = 0;
     let flipsTop1 = 0;
+    let orderingDivergence = 0;
+    let shortlistOrders = 0;
     for (const decision of eachDecision(shards)) {
-      const shippedPick = rankIndex(decision, (leaf) => newUtility(decision, leaf, shipped, 1, 0));
-      if (shippedPick !== decision.chosen) {
+      const replayShipped = makeShipped();
+      const replayNew = makeNewEvaluator();
+      const shippedOrder = rankOrder(
+        decision,
+        (leaf) => newUtility(decision, leaf, replayShipped, 1, 0),
+      );
+      if ((shippedOrder[0] ?? -1) !== decision.chosen) {
         replayMismatches += 1;
       }
-      const newPick = rankIndex(decision, (leaf) => newUtility(decision, leaf, evaluate, k, b));
-      if (newPick !== decision.chosen) {
+      const newOrder = rankOrder(
+        decision,
+        (leaf) => newUtility(decision, leaf, replayNew, k, b),
+      );
+      if (decision.expertScores.length >= 2) {
+        shortlistOrders += 1;
+        if (newOrder.join(",") !== shippedOrder.join(",")) {
+          orderingDivergence += 1;
+        }
+      }
+      if ((newOrder[0] ?? -1) !== decision.chosen) {
         flips += 1;
         if (decision.chosen === 0) {
           flipsTop1 += 1;
@@ -214,6 +268,10 @@ describe.runIf(REPLAY_DIR !== undefined)("E1 leaf corpus replay", () => {
       `effect gate     ${flips}/${decisions} decisions change ` +
       `(${formatPercent(decisions === 0 ? 0 : flips / decisions)}), ` +
       `of which ${flipsTop1} displace the expert leader`,
+    );
+    report(
+      `ordering        ${orderingDivergence}/${shortlistOrders} multi-candidate decisions ` +
+      `reorder at all (${formatPercent(shortlistOrders === 0 ? 0 : orderingDivergence / shortlistOrders)})`,
     );
 
     expect(dOld.length).toBeGreaterThan(0);
