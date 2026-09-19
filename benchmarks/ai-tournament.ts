@@ -92,6 +92,22 @@ export type Recorder = Readonly<{
 export type BenchmarkConfig = Readonly<{
   deals: number;
   seedBase: number;
+  /**
+   * Absolute index of the first deal this process plays. Sharding shifts this
+   * window; it never changes how a deal is derived, because the seed stays
+   * `seedBase + dealIndex` with `dealIndex` absolute. A sharded run therefore
+   * reproduces the unsharded run deal for deal, which is what lets the same
+   * measurement be split across processes.
+   */
+  dealStart: number;
+  /**
+   * Run the pair tournaments with an infinite deadline. This is the designed
+   * workload, not the shipped one: it answers "what would this policy choose
+   * with all its work done", which is what a strength comparison wants, and it
+   * is byte-reproducible because no clock reaches the decision. Shipped
+   * performance numbers must never be taken from a designed run.
+   */
+  designed: boolean;
   secondsCap: number;
   probeDeals: number;
   controlDeals: number;
@@ -143,6 +159,8 @@ export function readConfig(): BenchmarkConfig {
   return Object.freeze({
     deals: Math.max(1, envInt("AI_BENCH_DEALS", 20)),
     seedBase: envInt("AI_BENCH_SEED", 301),
+    dealStart: Math.max(0, envInt("AI_BENCH_DEAL_START", 0)),
+    designed: process.env.AI_BENCH_DESIGNED === "1",
     secondsCap: Math.max(1, envInt("AI_BENCH_SECONDS", 240)),
     probeDeals: Math.max(1, envInt("AI_BENCH_PROBE_DEALS", 4)),
     controlDeals: Math.max(1, envInt("AI_BENCH_CONTROL_DEALS", 10)),
@@ -597,6 +615,12 @@ export type PairRun = Readonly<{
   requestedDeals: number;
   playedDeals: number;
   stoppedEarly: boolean;
+  /**
+   * Absolute index of `perDealA[0]` / `perDealB[0]`. A merge places each
+   * shard's arrays at this offset, so the joined arrays are indexed by the
+   * same deal index the unsharded run would have used.
+   */
+  dealStart: number;
   /** Wins out of 3 per deal, arm A (the strong level holds the landlord seat). */
   perDealA: readonly number[];
   /** Wins out of 3 per deal, arm B (the strong level holds one farmer seat). */
@@ -626,11 +650,14 @@ export function runPairTournament(
   let winsA = 0;
   let winsB = 0;
 
-  for (let dealIndex = 0; dealIndex < maxDeals; dealIndex += 1) {
+  for (let offset = 0; offset < maxDeals; offset += 1) {
     if ((performance.now() - started) / 1000 >= config.secondsCap) {
       stoppedEarly = true;
       break;
     }
+    // `dealIndex` is absolute: the shard window decides which deals this
+    // process plays, never how any of them is derived.
+    const dealIndex = config.dealStart + offset;
     const dealSeed = config.seedBase + dealIndex;
     const deck = dealDeck(dealSeed);
     let dealWinsA = 0;
@@ -640,6 +667,7 @@ export function runPairTournament(
       const outcome = playGame(deck, slot.landlord, profiles, recorder, {
         unboundedEvery: config.unboundedEvery,
         seed: dealSeed * 100 + SEAT_ORDER.indexOf(slot.strongSeat) * 10 + SEAT_ORDER.indexOf(slot.landlord),
+        designed: config.designed,
       });
       const strongIsLandlord = slot.strongSeat === slot.landlord;
       const strongerWon = strongIsLandlord
@@ -675,6 +703,7 @@ export function runPairTournament(
     requestedDeals: maxDeals,
     playedDeals,
     stoppedEarly,
+    dealStart: config.dealStart,
     perDealA: Object.freeze(perDealA),
     perDealB: Object.freeze(perDealB),
     elapsedMs: performance.now() - started,

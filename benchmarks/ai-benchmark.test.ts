@@ -61,6 +61,13 @@ const config = readConfig();
 
 /** Where the optional per-deal dump goes; unset means the run only prints. */
 const BENCH_OUT = process.env.AI_BENCH_OUT;
+/**
+ * Include the serialized command log of each pair in the dump. Off by default:
+ * it is a few megabytes on a full run, and only the sharding equivalence check
+ * needs it. Observation only — `createRecorder` logging cannot change a
+ * decision.
+ */
+const LOG_COMMANDS = process.env.AI_BENCH_LOG_COMMANDS === "1";
 const benchRuns: Record<string, unknown> = {};
 
 function decisionsOf(recorder: Recorder, profile: Profile) {
@@ -297,6 +304,8 @@ describe("AI strength and bounded-time benchmark", () => {
       config: {
         deals: config.deals,
         seedBase: config.seedBase,
+        dealStart: config.dealStart,
+        designed: config.designed,
         secondsCap: config.secondsCap,
       },
       runs: benchRuns,
@@ -308,7 +317,7 @@ describe("AI strength and bounded-time benchmark", () => {
   it.each(pairs.map(([weaker, stronger]) => ({ weaker, stronger })))(
     "measures $stronger vs $weaker over mirrored deals",
     ({ weaker, stronger }) => {
-      const recorder = createRecorder();
+      const recorder = createRecorder(LOG_COMMANDS ? { logCommands: true } : {});
       const run = runPairTournament(config, stronger, weaker, recorder);
       const gamesPerArm = 3;
       const pooled = run.perDealA.map((wins, index) => wins + (run.perDealB[index] ?? 0));
@@ -320,13 +329,18 @@ describe("AI strength and bounded-time benchmark", () => {
           requestedDeals: run.requestedDeals,
           playedDeals: run.playedDeals,
           stoppedEarly: run.stoppedEarly,
+          dealStart: run.dealStart,
           elapsedMs: run.elapsedMs,
           perDealA: run.perDealA,
           perDealB: run.perDealB,
+          ...(recorder.commands === null ? {} : { commands: recorder.commands }),
         };
       }
 
-      report(`\n-- ${stronger} vs ${weaker} --`);
+      report(
+        `\n-- ${stronger} vs ${weaker} --` +
+        (config.designed ? "  [designed: infinite deadline, not a shipped measurement]" : ""),
+      );
       for (const [label, perDeal, gamesPerDeal] of [
         ["arm A (strong landlord)", run.perDealA, gamesPerArm],
         ["arm B (strong farmer)", run.perDealB, gamesPerArm],

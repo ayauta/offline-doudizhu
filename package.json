@@ -12,7 +12,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "bench:ai": "vitest run --config vitest.benchmark.config.ts --reporter=verbose",
+    "bench:ai": "node scripts/bench-ai.mjs",
     "probe:phone:compat": "node scripts/phone-probe.mjs --compat",
     "preview": "vite preview",
     "check:bundle": "node scripts/check-bundle.mjs",
