@@ -286,3 +286,19 @@ AI 内部提速不属于这一类：出厂 master 路径读时钟，把合法动
 
 真机测量见[设备测量](../device-tests/055-ai-on-device.md)：
 `node scripts/phone-probe.mjs`，约 10 秒。原始输出在 `.local/harvest/`（已忽略）。
+
+## Discovery pool 暴露计数
+
+同一套 discovery seeds 被多少个**各自独立预登记**的正式机制实验用过。单次预登记
+防的是"事后改协议"，防不住的是**几十个都合规的实验反复看同一批牌**——
+selection-on-discovery 的风险随暴露次数累积，而不是被预登记消掉。
+
+| 实验 | discovery seeds | 暴露序号 |
+| --- | --- | --- |
+| E1 叶值信息（Spec 057） | 301–700 | 1 |
+| E3 候选来源（Spec 058） | 301–700 | 2 |
+
+`10001–10400`（validation）至今**从未消耗**。
+
+规则：**再开新的机制线之前，先单独决定是否退休当前 discovery pool 并换一套新 seeds。**
+不要把"每次都有预登记"当作可以无限复用的理由。
