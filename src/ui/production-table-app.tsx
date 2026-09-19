@@ -106,7 +106,7 @@ function coalescedPointerPoints(event: TargetedPointerEvent<HTMLDivElement>): re
     : [];
   const points = coalesced.map(({ clientX: x, clientY: y }) => ({ x, y }));
   const finalPoint = { x: event.clientX, y: event.clientY };
-  const lastPoint = points.at(-1);
+  const lastPoint = points[points.length - 1];
   if (lastPoint?.x !== finalPoint.x || lastPoint.y !== finalPoint.y) {
     points.push(finalPoint);
   }
@@ -309,7 +309,10 @@ function HumanHand({ session, view }: Readonly<ProductionTableAppProps & { view:
           continue;
         }
         const animation = card.animate(
-          [{ translate: `${offset}px 0` }, { translate: "0 0" }],
+          [
+            { transform: `translate(${offset}px, 0)` },
+            { transform: "translate(0, 0)" },
+          ],
           { duration: 180, easing: regroupEasing },
         );
         animation.id = "hand-regroup";

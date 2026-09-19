@@ -55,6 +55,25 @@ describe("repository configuration", () => {
     });
   });
 
+  it("runs the WebView 90 compatibility gate directly and in the complete check", async () => {
+    const packageConfig = await readJson("../../package.json") as {
+      readonly scripts?: Readonly<Record<string, string>>;
+    };
+    const completeCheck = await readFile(
+      new URL("../../scripts/check.mjs", import.meta.url),
+      "utf8",
+    );
+
+    expect(packageConfig.scripts?.["check:compat"]).toBe(
+      "node scripts/check-webview-compat.mjs",
+    );
+    expect(packageConfig.scripts?.["probe:phone:compat"]).toBe(
+      "node scripts/phone-probe.mjs --compat",
+    );
+    expect(completeCheck).toContain('run("WebView 90 compatibility"');
+    expect(completeCheck).toContain('"scripts/check-webview-compat.mjs"');
+  });
+
   it("avoids dynamic card-count multiplication in public-play width", async () => {
     const styles = await readFile(
       new URL("../../src/ui/styles.css", import.meta.url),

@@ -20,6 +20,7 @@ function run(label, scriptPath, args = []) {
 
 run("strict TypeScript", join(repositoryRoot, "node_modules/typescript/bin/tsc"), ["--noEmit"]);
 run("deterministic tests", join(repositoryRoot, "node_modules/vitest/vitest.mjs"), ["run"]);
+run("WebView 90 compatibility", join(repositoryRoot, "scripts/check-webview-compat.mjs"));
 run("production build", join(repositoryRoot, "node_modules/vite/bin/vite.js"), ["build"]);
 run("build output", join(repositoryRoot, "scripts/check-bundle.mjs"));
 run("Android delivery", join(repositoryRoot, "scripts/check-android.mjs"));

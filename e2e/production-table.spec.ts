@@ -588,6 +588,27 @@ test("continuously selects and deselects exposed cards without reordering the ha
   )).toEqual(idsBefore);
 });
 
+test("keeps continuous selection working without post-WebView-90 built-ins", async ({ page }) => {
+  await page.addInitScript(() => {
+    Reflect.deleteProperty(Array.prototype, "at");
+    Reflect.deleteProperty(Object, "hasOwn");
+  });
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await useIdentityDeck(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始游戏" }).click();
+  await page.getByRole("button", { name: "叫地主" }).click();
+
+  const cards = page.getByLabel("你的手牌").getByRole("button");
+  await swipeInOneMove(page, cards.nth(3), cards.nth(6));
+
+  for (const index of [3, 4, 5, 6]) {
+    await expect(cards.nth(index)).toHaveAttribute("aria-pressed", "true");
+  }
+  expect(pageErrors).toEqual([]);
+});
+
 test("settles the origin with the rest while continuous deselection is still held", async ({ page }) => {
   await useIdentityDeck(page);
   await page.goto("/");
@@ -689,6 +710,14 @@ test("naturally narrows and smoothly regroups the hand only after an accepted pl
     duration: 180,
     easing: "cubic-bezier(0.77, 0, 0.175, 1)",
   });
+  expect(await hand.getByRole("button").first().evaluate((element) => {
+    const animation = element.getAnimations().find(({ id }) => id === "hand-regroup");
+    const frames = (animation?.effect as KeyframeEffect | null)?.getKeyframes() ?? [];
+    return frames.length === 2 && frames.every((frame) =>
+      typeof frame.transform === "string" &&
+      !Object.prototype.hasOwnProperty.call(frame, "translate")
+    );
+  })).toBe(true);
 });
 
 test("makes hand regroup immediate when reduced motion is requested", async ({ page }) => {

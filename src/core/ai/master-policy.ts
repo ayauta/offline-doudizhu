@@ -132,7 +132,7 @@ function trailingPasses(view: PlayingPlayerView): 0 | 1 {
   if (view.currentPlay === null) {
     return 0;
   }
-  return view.history.at(-1)?.type === "pass" ? 1 : 0;
+  return view.history[view.history.length - 1]?.type === "pass" ? 1 : 0;
 }
 
 function createSearchState(view: PlayingPlayerView, world: PossibleWorld): MutableSearchState {

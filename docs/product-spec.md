@@ -44,7 +44,8 @@ kept out of the game-rule model so later localization remains possible.
 ## 4. Platform and presentation
 
 - Primary platform: standards-based Web application and installable PWA.
-- Formal mobile baseline: Android 10 or newer Chrome/System WebView. Desktop
+- Formal mobile baseline: Android 10 or newer Chrome/System WebView, with
+  WebView 90 as the current reviewed runtime capability floor. Desktop
   Chrome, Edge, and Firefox are development and trial targets; iOS is not a
   release blocker.
 - Rendering: semantic HTML and native CSS. Gameplay presentation does not use
