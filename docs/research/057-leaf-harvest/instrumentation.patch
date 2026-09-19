@@ -1,0 +1,130 @@
+diff --git a/src/core/ai/master-policy.ts b/src/core/ai/master-policy.ts
+index 96b388b..b1f845a 100644
+--- a/src/core/ai/master-policy.ts
++++ b/src/core/ai/master-policy.ts
+@@ -12,6 +12,40 @@ export type PossibleWorld = Readonly<{
+   hands: Readonly<Record<Seat, readonly CardId[]>>;
+ }>;
+ 
++/* ------------------------------------------------------------------------- *
++ * TEMPORARY E1 CALIBRATION INSTRUMENTATION — not for commit.
++ * See docs/specs/057-root-utility-leaf-value/spec.md. Reverted after the
++ * calibration corpus is harvested; the patch is archived under docs/research/.
++ * This is an observation seam only: it cannot change a decision.
++ * ------------------------------------------------------------------------- */
++
++export type LeafRecord = Readonly<{
++  world: number;
++  candidate: number;
++  winner: Seat | null;
++  hands: Readonly<Record<Seat, readonly CardId[]>>;
++}>;
++
++export type DecisionLeafRecord = Readonly<{
++  seat: Seat;
++  landlord: Seat;
++  legalActionCount: number;
++  completedWorlds: number;
++  expertScores: readonly number[];
++  chosen: number;
++  leaves: readonly LeafRecord[];
++}>;
++
++let decisionSink: ((record: DecisionLeafRecord) => void) | null = null;
++
++export function setDecisionSink(
++  sink: ((record: DecisionLeafRecord) => void) | null,
++): void {
++  decisionSink = sink;
++}
++
++/* ------------------------- end instrumentation --------------------------- */
++
+ export type MasterSearchOptions = Readonly<{
+   seed: number;
+   maxWorlds: number;
+@@ -215,12 +249,12 @@ function rootUtility(rootView: PlayingPlayerView, state: MutableSearchState): nu
+   return (enemyTurns - friendlyTurns) * 220 + (enemyCards - friendlyCards) * 24;
+ }
+ 
+-function rolloutCandidate(
++function rolloutLeaf(
+   rootView: PlayingPlayerView,
+   world: PossibleWorld,
+   action: ValidatedPlayAction,
+   depth: number,
+-): number {
++): MutableSearchState {
+   const state = createSearchState(rootView, world);
+   applyAction(state, action);
+   for (let ply = 0; ply < depth && state.winner === null; ply += 1) {
+@@ -233,7 +267,16 @@ function rolloutCandidate(
+     }
+     applyAction(state, nextAction);
+   }
+-  return rootUtility(rootView, state);
++  return state;
++}
++
++function rolloutCandidate(
++  rootView: PlayingPlayerView,
++  world: PossibleWorld,
++  action: ValidatedPlayAction,
++  depth: number,
++): number {
++  return rootUtility(rootView, rolloutLeaf(rootView, world, action, depth));
+ }
+ 
+ export function rankMasterPlayActions(
+@@ -261,6 +304,8 @@ export function rankMasterPlayActions(
+   const totals = candidates.map(() => 0);
+   const random = new SeededRandom(options.seed);
+   let completedWorlds = 0;
++  // Instrumentation only: null in every shipped path.
++  const leaves: LeafRecord[] | null = decisionSink === null ? null : [];
+   for (let worldIndex = 0; worldIndex < options.maxWorlds; worldIndex += 1) {
+     if (options.shouldContinue?.() === false) {
+       break;
+@@ -274,8 +319,23 @@ export function rankMasterPlayActions(
+     for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
+       const candidate = candidates[candidateIndex];
+       if (candidate !== undefined) {
+-        totals[candidateIndex] = (totals[candidateIndex] ?? 0) +
+-          rolloutCandidate(context.view, world, candidate.action, options.rolloutDepth);
++        if (leaves === null) {
++          totals[candidateIndex] = (totals[candidateIndex] ?? 0) +
++            rolloutCandidate(context.view, world, candidate.action, options.rolloutDepth);
++        } else {
++          const leaf = rolloutLeaf(context.view, world, candidate.action, options.rolloutDepth);
++          totals[candidateIndex] = (totals[candidateIndex] ?? 0) + rootUtility(context.view, leaf);
++          leaves.push(Object.freeze({
++            world: worldIndex,
++            candidate: candidateIndex,
++            winner: leaf.winner,
++            hands: Object.freeze({
++              human: Object.freeze([...leaf.hands.human]),
++              "ai-one": Object.freeze([...leaf.hands["ai-one"]]),
++              "ai-two": Object.freeze([...leaf.hands["ai-two"]]),
++            }),
++          }));
++        }
+       }
+     }
+     completedWorlds += 1;
+@@ -291,5 +351,16 @@ export function rankMasterPlayActions(
+       (completedWorlds === 0 ? 0 : ((totals[index] ?? 0) / completedWorlds) * 0.2),
+   }));
+   ranked.sort((left, right) => right.score - left.score || left.index - right.index);
++  if (decisionSink !== null && leaves !== null) {
++    decisionSink(Object.freeze({
++      seat: context.view.seat,
++      landlord: context.view.landlord,
++      legalActionCount: context.legalActions.length,
++      completedWorlds,
++      expertScores: Object.freeze(candidates.map((candidate) => candidate.score)),
++      chosen: ranked[0]?.index ?? -1,
++      leaves: Object.freeze(leaves),
++    }));
++  }
+   return Object.freeze(ranked.map(({ action, score }) => Object.freeze({ action, score })));
+ }
