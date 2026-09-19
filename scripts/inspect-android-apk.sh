@@ -32,6 +32,9 @@ if grep -Fq "uses-permission:" <<<"$badging"; then
   exit 1
 fi
 
-unzip -Z1 "$apk_path" | grep -Fxq "assets/embedded.html"
+# No `-q`: an early-exiting grep closes the pipe while unzip is still writing, so
+# unzip takes SIGPIPE and `pipefail` reports the whole pipeline as failed. Reading
+# every line keeps the writer alive and asserts the same thing.
+unzip -Z1 "$apk_path" | grep -Fx "assets/embedded.html" >/dev/null
 "$apksigner_path" verify --verbose --print-certs "$apk_path"
 echo "APK inspection passed for $expected_package $expected_version (zero permissions; embedded entry; valid signature)."
