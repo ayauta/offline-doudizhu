@@ -140,18 +140,39 @@ function bidStrength(context: Extract<AiDecisionContext, { readonly kind: "bid" 
   return score;
 }
 
-export function scoreAction(
+/**
+ * One action's two scores.
+ *
+ * `baseScore` is what the action is worth on the expert evidence alone;
+ * `anchoredScore` is what the shipped code returns, which is `baseScore` plus
+ * `defaultPolicyPrior`. Both come out of a single evaluation — the prior is a
+ * term added at the end, never a second scoring pass, so the two orderings can
+ * differ only by the prior itself.
+ */
+export type ScoredActionDetail = Readonly<{
+  action: ValidatedPlayAction;
+  /** Position in `context.legalActions`; the stable tie-break for both orderings. */
+  index: number;
+  baseScore: number;
+  prior: number;
+  anchoredScore: number;
+}>;
+
+function evaluateAction(
   context: PlayContext,
   action: ValidatedPlayAction,
   profile: RuleAiProfile,
-  analyzer: HandAnalyzer = createHandAnalyzer({ maxNodes: profile === "expert" ? 600 : 40 }),
-  policyPrior = 0,
-): number {
+  analyzer: HandAnalyzer,
+  policyPrior: number,
+): Readonly<{ baseScore: number; prior: number; anchoredScore: number }> {
   if (action.type === "pass") {
-    return policyPrior + scorePublicPosition(context.view, action, profile);
+    const baseScore = scorePublicPosition(context.view, action, profile);
+    return Object.freeze({ baseScore, prior: policyPrior, anchoredScore: policyPrior + baseScore });
   }
   if (action.play.cards.length === context.view.hand.length) {
-    return 1_000_000;
+    // The shipped code returns before the prior is applied, so a play that
+    // empties the hand carries no prior — in either ordering.
+    return Object.freeze({ baseScore: 1_000_000, prior: 0, anchoredScore: 1_000_000 });
   }
 
   const remaining = withoutCards(context.view.hand, action.play.cards);
@@ -174,7 +195,17 @@ export function scoreAction(
   score -= structureBreakCost(context.view.hand, action);
   score -= bombCost(context, action);
   score += scorePublicPosition(context.view, action, profile);
-  return score + policyPrior;
+  return Object.freeze({ baseScore: score, prior: policyPrior, anchoredScore: score + policyPrior });
+}
+
+export function scoreAction(
+  context: PlayContext,
+  action: ValidatedPlayAction,
+  profile: RuleAiProfile,
+  analyzer: HandAnalyzer = createHandAnalyzer({ maxNodes: profile === "expert" ? 600 : 40 }),
+  policyPrior = 0,
+): number {
+  return evaluateAction(context, action, profile, analyzer, policyPrior).anchoredScore;
 }
 
 function defaultPolicyPrior(rank: number): number {
@@ -184,14 +215,15 @@ function defaultPolicyPrior(rank: number): number {
   return Math.max(0, 12 - rank) * 160;
 }
 
-export function rankScoredPlayActions(
+/** Scores every legal action once, in the shipped evaluation order. */
+function evaluateLegalActions(
   context: PlayContext,
   profile: RuleAiProfile,
   options: Readonly<{
     analyzerNodes?: number;
     shouldContinue?: () => boolean;
-  }> = {},
-): readonly ScoredPlayAction[] {
+  }>,
+): readonly ScoredActionDetail[] {
   const totalAnalyzerNodes = options.analyzerNodes ?? (profile === "expert" ? 600 : 40);
   const analyzerNodesPerAction = Math.max(
     1,
@@ -205,15 +237,15 @@ export function rankScoredPlayActions(
     .sort((left, right) => defaultRanks === null
       ? left.index - right.index
       : (defaultRanks.get(left.action) ?? 12) - (defaultRanks.get(right.action) ?? 12));
-  const scored: Array<{ action: ValidatedPlayAction; index: number; score: number }> = [];
+  const details: ScoredActionDetail[] = [];
   for (const { action, index } of evaluationOrder) {
-    if (scored.length > 0 && options.shouldContinue?.() === false) {
+    if (details.length > 0 && options.shouldContinue?.() === false) {
       break;
     }
     // Give every candidate the same bounded search allowance. A single shared
     // node counter made later legal actions depend on generator order once an
     // early candidate consumed the budget.
-    const score = scoreAction(
+    const evaluated = evaluateAction(
       context,
       action,
       profile,
@@ -222,10 +254,74 @@ export function rankScoredPlayActions(
       }),
       defaultRanks === null ? 0 : defaultPolicyPrior(defaultRanks.get(action) ?? 12),
     );
-    scored.push({ action, index, score });
+    details.push(Object.freeze({
+      action,
+      index,
+      baseScore: evaluated.baseScore,
+      prior: evaluated.prior,
+      anchoredScore: evaluated.anchoredScore,
+    }));
   }
-  scored.sort((left, right) => right.score - left.score || left.index - right.index);
-  return Object.freeze(scored.map(({ action, score }) => Object.freeze({ action, score })));
+  return Object.freeze(details);
+}
+
+/** Ranks scored actions best-first, ties broken by the action's legal order. */
+function rankDetails(
+  details: readonly ScoredActionDetail[],
+  key: "anchoredScore" | "baseScore",
+): readonly ScoredPlayAction[] {
+  return Object.freeze(
+    [...details]
+      .sort((left, right) =>
+        (key === "anchoredScore"
+          ? right.anchoredScore - left.anchoredScore
+          : right.baseScore - left.baseScore) || left.index - right.index)
+      .map((detail) => Object.freeze({
+        action: detail.action,
+        score: key === "anchoredScore" ? detail.anchoredScore : detail.baseScore,
+      })),
+  );
+}
+
+export function rankScoredPlayActions(
+  context: PlayContext,
+  profile: RuleAiProfile,
+  options: Readonly<{
+    analyzerNodes?: number;
+    shouldContinue?: () => boolean;
+  }> = {},
+): readonly ScoredPlayAction[] {
+  return rankDetails(evaluateLegalActions(context, profile, options), "anchoredScore");
+}
+
+export type PlayActionProposal = Readonly<{
+  /** Per-action scores, before and after the shipped prior. */
+  details: readonly ScoredActionDetail[];
+  /** The shipped ordering. */
+  anchored: readonly ScoredPlayAction[];
+  /** The same evaluations, ordered without `defaultPolicyPrior`. */
+  unanchored: readonly ScoredPlayAction[];
+}>;
+
+/**
+ * The shipped ranking plus the ordering the same evidence produces when the
+ * prior is left out. Both orderings read one evaluation pass, so they can
+ * differ only by the prior and its effect on ordering.
+ */
+export function rankPlayActionsWithProposal(
+  context: PlayContext,
+  profile: RuleAiProfile,
+  options: Readonly<{
+    analyzerNodes?: number;
+    shouldContinue?: () => boolean;
+  }> = {},
+): PlayActionProposal {
+  const details = evaluateLegalActions(context, profile, options);
+  return Object.freeze({
+    details,
+    anchored: rankDetails(details, "anchoredScore"),
+    unanchored: rankDetails(details, "baseScore"),
+  });
 }
 
 function playCommand(context: PlayContext, profile: RuleAiProfile): GameCommand {

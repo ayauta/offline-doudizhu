@@ -246,7 +246,18 @@ function instrumentedRuntime(deadline: number, sink: { polls: number; reached: b
 export function createMeasuredStrategy(
   profile: Profile,
   recorder: Recorder,
-  options: Readonly<{ unboundedEvery: number; seed: number; designed?: boolean }>,
+  options: Readonly<{
+    unboundedEvery: number;
+    seed: number;
+    designed?: boolean;
+    /**
+     * Called with the frozen root context of every master play decision, before
+     * the decision is made. Pure observation, but it costs wall-clock — so it is
+     * only sound on a designed run, where no deadline can turn that cost into a
+     * different move.
+     */
+    masterProposal?: (context: AiDecisionContext) => void;
+  }>,
 ): AiStrategy {
   let decisionIndex = 0;
 
@@ -272,6 +283,10 @@ export function createMeasuredStrategy(
           unbounded: null,
         }));
         return command;
+      }
+
+      if (profile === "master" && context.kind === "play") {
+        options.masterProposal?.(context);
       }
 
       const sink = { polls: 0, reached: false };
@@ -423,12 +438,18 @@ export function playGame(
   landlord: Seat,
   profiles: Readonly<Record<Seat, Profile>>,
   recorder: Recorder,
-  options: Readonly<{ unboundedEvery: number; seed: number; designed?: boolean }>,
+  options: Readonly<{
+    unboundedEvery: number;
+    seed: number;
+    designed?: boolean;
+    masterProposal?: (context: AiDecisionContext) => void;
+  }>,
 ): GameOutcome {
   let state = startWithLandlord(deck, landlord);
   const shared = {
     unboundedEvery: options.unboundedEvery,
     designed: options.designed === true,
+    ...(options.masterProposal === undefined ? {} : { masterProposal: options.masterProposal }),
   };
   const strategies: Record<Seat, AiStrategy> = {
     human: createMeasuredStrategy(profiles.human, recorder, { ...shared, seed: options.seed + 1 }),
@@ -639,7 +660,11 @@ export function runPairTournament(
   stronger: Profile,
   weaker: Profile,
   recorder: Recorder,
-  options: Readonly<{ maxDeals?: number; quiet?: boolean }> = {},
+  options: Readonly<{
+    maxDeals?: number;
+    quiet?: boolean;
+    masterProposal?: (context: AiDecisionContext) => void;
+  }> = {},
 ): PairRun {
   const maxDeals = options.maxDeals ?? config.deals;
   const started = performance.now();
@@ -668,6 +693,7 @@ export function runPairTournament(
         unboundedEvery: config.unboundedEvery,
         seed: dealSeed * 100 + SEAT_ORDER.indexOf(slot.strongSeat) * 10 + SEAT_ORDER.indexOf(slot.landlord),
         designed: config.designed,
+        ...(options.masterProposal === undefined ? {} : { masterProposal: options.masterProposal }),
       });
       const strongIsLandlord = slot.strongSeat === slot.landlord;
       const strongerWon = strongIsLandlord
