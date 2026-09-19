@@ -132,8 +132,14 @@ repositions DOM or uses drag-and-drop.
 The product defines no dedicated keyboard model, key bindings, focus-navigation
 scheme, or keyboard acceptance requirement. Semantic controls keep any native
 browser keyboard behavior they receive; that incidental behavior is neither
-disabled nor claimed as a complete way to play a match. ADR 0010 supersedes the
-earlier keyboard-completeness requirement in ADR 0008.
+disabled nor claimed as a complete way to play a match, with one deliberate
+exception: text selection is disabled across the whole shell. Every label is a
+button or a status readout, so nothing is worth copying, and a press that drags
+onto a neighbouring control would otherwise start a selection and, on a touch
+device, raise the platform selection handles and copy bar over the table. The
+regression test drags from the table onto the back control and requires an empty
+selection. ADR 0010 supersedes the earlier keyboard-completeness requirement in
+ADR 0008.
 
 Landscape is the only functional orientation. CSS makes the complete table
 unavailable in portrait and exposes only the accessible rotate prompt. Layout

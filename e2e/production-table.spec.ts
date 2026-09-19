@@ -406,6 +406,33 @@ test("presents opponent counts as borderless noninteractive card-stack status", 
   }
 });
 
+test("refuses to select interface text while playing", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 400 });
+  await useDeterministicRandom(page, 3);
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始游戏" }).click();
+  await page.getByRole("button", { name: "叫地主" }).click();
+
+  const back = page.getByRole("button", { name: "返回", exact: true });
+  await expect(back).toBeVisible();
+  await expect(back).toHaveCSS("user-select", "none");
+
+  // A press on the table that drags onto a label must not start a selection; on a
+  // touch device the same gesture raises the platform selection handles and the
+  // copy/share bar over the table.
+  const viewport = page.viewportSize();
+  const box = await back.boundingBox();
+  if (viewport === null || box === null) {
+    throw new Error("Expected a viewport and a back-button box.");
+  }
+  await page.mouse.move(viewport.width / 2, viewport.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
+  await page.mouse.up();
+
+  expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
+});
+
 test("centers larger overlapping hands and opponent anchors on desktop", async ({ page }) => {
   await useDeterministicRandom(page, 4);
 
