@@ -1,13 +1,15 @@
 import {
-  STANDARD_RANKS,
   getCard,
   type CardId,
   type Rank,
 } from "../cards/index.js";
 import type { GameCommand, Seat } from "../game/index.js";
-import type {
-  PlayPattern,
-  ValidatedPlayAction,
+import {
+  RANK_ORDER,
+  SEQUENCE_RANKS,
+  rankStrength,
+  type PlayPattern,
+  type ValidatedPlayAction,
 } from "../rules/index.js";
 import type { AiDecisionContext, AiStrategy, PlayingPlayerView } from "./ai.js";
 
@@ -16,19 +18,8 @@ type PlayDecisionContext = Extract<
   { readonly kind: "play" }
 >;
 
-const RANKS: readonly Rank[] = Object.freeze([
-  ...STANDARD_RANKS,
-  "small-joker",
-  "big-joker",
-]);
-const SEQUENCE_RANKS = STANDARD_RANKS.slice(0, -1);
-
 const NORMAL_BID_THRESHOLD = 17;
 const LAST_BIDDER_THRESHOLD = 8;
-
-function rankStrength(rank: Rank): number {
-  return RANKS.indexOf(rank);
-}
 
 function groupCounts(cards: readonly CardId[]): ReadonlyMap<Rank, number> {
   const counts = new Map<Rank, number>();
@@ -154,7 +145,7 @@ function currentPlaySeat(view: PlayingPlayerView): Seat | null {
 
 function patternMainRankStrength(pattern: PlayPattern): number {
   return pattern.kind === "rocket"
-    ? RANKS.length
+    ? RANK_ORDER.length
     : rankStrength(pattern.mainRank);
 }
 
