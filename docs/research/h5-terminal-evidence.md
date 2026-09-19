@@ -133,3 +133,50 @@ terminal evidence 的正负方向一致。
 ≈ 250`，而前两名锚定差距 p50 ≈ 275。也就是说**现有 0.2 已经大致落在"一条终局叶约等于
 一个典型差距"的位置**；两条终局叶（≈500）已越过它。这不是"应该设成多少"的依据，
 只是说明当前的权重处在哪里。
+
+---
+
+# 冻结：H5 v1 的作用形式与 W_gate（2026-09-19）
+
+## 作用形式：component-wise gating
+
+**否决整体放大。** `confident ? W_gate × rolloutMean : 0.2 × rolloutMean` 有一个机制污染：
+8 个 world 里只要有 1 条同向终局，gate 就会把**其余 7 个 non-terminal 效用一起放大**。
+而证据只支持「终局信息值得更信」，**不支持**「与它同候选的 non-terminal 估计也更可信」。
+
+```
+terminalComponent    = sum(terminal utilities)    / worldCount
+nonTerminalComponent = sum(non-terminal utilities) / worldCount
+
+无高置信终局证据： 0.2 × mean(all)                       ← 与生产逐位相同
+有高置信终局证据： 0.2 × mean(all) + (W_gate − 0.2) × terminalComponent
+```
+
+第二行是**增量式**，与「分量式」（`W_gate×T + 0.2×N`）数学等价但浮点不等价：增量式在
+`W_gate = 0.2` 时增量恰好为 `0`，因此恒等测试**真的逐位成立**。实现必须用增量式，
+否则恒等测试会因为末位浮点差而被迫放宽成容差比较，丢掉真正的保护。
+
+性质：estimator 不变；sampling 不变；non-terminal 信息永远维持 `0.2`；conflicting 不
+触发；同向胜/负对称。
+
+## W_gate = 1.0
+
+语义是**取消对 terminal utility 的 0.2 shrinkage**，让它按原始设计尺度完整进入评分——
+不是调出来的倍数，也不由 historical 胜率、gap 分位数或 override 数量拟合，
+不搜索 0.4 / 0.6 / 0.8 / 1.2 等中间值。
+
+H5 v1 因此只有一个离散干预：**当且仅当存在同向终局证据时，terminal component 从
+0.2 恢复到 1.0；其他所有 rollout 信息仍保持 0.2。**
+
+## 实现硬要求（门禁）
+
+- **恒等**：`W_gate = 0.2` 时，新公式与当前生产公式**逐位完全相同**。
+- 0 条 terminal → 完全等于 baseline。
+- conflicting terminal → 完全等于 baseline。
+- 同向全胜 → 只增加 terminal 的**正**贡献。
+- 同向全负 → 只增加 terminal 的**负**贡献。
+- non-terminal component 在 gate 前后**逐位不变**。
+- 地主 root / 农民 root 的符号一致（同向只能站在 root 阵营视角定义）。
+
+这样 H5 测的才是「高置信终局证据是否应按完整尺度进入决策」，而不是「只要见过终局就把
+整个 rollout 放大 5 倍」——否则即使赢了，也无法归因。
