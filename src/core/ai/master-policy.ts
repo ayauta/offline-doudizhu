@@ -1,4 +1,4 @@
-import { createDeck, type CardId } from "../cards/index.js";
+import { createDeck, shuffle, type CardId, type RandomSource } from "../cards/index.js";
 import { SEAT_ORDER, type PlayHistoryEntry, type Seat } from "../game/index.js";
 import { generateLegalActions, type ClassifiedPlay, type ValidatedPlayAction } from "../rules/index.js";
 import type { AiDecisionContext, PlayingPlayerView } from "./ai.js";
@@ -30,7 +30,7 @@ type MutableSearchState = {
   winner: Seat | null;
 };
 
-class SeededRandom {
+class SeededRandom implements RandomSource {
   private state: number;
 
   constructor(seed: number) {
@@ -45,20 +45,6 @@ class SeededRandom {
   next(): number {
     return this.nextUint() / 0x1_0000_0000;
   }
-}
-
-function shuffleCards(cards: readonly CardId[], random: SeededRandom): CardId[] {
-  const result = [...cards];
-  for (let index = result.length - 1; index > 0; index -= 1) {
-    const target = Math.floor(random.next() * (index + 1));
-    const current = result[index];
-    const replacement = result[target];
-    if (current !== undefined && replacement !== undefined) {
-      result[index] = replacement;
-      result[target] = current;
-    }
-  }
-  return result;
 }
 
 function playedCards(view: PlayingPlayerView): Set<CardId> {
@@ -94,7 +80,7 @@ function sampleWithRandom(view: PlayingPlayerView, random: SeededRandom): Possib
     }
   }
 
-  const pool = shuffleCards(
+  const pool = shuffle(
     createDeck().filter((cardId) => !unavailable.has(cardId)),
     random,
   );
