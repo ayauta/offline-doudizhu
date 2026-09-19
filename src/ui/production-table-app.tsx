@@ -23,7 +23,13 @@ import {
   type PointerSelectionEvent,
   type PointerSelectionState,
 } from "./input/pointer-selection.js";
-import { handNaturalWidth } from "./layout/hand-layout.js";
+import { feedbackMessage } from "./feedback-message.js";
+import {
+  coalescedPointerPoints,
+  HAND_POINTER_CORRIDOR,
+  hitRegionsFromRects,
+} from "./input/pointer-geometry.js";
+import { handNaturalWidth, regroupOffsets } from "./layout/hand-layout.js";
 
 const PATTERN_LABELS: Partial<Record<PlayPatternKind, string>> = {
   straight: "顺子",
@@ -78,39 +84,13 @@ function cardIdFromElement(element: Element | null): CardId | null {
   return Number.isInteger(value) && value >= 0 && value < 54 ? asCardId(value) : null;
 }
 
-const HAND_POINTER_CORRIDOR = 16;
-
 function handPointerHitRegions(hand: HTMLDivElement): readonly PointerHitRegion<CardId>[] {
-  const cards = Array.from(hand.querySelectorAll<HTMLElement>("[data-card-id]"));
-  const measured = cards.flatMap((card) => {
-    const cardId = cardIdFromElement(card);
-    return cardId === null ? [] : [{ cardId, rectangle: card.getBoundingClientRect() }];
-  });
-  if (measured.length === 0) {
-    return [];
-  }
-  const top = Math.min(...measured.map(({ rectangle }) => rectangle.top)) - HAND_POINTER_CORRIDOR;
-  const bottom = Math.max(...measured.map(({ rectangle }) => rectangle.bottom)) + HAND_POINTER_CORRIDOR;
-  return measured.map(({ cardId, rectangle }, index) => ({
-    bottom,
-    cardId,
-    left: rectangle.left,
-    right: measured[index + 1]?.rectangle.left ?? rectangle.right,
-    top,
-  }));
-}
-
-function coalescedPointerPoints(event: TargetedPointerEvent<HTMLDivElement>): readonly PointerPoint[] {
-  const coalesced = typeof event.getCoalescedEvents === "function"
-    ? event.getCoalescedEvents()
-    : [];
-  const points = coalesced.map(({ clientX: x, clientY: y }) => ({ x, y }));
-  const finalPoint = { x: event.clientX, y: event.clientY };
-  const lastPoint = points[points.length - 1];
-  if (lastPoint?.x !== finalPoint.x || lastPoint.y !== finalPoint.y) {
-    points.push(finalPoint);
-  }
-  return points;
+  const measured = Array.from(hand.querySelectorAll<HTMLElement>("[data-card-id]"))
+    .flatMap((card) => {
+      const cardId = cardIdFromElement(card);
+      return cardId === null ? [] : [{ cardId, rectangle: card.getBoundingClientRect() }];
+    });
+  return hitRegionsFromRects(measured, HAND_POINTER_CORRIDOR);
 }
 
 function TableAction({ action }: Readonly<{ action: PublicTableAction | null }>) {
@@ -292,30 +272,29 @@ function HumanHand({ session, view }: Readonly<ProductionTableAppProps & { view:
       }
     }
 
-    const previousCount = previousHandCount.current;
-    const reducedMotion = hand.ownerDocument.defaultView
-      ?.matchMedia("(prefers-reduced-motion: reduce)").matches === true;
-    if (previousCount !== null && view.humanHand.length < previousCount && !reducedMotion) {
+    const offsets = regroupOffsets({
+      previousPositions: previousCardPositions.current,
+      currentPositions,
+      previousCount: previousHandCount.current,
+      currentCount: view.humanHand.length,
+      reducedMotion: hand.ownerDocument.defaultView
+        ?.matchMedia("(prefers-reduced-motion: reduce)").matches === true,
+    });
+    if (offsets.length > 0) {
       const regroupEasing = getComputedStyle(hand).getPropertyValue("--ease-in-out").trim();
-      for (const card of hand.querySelectorAll<HTMLElement>("[data-card-id]")) {
-        const cardId = cardIdFromElement(card);
-        const previousLeft = cardId === null ? undefined : previousCardPositions.current.get(cardId);
-        const currentLeft = cardId === null ? undefined : currentPositions.get(cardId);
-        if (previousLeft === undefined || currentLeft === undefined) {
-          continue;
+      for (const { cardId, offset } of offsets) {
+        const animation = hand
+          .querySelector<HTMLElement>(`[data-card-id="${cardId}"]`)
+          ?.animate(
+            [
+              { transform: `translate(${offset}px, 0)` },
+              { transform: "translate(0, 0)" },
+            ],
+            { duration: 180, easing: regroupEasing },
+          );
+        if (animation !== undefined) {
+          animation.id = "hand-regroup";
         }
-        const offset = previousLeft - currentLeft;
-        if (Math.abs(offset) < 0.5) {
-          continue;
-        }
-        const animation = card.animate(
-          [
-            { transform: `translate(${offset}px, 0)` },
-            { transform: "translate(0, 0)" },
-          ],
-          { duration: 180, easing: regroupEasing },
-        );
-        animation.id = "hand-regroup";
       }
     }
     previousCardPositions.current = currentPositions;
@@ -420,20 +399,9 @@ function HumanHand({ session, view }: Readonly<ProductionTableAppProps & { view:
 }
 
 function LiveFeedback({ view }: Readonly<{ view: MatchView }>) {
-  const message = view.selectionError === "unsupported-selection"
-    ? "这些牌不能这样出"
-    : view.selectionError === "does-not-beat"
-      ? "这手牌压不过桌上的牌"
-      : view.selectionError === "retry-selection"
-        ? "这手牌暂时不能出，请重新选择"
-        : view.aiFallbackNotice
-          ? "当前电脑水平暂不可用，本局已使用默认水平"
-          : view.feedback === "no-response"
-          ? "没有可以压过的牌"
-          : view.feedback === "all-pass"
-            ? "都不叫，重新发牌"
-            : "";
-  return <output class="live-feedback" aria-live="polite">{message}</output>;
+  return (
+    <output class="live-feedback" aria-live="polite">{feedbackMessage(view)}</output>
+  );
 }
 
 function ExitConfirmation({ session, view }: Readonly<ProductionTableAppProps & { view: MatchView }>) {
