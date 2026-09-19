@@ -127,13 +127,12 @@ describe.runIf(COLLECT_OUT !== undefined || MERGE_DIR !== undefined)("H5 termina
         }
 
         const chosenTerminals = terminal;
+        const unanimous = chosenTerminals > 0 && (terminalWins === chosenTerminals || terminalWins === 0);
         const name = chosenTerminals === 0
           ? "0 terminal"
-          : terminalWins === chosenTerminals
-            ? "all wins"
-            : terminalWins === 0
-              ? "all losses"
-              : "conflicting";
+          : !unanimous
+            ? "conflicting"
+            : `${chosenTerminals === 1 ? "1" : "2+"} terminal, all ${terminalWins === chosenTerminals ? "wins" : "losses"}`;
         const bucket = bucketFor(name);
         bucket.decisions += 1;
         if (rootSideWon) {
@@ -165,7 +164,14 @@ describe.runIf(COLLECT_OUT !== undefined || MERGE_DIR !== undefined)("H5 termina
 
       report(`joined ${joined} decisions to their game (${unjoined} unjoined)`);
       report(`\nreal root-side win rate, by the chosen candidate's terminal evidence:`);
-      for (const name of ["0 terminal", "conflicting", "all wins", "all losses"]) {
+      for (const name of [
+        "0 terminal",
+        "conflicting",
+        "1 terminal, all wins",
+        "2+ terminal, all wins",
+        "1 terminal, all losses",
+        "2+ terminal, all losses",
+      ]) {
         const bucket = buckets.get(name);
         if (bucket === undefined) continue;
         const contributions = contributionByBucket.get(name) ?? [];
