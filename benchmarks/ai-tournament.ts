@@ -443,6 +443,13 @@ export function playGame(
     seed: number;
     designed?: boolean;
     masterProposal?: (context: AiDecisionContext) => void;
+    /**
+     * Wraps one seat's strategy. The Gate B challenger uses this to install its
+     * selector on a single seat — identity is bound by construction, because a
+     * decorator only ever sees the seat it was created for, so no global
+     * "is this a farmer" test can leak the change onto the other seats.
+     */
+    decorate?: (seat: Seat, strategy: AiStrategy) => AiStrategy;
   }>,
 ): GameOutcome {
   let state = startWithLandlord(deck, landlord);
@@ -451,16 +458,14 @@ export function playGame(
     designed: options.designed === true,
     ...(options.masterProposal === undefined ? {} : { masterProposal: options.masterProposal }),
   };
+  const build = (seat: Seat, seed: number): AiStrategy => {
+    const strategy = createMeasuredStrategy(profiles[seat], recorder, { ...shared, seed });
+    return options.decorate === undefined ? strategy : options.decorate(seat, strategy);
+  };
   const strategies: Record<Seat, AiStrategy> = {
-    human: createMeasuredStrategy(profiles.human, recorder, { ...shared, seed: options.seed + 1 }),
-    "ai-one": createMeasuredStrategy(profiles["ai-one"], recorder, {
-      ...shared,
-      seed: options.seed + 2,
-    }),
-    "ai-two": createMeasuredStrategy(profiles["ai-two"], recorder, {
-      ...shared,
-      seed: options.seed + 3,
-    }),
+    human: build("human", options.seed + 1),
+    "ai-one": build("ai-one", options.seed + 2),
+    "ai-two": build("ai-two", options.seed + 3),
   };
   for (let commandCount = 0; commandCount < 256; commandCount += 1) {
     if (state.phase === "finished") {
@@ -664,6 +669,13 @@ export function runPairTournament(
     maxDeals?: number;
     quiet?: boolean;
     masterProposal?: (context: AiDecisionContext) => void;
+    /**
+     * Called once per game with the seat the strong level occupies, and returns
+     * the decorator to install on that seat — or undefined for no change. This
+     * is how the challenger arm differs from the baseline arm and nothing else:
+     * the same `playGame`, the same schedule, the same seeds.
+     */
+    decoratorFor?: (strongSeat: Seat) => ((strategy: AiStrategy) => AiStrategy) | undefined;
   }> = {},
 ): PairRun {
   const maxDeals = options.maxDeals ?? config.deals;
@@ -689,11 +701,19 @@ export function runPairTournament(
     let dealWinsB = 0;
     for (const slot of armSchedule(dealIndex)) {
       const profiles = scheduleFor(stronger, weaker, slot.strongSeat);
+      const decorator = options.decoratorFor?.(slot.strongSeat);
       const outcome = playGame(deck, slot.landlord, profiles, recorder, {
         unboundedEvery: config.unboundedEvery,
         seed: dealSeed * 100 + SEAT_ORDER.indexOf(slot.strongSeat) * 10 + SEAT_ORDER.indexOf(slot.landlord),
         designed: config.designed,
         ...(options.masterProposal === undefined ? {} : { masterProposal: options.masterProposal }),
+        ...(decorator === undefined ? {} : {
+          // Only the strong seat. Passing the decorator through unconditionally
+          // would install the challenger on all three seats, which is a
+          // different experiment wearing the same name.
+          decorate: (seat: Seat, strategy: AiStrategy) =>
+            seat === slot.strongSeat ? decorator(strategy) : strategy,
+        }),
       });
       const strongIsLandlord = slot.strongSeat === slot.landlord;
       const strongerWon = strongIsLandlord
