@@ -220,6 +220,19 @@ export function dealDeck(seed: number): readonly CardId[] {
 }
 
 /**
+ * The game seed for one (deal, strong seat, landlord) triple.
+ *
+ * Extracted rather than left inline at its two call sites because a corpus and
+ * a strength run must agree on it: `dealSeed = seedBase + dealIndex` picks the
+ * deck, and this picks which of the six schedule games is being played. A
+ * second copy of this arithmetic is how an offline corpus ends up describing
+ * games the benchmark never plays.
+ */
+export function dealGameSeed(dealSeed: number, strongSeat: Seat, landlord: Seat): number {
+  return dealSeed * 100 + SEAT_ORDER.indexOf(strongSeat) * 10 + SEAT_ORDER.indexOf(landlord);
+}
+
+/**
  * Wraps the runtime clock. `shouldContinue` is the only consumer of `now()` on
  * the play path, so "the clock was read at or past the deadline" is exactly
  * "this level's own budget check fired". This measures truncation without
@@ -724,7 +737,7 @@ export function runPairTournament(
       const phase2 = options.phase2For?.(slot.strongSeat);
       const outcome = playGame(deck, slot.landlord, profiles, recorder, {
         unboundedEvery: config.unboundedEvery,
-        seed: dealSeed * 100 + SEAT_ORDER.indexOf(slot.strongSeat) * 10 + SEAT_ORDER.indexOf(slot.landlord),
+        seed: dealGameSeed(dealSeed, slot.strongSeat, slot.landlord),
         designed: config.designed,
         ...(options.masterProposal === undefined ? {} : { masterProposal: options.masterProposal }),
         ...(decorator === undefined ? {} : {

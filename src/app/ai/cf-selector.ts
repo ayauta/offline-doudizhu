@@ -135,6 +135,89 @@ export type FarmerSelectorOptions = Readonly<{
   enabled?: boolean;
 }>;
 
+/**
+ * What a scoring pass over *somebody else's* proposal decided.
+ *
+ * Split out from `cfSelectFarmerAction` because the later policy iteration
+ * scores two models against one shared proposal: layer 1 produces `b1`, layer 2
+ * scores the same candidate list against `b1`. Both layers must use this
+ * function rather than a second copy of the rule, or "the composition added one
+ * model traversal and nothing else" stops being checkable.
+ */
+export type CfAlternativeChoice = Readonly<{
+  /** Candidate index of the winning alternative, or -1 when nothing was scored. */
+  index: number;
+  /** True when that alternative cleared the threshold strictly. */
+  overrode: boolean;
+  /** The winning score, or -Infinity when there was no alternative to score. */
+  score: number;
+  /** How many candidates were scored — one traversal each. */
+  scored: number;
+  featureMs: number;
+  inferenceMs: number;
+}>;
+
+/**
+ * Scores every candidate of `proposal` except `referenceIndex` and reports the
+ * best one, keeping the frozen rule intact: strict `score > threshold`, and
+ * ties go to the earliest index, which — because the candidates arrive in
+ * production candidate order — is the frozen tie-break.
+ *
+ * Anything the caller cannot answer for (an empty alternative set, a reference
+ * outside the proposal) comes back as `overrode: false`, never as a guess.
+ */
+export function cfScoreAlternatives(
+  view: PlayingPlayerView,
+  proposal: CfProposal,
+  referenceIndex: number,
+  model: TreeModel,
+  threshold: number,
+): CfAlternativeChoice {
+  const reference = proposal.actions[referenceIndex];
+  if (reference === undefined) {
+    return Object.freeze({
+      index: -1, overrode: false, score: Number.NEGATIVE_INFINITY, scored: 0,
+      featureMs: 0, inferenceMs: 0,
+    });
+  }
+  let bestIndex = -1;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  let scored = 0;
+  let featureMs = 0;
+  let inferenceMs = 0;
+  for (let index = 0; index < proposal.actions.length; index += 1) {
+    if (index === referenceIndex) {
+      continue;
+    }
+    const action = proposal.actions[index];
+    if (action === undefined) {
+      continue;
+    }
+    const featureStart = performance.now();
+    const row = cfRow(view, action, reference);
+    const inferenceStart = performance.now();
+    const score = scoreTrees(model, row);
+    const end = performance.now();
+    featureMs += inferenceStart - featureStart;
+    inferenceMs += end - inferenceStart;
+    scored += 1;
+    // Strict `>` keeps the first maximum, which — because the candidates arrive
+    // in production candidate order — is the frozen tie-break.
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = index;
+    }
+  }
+  return Object.freeze({
+    index: bestIndex,
+    overrode: bestIndex >= 0 && bestScore > threshold,
+    score: bestScore,
+    scored,
+    featureMs,
+    inferenceMs,
+  });
+}
+
 function farmerPositionOf(view: PlayingPlayerView): number {
   const seats: readonly Seat[] = ["human", "ai-one", "ai-two"];
   return (seats.indexOf(view.seat) - seats.indexOf(view.landlord) + 3) % 3;
@@ -208,43 +291,18 @@ export function cfSelectFarmerAction(
     return productionCommand;
   }
 
-  let bestIndex = -1;
-  let bestScore = Number.NEGATIVE_INFINITY;
-  let featureMs = 0;
-  let inferenceMs = 0;
-  for (let index = 0; index < proposal.actions.length; index += 1) {
-    if (index === productionIndex) {
-      continue;
-    }
-    const action = proposal.actions[index];
-    if (action === undefined) {
-      continue;
-    }
-    const featureStart = performance.now();
-    const row = cfRow(view, action, reference);
-    const inferenceStart = performance.now();
-    const score = scoreTrees(options.model, row);
-    const end = performance.now();
-    featureMs += inferenceStart - featureStart;
-    inferenceMs += end - inferenceStart;
-    // Strict `>` keeps the first maximum, which — because the candidates arrive
-    // in production candidate order — is the frozen tie-break.
-    if (score > bestScore) {
-      bestScore = score;
-      bestIndex = index;
-    }
-  }
-
-  const overrode = bestIndex >= 0 && bestScore > options.threshold;
+  const choice = cfScoreAlternatives(
+    view, proposal, productionIndex, options.model, options.threshold);
+  const overrode = choice.overrode;
   observe?.(Object.freeze({
     seat: view.seat,
     proposalMs,
-    featureMs,
-    inferenceMs,
+    featureMs: choice.featureMs,
+    inferenceMs: choice.inferenceMs,
     eligible: true,
     overrode,
-    rank: overrode ? bestIndex : -1,
-    score: bestScore,
+    rank: overrode ? choice.index : -1,
+    score: choice.score,
     threshold: options.threshold,
     minRemaining: minRemainingOf(view),
     farmerPosition: farmerPositionOf(view),
@@ -253,6 +311,6 @@ export function cfSelectFarmerAction(
   if (!overrode) {
     return productionCommand;
   }
-  const chosen = proposal.actions[bestIndex];
+  const chosen = proposal.actions[choice.index];
   return chosen === undefined ? productionCommand : cfActionCommand(view.seat, chosen);
 }

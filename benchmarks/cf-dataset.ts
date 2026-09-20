@@ -171,6 +171,61 @@ export function cfPolicyCommand(
   return tierCommand(tiers[seat], gameSeed, seat, context, decisionIndex);
 }
 
+/**
+ * What a policy does with the command production just produced.
+ *
+ * The counterfactual forks have always continued under π0, so this seam had no
+ * reason to exist. Policy iteration needs it: the π1 capture visits, forks and
+ * continues under a policy that is still production *plus* the frozen selector
+ * at one seat. Keeping it a transformation of the production command — rather
+ * than a second decision function — is what makes "π1 is π0 plus one override"
+ * checkable, and it keeps the decision counter and the seed derivation in one
+ * place for both policies.
+ */
+export type CfPolicy = (
+  context: AiDecisionContext,
+  productionCommand: GameCommand,
+) => GameCommand;
+
+/** π0: the production command is played unchanged, object for object. */
+export const CF_PRODUCTION_POLICY: CfPolicy = (_context, productionCommand) => productionCommand;
+
+/**
+ * Compares two forks element for element: the winner, every command, and every
+ * (seat, decision index) pair consumed on the way.
+ *
+ * Winner equality is deliberately not enough. Two continuations can end in the
+ * same winner having played different cards, and a fork that resumed under the
+ * wrong policy would still look correct by that measure — which is exactly the
+ * failure this exists to catch.
+ */
+export function cfTraceDivergence(reference: CfForkResult, original: CfForkResult): string | null {
+  if (reference.winner !== original.winner) {
+    return `winner: ${reference.winner} != ${original.winner}`;
+  }
+  if (reference.commands.length !== original.commands.length) {
+    return `commands length: ${reference.commands.length} != ${original.commands.length}`;
+  }
+  for (let index = 0; index < reference.commands.length; index += 1) {
+    const left = reference.commands[index];
+    const right = original.commands[index];
+    if (left !== right) {
+      return `commands[${index}]: ${left} != ${right}`;
+    }
+  }
+  if (reference.decisions.length !== original.decisions.length) {
+    return `decisions length: ${reference.decisions.length} != ${original.decisions.length}`;
+  }
+  for (let index = 0; index < reference.decisions.length; index += 1) {
+    const left = reference.decisions[index];
+    const right = original.decisions[index];
+    if (left?.seat !== right?.seat || left?.index !== right?.index) {
+      return `decisions[${index}]: ${left?.seat}#${left?.index} != ${right?.seat}#${right?.index}`;
+    }
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Shared command/action helpers// ---------------------------------------------------------------------------
 // `cfCommandKey`, `cfActionCommand` and `cfProposal` live in
@@ -250,10 +305,14 @@ export type CfForkResult = Readonly<{
 }>;
 
 /**
- * Plays from `state` to a real terminal position under π0 alone. Both fork
+ * Plays from `state` to a real terminal position under one policy. Both fork
  * branches call this same function with the same tiers and counters, which is
  * the "after the first hand, both branches restore the identical policy" half
  * of the counterfactual.
+ *
+ * The policy defaults to π0, so the v1 corpus and the Gate A/B benchmarks keep
+ * the exact behaviour they were frozen with; policy iteration passes π1
+ * instead, and every seat it is not bound to still gets π0.
  *
  * A position that does not reach a terminal within the command limit is
  * INVALID, never a draw and never a `0`.
@@ -264,6 +323,7 @@ export function cfPlayToTerminal(
   gameSeed: number,
   counters: CfPolicyCounters,
   commandLimit = 256,
+  policy: CfPolicy = CF_PRODUCTION_POLICY,
 ): CfForkResult {
   let current = state;
   const active: CfPolicyCounters = { ...counters };
@@ -282,7 +342,10 @@ export function cfPlayToTerminal(
     }
     const seat = current.currentSeat;
     const context = cfPlayContext(current, seat);
-    const command = cfPolicyCommand(tiers, gameSeed, seat, context, active[seat]);
+    const command = policy(
+      context,
+      cfPolicyCommand(tiers, gameSeed, seat, context, active[seat]),
+    );
     decisions.push(Object.freeze({ seat, index: active[seat] }));
     active[seat] += 1;
     commands.push(cfCommandKey(command));
@@ -302,12 +365,17 @@ export type CfForkBundle = Readonly<{
 }>;
 
 /**
- * Forks the state once for the production action and once per candidate, and
- * reduces each terminal winner to a farmer-camp label relative to a0.
+ * Forks the state once for the reference action and once per candidate, and
+ * reduces each terminal winner to a farmer-camp label relative to it.
  *
  * Both branches consume the acting seat's decision index, because the decision
  * really was made in the full game — only its output is replaced. That is what
- * makes the a0 branch byte-identical to the game the snapshot came from.
+ * makes the reference branch byte-identical to the game the snapshot came from.
+ *
+ * `referenceIndex` is the candidate that was actually played at this root: `a0`
+ * under π0, and `b1` — the action the frozen selector executed — under π1. It
+ * is not necessarily the raw production action, which is why it is named for
+ * its role rather than for where it came from.
  */
 export function cfForkLabels(
   state: GameState,
@@ -315,10 +383,11 @@ export function cfForkLabels(
   landlord: Seat,
   commandForCandidate: (index: number) => GameCommand,
   candidateCount: number,
-  productionIndex: number,
+  referenceIndex: number,
   counters: CfPolicyCounters,
   tiers: CfSeatTiers,
   gameSeed: number,
+  policy: CfPolicy = CF_PRODUCTION_POLICY,
 ): CfForkBundle {
   const after: CfPolicyCounters = { ...counters, [seat]: counters[seat] + 1 };
   const winners: Seat[] = [];
@@ -328,13 +397,13 @@ export function cfForkLabels(
     if (!forced.ok) {
       throw new CfInvalidError(`Forced candidate ${index} is illegal for ${seat}.`);
     }
-    const fork = cfPlayToTerminal(forced.state, tiers, gameSeed, after);
+    const fork = cfPlayToTerminal(forced.state, tiers, gameSeed, after, 256, policy);
     forks.push(fork);
     winners.push(fork.winner);
   }
-  const reference = winners[productionIndex];
+  const reference = winners[referenceIndex];
   if (reference === undefined) {
-    throw new CfInvalidError("The production action is not one of the candidates.");
+    throw new CfInvalidError("The reference action is not one of the candidates.");
   }
   const labels = winners.map((winner) => cfLabel(seat, landlord, reference, winner));
   return Object.freeze({
@@ -398,6 +467,16 @@ export type CfSnapshotMeta = Readonly<{
   tiers: CfSeatTiers;
   /** Per-seat decision counters as the fork leaves them: the continuation state. */
   continuationCounters: CfPolicyCounters;
+  /**
+   * Policy iteration only: candidate index of the *raw production* action `b0`.
+   * `productionIndex` keeps its v1 meaning — the reference the labels and rows
+   * are built against — which under π1 is the action the frozen selector
+   * actually executed (`b1`), not the action production proposed.
+   *
+   * Absent under π0, where the two are the same thing, so a v1 snapshot keeps
+   * exactly the bytes it was frozen with.
+   */
+  rawProductionIndex?: number;
 }>;
 
 export type CfCandidate = Readonly<{
@@ -480,8 +559,14 @@ type PendingRoot = {
   tiers: CfSeatTiers;
   seatDecisionIndex: number;
   counters: CfPolicyCounters;
-  /** The command the frozen policy actually played here — the dataset's a0. */
+  /** The command the frozen policy actually played here — the dataset's reference. */
   command: GameCommand;
+  /** The action production proposed before the policy touched it — π1's `b0`. */
+  rawCommand: GameCommand;
+  /** Where this decision sits in the variant's own trace, for the replay check. */
+  step: number;
+  /** The very policy this variant was played under — the forks must resume it. */
+  policy: CfPolicy;
   context: PlayContext;
 };
 
@@ -521,30 +606,43 @@ export function mix32(value: number): number {
 }
 
 /**
- * Plays one variant to its terminal under π0, collecting every farmer root the
- * studied seat faced. No forking happens here — the group decides what to keep
- * only after every variant has been enumerated.
+ * Plays one variant to its terminal under one policy, collecting every farmer
+ * root the studied seat faced plus the trace of the whole game. No forking
+ * happens here — the group decides what to keep only after every variant has
+ * been enumerated.
  */
 function cfPlayVariant(
   deck: readonly CardId[],
   variant: CfVariantSpec,
-): Readonly<{ winner: Seat; roots: readonly PendingRoot[] }> {
+  policy: CfPolicy,
+): Readonly<{ winner: Seat; roots: readonly PendingRoot[]; trace: CfForkResult }> {
   if (variant.studiedSeat === variant.landlord) {
     throw new CfInvalidError("Gate A v1 studies farmer roots only.");
   }
   let state: GameState = startWithLandlord(deck, variant.landlord);
   const counters: CfPolicyCounters = { human: 0, "ai-one": 0, "ai-two": 0 };
   const roots: PendingRoot[] = [];
+  const commands: string[] = [];
+  const decisions: Array<Readonly<{ seat: Seat; index: number }>> = [];
   for (let step = 0; step < 256; step += 1) {
     if (state.phase === "finished") {
-      return Object.freeze({ winner: state.winner, roots: Object.freeze(roots) });
+      return Object.freeze({
+        winner: state.winner,
+        roots: Object.freeze(roots),
+        trace: Object.freeze({
+          winner: state.winner,
+          commands: Object.freeze(commands),
+          decisions: Object.freeze(decisions),
+        }),
+      });
     }
     if (state.phase !== "playing" && state.phase !== "ready-to-play") {
       throw new CfInvalidError(`Counterfactual game reached phase ${state.phase}.`);
     }
     const seat = state.currentSeat;
     const context = cfPlayContext(state, seat);
-    const command = cfPolicyCommand(variant.tiers, variant.gameSeed, seat, context, counters[seat]);
+    const rawCommand = cfPolicyCommand(variant.tiers, variant.gameSeed, seat, context, counters[seat]);
+    const command = policy(context, rawCommand);
     if (seat === variant.studiedSeat) {
       roots.push({
         state,
@@ -556,9 +654,14 @@ function cfPlayVariant(
         seatDecisionIndex: counters[seat],
         counters: { ...counters },
         command,
+        rawCommand,
+        step,
+        policy,
         context,
       });
     }
+    decisions.push(Object.freeze({ seat, index: counters[seat] }));
+    commands.push(cfCommandKey(command));
     counters[seat] += 1;
     const result = transition(state, command);
     if (!result.ok) {
@@ -570,6 +673,39 @@ function cfPlayVariant(
 }
 
 /**
+ * How one group capture should treat the production command it starts from.
+ *
+ * Every field defaults to the v1 value, so `cfCaptureGroup(deck, spec)` is
+ * still exactly the capture Gate A ran; policy iteration is the only caller
+ * that passes anything.
+ */
+export type CfCaptureOptions = Readonly<{
+  /**
+   * The policy each variant visits, forks and continues under. Defaults to π0
+   * for every variant, which is what the v1 corpus and Gate A/B were frozen
+   * with.
+   */
+  policyFor?: (variant: CfVariantSpec) => CfPolicy;
+  /**
+   * The keyed-priority salt. Policy iteration gets its own frozen salt — the
+   * spec pins a different value for this round — while the algorithm above it
+   * stays v1's.
+   */
+  snapshotSalt?: string;
+  /** Provenance only, so a π2 corpus cannot be mistaken for a v1 one. */
+  datasetVersion?: number;
+  /**
+   * Policy-iteration mode. Records `rawProductionIndex` in each snapshot's meta,
+   * so the raw production action can be told apart from the reference, and
+   * verifies that the reference branch reproduces the variant's *own*
+   * continuation command for command and decision index for decision index —
+   * the winner is not enough evidence, and a fork that resumed under the wrong
+   * policy would still match by winner.
+   */
+  recordRawProduction?: boolean;
+}>;
+
+/**
  * Enumerates one initial deal group: plays every variant, ranks every farmer
  * root by its keyed priority, and forks the highest-priority eligible roots up
  * to the group cap.
@@ -579,24 +715,35 @@ function cfPlayVariant(
  *   - a group with no eligible root is still registered, with zero snapshots,
  *     and is never back-filled from another deal.
  */
-export function cfCaptureGroup(deck: readonly CardId[], spec: CfGroupSpec): CfGroupResult {
+export function cfCaptureGroup(
+  deck: readonly CardId[],
+  spec: CfGroupSpec,
+  options: CfCaptureOptions = {},
+): CfGroupResult {
+  const policyFor = options.policyFor ?? (() => CF_PRODUCTION_POLICY);
+  const snapshotSalt = options.snapshotSalt ?? CF_SNAPSHOT_SALT;
+  const datasetVersion = options.datasetVersion ?? CF_DATASET_VERSION;
+  const recordRawProduction = options.recordRawProduction === true;
   const allRoots: PendingRoot[] = [];
   const variantWinners: Record<string, Seat> = {};
+  /** Each variant's own continuation, for the reference-branch replay check. */
+  const variantTraces = new Map<string, CfForkResult>();
   for (const variant of spec.variants) {
-    const played = cfPlayVariant(deck, variant);
+    const played = cfPlayVariant(deck, variant, policyFor(variant));
     variantWinners[variant.variantId] = played.winner;
+    variantTraces.set(variant.variantId, played.trace);
     allRoots.push(...played.roots);
   }
 
   const ordered = [...allRoots].sort((left, right) => {
     const leftPriority = cfSnapshotPriority(
-      CF_SNAPSHOT_SALT,
+      snapshotSalt,
       spec.groupId,
       left.variantId,
       left.seatDecisionIndex,
     );
     const rightPriority = cfSnapshotPriority(
-      CF_SNAPSHOT_SALT,
+      snapshotSalt,
       spec.groupId,
       right.variantId,
       right.seatDecisionIndex,
@@ -634,7 +781,18 @@ export function cfCaptureGroup(deck: readonly CardId[], spec: CfGroupSpec): CfGr
     if (productionIndex < 0) {
       throw new CfInvalidError("The production action is not one of the candidates.");
     }
-    const { labels, winners } = cfForkLabels(
+    // Under π1 the reference is `b1`, which is what the policy actually played
+    // here; the raw production action is a different candidate whenever the
+    // selector overrode. Both are located in `C`, never guessed.
+    const rawProductionIndex = recordRawProduction
+      ? proposal.actions.findIndex(
+          (action) => cfCommandKey(cfActionCommand(root.seat, action)) === cfCommandKey(root.rawCommand),
+        )
+      : null;
+    if (rawProductionIndex !== null && rawProductionIndex < 0) {
+      throw new CfInvalidError("The raw production action is not one of the candidates.");
+    }
+    const { labels, winners, forks } = cfForkLabels(
       root.state,
       root.seat,
       root.landlord,
@@ -650,22 +808,44 @@ export function cfCaptureGroup(deck: readonly CardId[], spec: CfGroupSpec): CfGr
       root.counters,
       root.tiers,
       root.gameSeed,
+      root.policy,
     );
     forkGames += proposal.actions.length;
-    // Self-check, every snapshot, on the real tier: forcing the production
+    // Self-check, every snapshot, on the real tier: forcing the reference
     // action must reproduce the game the snapshot was taken from. If this ever
     // fires, the per-seat decision counters did not survive the fork and every
     // label in the corpus is measured against the wrong reference.
     const variantWinner = variantWinners[root.variantId];
-    if (winners[productionIndex] !== variantWinner) {
+    if (variantWinner === undefined || winners[productionIndex] !== variantWinner) {
       throw new CfInvalidError("The forced production branch did not reproduce its own game.");
+    }
+    // The winner matching is the weak half of the claim. The strong half is
+    // that the fork resumed the *same policy with the same per-seat counters*,
+    // which shows up only in the command stream and the (seat, index) pairs:
+    // two continuations can end in the same winner having played different
+    // cards. Policy iteration is the mode where the reference is not the raw
+    // production action, so it is the mode where this can silently go wrong.
+    if (recordRawProduction) {
+      const trace = variantTraces.get(root.variantId);
+      const referenceFork = forks[productionIndex];
+      if (trace === undefined || referenceFork === undefined) {
+        throw new CfInvalidError("The variant's own continuation was not recorded.");
+      }
+      const divergence = cfTraceDivergence(referenceFork, {
+        winner: variantWinner,
+        commands: Object.freeze(trace.commands.slice(root.step + 1)),
+        decisions: Object.freeze(trace.decisions.slice(root.step + 1)),
+      });
+      if (divergence !== null) {
+        throw new CfInvalidError(`The reference branch did not replay its own game: ${divergence}`);
+      }
     }
     const anchored = proposal.anchoredScores;
     const reference = anchored[productionIndex] ?? 0;
     sourceVariantCounts[root.variantId] = (sourceVariantCounts[root.variantId] ?? 0) + 1;
     snapshots.push(Object.freeze({
       meta: Object.freeze({
-        datasetVersion: CF_DATASET_VERSION,
+        datasetVersion,
         featureSchemaVersion: CF_FEATURE_SCHEMA_VERSION,
         rulesVersion: CF_RULES_VERSION,
         policyCommit: spec.policyCommit,
@@ -684,6 +864,10 @@ export function cfCaptureGroup(deck: readonly CardId[], spec: CfGroupSpec): CfGr
           ...root.counters,
           [root.seat]: root.counters[root.seat] + 1,
         }),
+        // Absent under π0, where the raw production action and the reference
+        // are the same thing, so a v1 snapshot keeps the bytes it was frozen
+        // with rather than gaining a redundant field.
+        ...(rawProductionIndex === null ? {} : { rawProductionIndex }),
       }),
       view: root.context.view,
       actions: root.context.legalActions,
