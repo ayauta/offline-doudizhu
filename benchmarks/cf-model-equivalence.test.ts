@@ -22,6 +22,11 @@ import { describe, expect, it } from "vitest";
 
 import { report } from "./ai-tournament.js";
 import { assertRowMatchesSchema, parseTreeModel, scoreTrees } from "./cf-model.js";
+import {
+  CF_MODEL_JSON,
+  CF_MODEL_SHA256,
+  CF_SELECTOR_THRESHOLD,
+} from "../src/app/ai/cf-model-data.js";
 import { CF_THRESHOLD_GRID, cfChooseOverride, type CfScoredRoot } from "./cf-selector.js";
 
 const ENABLED = process.env.AI_CF_EQUIVALENCE === "1";
@@ -56,7 +61,8 @@ describe.runIf(ENABLED)("frozen model: runtime equivalence", () => {
       }).modelSha256,
     );
     report(`\nmodel ${model.modelSha256.slice(0, 16)}  trees ${model.numTrees}  features ${model.numFeatures}`);
-    report(`rows ${rows.length}  threshold ${THRESHOLD}`);
+    report(`rows ${rows.length}  threshold ${THRESHOLD}  packaged threshold ${CF_SELECTOR_THRESHOLD}`);
+    expect(CF_SELECTOR_THRESHOLD).toBe(THRESHOLD);
 
     let maxDelta = 0;
     let worst = "";
@@ -85,6 +91,21 @@ describe.runIf(ENABLED)("frozen model: runtime equivalence", () => {
     // Behaviour is what must not differ; the numeric bound is a sanity rail.
     expect(nonFinite).toBe(0);
     expect(maxDelta).toBeLessThan(1e-9);
+
+    // The packaged artifact — the module the shipped Worker loads — must be the
+    // same table. A packaging step that changed a threshold or dropped a tree
+    // would leave every check above green while the product ran something else.
+    expect(CF_MODEL_SHA256).toBe(model.modelSha256);
+    const packaged = parseTreeModel(JSON.parse(CF_MODEL_JSON));
+    expect(packaged.modelSha256).toBe(model.modelSha256);
+    expect(packaged.numTrees).toBe(model.numTrees);
+    expect(packaged.featureNames).toEqual(model.featureNames);
+    let packagedDelta = 0;
+    for (const row of rows) {
+      packagedDelta = Math.max(packagedDelta, Math.abs(scoreTrees(packaged, row.x) - scoreTrees(model, row.x)));
+    }
+    report(`packaged vs source table: max |delta| = ${packagedDelta.toExponential(3)}`);
+    expect(packagedDelta).toBe(0);
 
     // Rebuild each root and compare the selector's actual decisions.
     const groupOf = new Map<string, { snapshotId: string; order: number; y: -1 | 0 | 1 }[]>();

@@ -29,6 +29,7 @@ export interface EnhancedAiTurnRunner {
     aiType: EnhancedAiType,
     context: AiDecisionContext,
     complete: (resolution: EnhancedAiTurnResolution) => void,
+    options?: Readonly<{ counterfactualFarmer?: boolean }>,
   ) => () => void;
   readonly dispose: () => void;
 }
@@ -89,6 +90,7 @@ export function createEnhancedAiTurnRunner(options: Readonly<{
       aiType: EnhancedAiType,
       context: AiDecisionContext,
       complete: (resolution: EnhancedAiTurnResolution) => void,
+      turnOptions: Readonly<{ counterfactualFarmer?: boolean }> = {},
     ) {
       let active = true;
       let beatReady = false;
@@ -135,7 +137,7 @@ export function createEnhancedAiTurnRunner(options: Readonly<{
       if (options.decisionService === undefined) {
         receive(Object.freeze({ ok: false, reason: "unavailable" }));
       } else {
-        requestCancel = options.decisionService.request(aiType, context, receive);
+        requestCancel = options.decisionService.request(aiType, context, receive, turnOptions);
       }
       return cancel;
     },

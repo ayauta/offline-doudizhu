@@ -27,9 +27,9 @@ describe("Web settings storage", () => {
     const store = createWebSettingsStore(storage);
 
     expect(store.load()).toBe(DEFAULT_AI_SETTINGS);
-    store.save({ aiType: "master" });
+    store.save({ aiType: "master", counterfactualFarmer: false });
 
-    expect(createWebSettingsStore(storage).load()).toEqual({ aiType: "master" });
+    expect(createWebSettingsStore(storage).load()).toEqual({ aiType: "master", counterfactualFarmer: false });
     expect(storage.writes).toBe(1);
   });
 
@@ -37,12 +37,12 @@ describe("Web settings storage", () => {
     const storage = new MemoryStorage();
     storage.values.set(SETTINGS_STORAGE_KEY, JSON.stringify({
       schemaVersion: 7,
-      data: { aiType: "master" },
+      data: { aiType: "master", counterfactualFarmer: false },
     }));
     const store = createWebSettingsStore(storage);
 
     expect(store.load()).toBe(DEFAULT_AI_SETTINGS);
-    store.save({ aiType: "casual" });
+    store.save({ aiType: "casual", counterfactualFarmer: false });
 
     expect(storage.writes).toBe(0);
     expect(JSON.parse(storage.values.get(SETTINGS_STORAGE_KEY)!)).toMatchObject({
@@ -62,6 +62,6 @@ describe("Web settings storage", () => {
     const store = createWebSettingsStore(storage);
 
     expect(store.load()).toBe(DEFAULT_AI_SETTINGS);
-    expect(() => store.save({ aiType: "master" })).not.toThrow();
+    expect(() => store.save({ aiType: "master", counterfactualFarmer: false })).not.toThrow();
   });
 });

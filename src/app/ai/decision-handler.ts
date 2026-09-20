@@ -48,6 +48,11 @@ export type EnhancedAiWorkerRequest = Readonly<{
   aiType: EnhancedAiType;
   context: AiDecisionContext;
   seed: number;
+  /**
+   * Experimental. Asks the worker to install the frozen counterfactual farmer
+   * selector as a post-decision overlay. Absent means production behaviour.
+   */
+  counterfactualFarmer?: boolean;
 }>;
 
 export type EnhancedAiWorkerResponse = Readonly<{

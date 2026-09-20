@@ -57,7 +57,7 @@ class MemorySettingsStore implements SettingsStore {
   readonly saves: AiSettings[] = [];
 
   constructor(aiType: AiType) {
-    this.settings = Object.freeze({ aiType });
+    this.settings = Object.freeze({ aiType, counterfactualFarmer: false });
   }
 
   load(): AiSettings {
@@ -130,7 +130,7 @@ describe("production AI setting and worker integration", () => {
     expect(fixture.session.getView()).toEqual({ screen: "home", aiType: "master" });
     fixture.session.dispatch({ type: "set-ai-type", aiType: "casual" });
     expect(fixture.session.getView()).toEqual({ screen: "home", aiType: "casual" });
-    expect(fixture.settingsStore.saves).toEqual([{ aiType: "casual" }]);
+    expect(fixture.settingsStore.saves).toEqual([{ aiType: "casual", counterfactualFarmer: false }]);
 
     fixture.session.dispatch({ type: "start-game" });
     fixture.session.dispatch({ type: "set-ai-type", aiType: "master" });

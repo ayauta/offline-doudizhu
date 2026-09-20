@@ -32,7 +32,7 @@ describe("AI settings document", () => {
         futureEnvelopeField: 2,
       })),
     ).toEqual({
-      settings: Object.freeze({ aiType: "master" }),
+      settings: Object.freeze({ aiType: "master", counterfactualFarmer: false }),
       writable: true,
     });
   });
@@ -55,15 +55,15 @@ describe("AI settings document", () => {
     expect(
       decodeAiSettingsDocument(JSON.stringify({
         schemaVersion: 99,
-        data: { aiType: "master" },
+        data: { aiType: "master", counterfactualFarmer: false },
       })),
     ).toEqual({ settings: DEFAULT_AI_SETTINGS, writable: false });
   });
 
   it("encodes a small versioned document independently of the app version", () => {
-    expect(JSON.parse(encodeAiSettingsDocument({ aiType: "casual" }))).toEqual({
+    expect(JSON.parse(encodeAiSettingsDocument({ aiType: "casual", counterfactualFarmer: false }))).toEqual({
       schemaVersion: 1,
-      data: { aiType: "casual" },
+      data: { aiType: "casual", counterfactualFarmer: false },
     });
   });
 });

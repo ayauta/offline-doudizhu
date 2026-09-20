@@ -18,6 +18,7 @@ export interface EnhancedAiDecisionService {
     aiType: EnhancedAiType,
     context: AiDecisionContext,
     complete: (outcome: AiDecisionOutcome) => void,
+    options?: Readonly<{ counterfactualFarmer?: boolean }>,
   ) => () => void;
   readonly dispose: () => void;
 }

@@ -106,17 +106,21 @@ export function createProductionSession(options: Readonly<{
   settingsStore?: SettingsStore;
 }>): ProductionSession {
   let selectedAiType: AiType = DEFAULT_AI_SETTINGS.aiType;
+  let counterfactualFarmer = DEFAULT_AI_SETTINGS.counterfactualFarmer;
   try {
     const loaded = options.settingsStore?.load();
     if (loaded !== undefined && (AI_TYPES as readonly string[]).includes(loaded.aiType)) {
       selectedAiType = loaded.aiType;
+      counterfactualFarmer = loaded.counterfactualFarmer === true;
     }
   } catch {
     selectedAiType = DEFAULT_AI_SETTINGS.aiType;
+    counterfactualFarmer = DEFAULT_AI_SETTINGS.counterfactualFarmer;
   }
   let state: GameState = INITIAL_GAME_STATE;
   let inMatch = false;
   let matchAiType: AiType = selectedAiType;
+  let matchCounterfactualFarmer: boolean = counterfactualFarmer;
   let disposed = false;
   let resultVisible = false;
   let exitConfirmation = false;
@@ -392,6 +396,7 @@ export function createProductionSession(options: Readonly<{
         }
         applyAiResult(result);
       },
+      { counterfactualFarmer: matchCounterfactualFarmer }
     );
   }
 
@@ -593,6 +598,7 @@ export function createProductionSession(options: Readonly<{
     cancelScheduledWork();
     state = restarted.state;
     matchAiType = selectedAiType;
+    matchCounterfactualFarmer = counterfactualFarmer;
     if (matchAiType !== "default") {
       enhancedAiTurns.beginMatch();
     }
@@ -609,6 +615,8 @@ export function createProductionSession(options: Readonly<{
       case "start-game":
         if (!inMatch) {
           matchAiType = selectedAiType;
+          matchCounterfactualFarmer = counterfactualFarmer;
+    matchCounterfactualFarmer = counterfactualFarmer;
           if (matchAiType !== "default") {
             enhancedAiTurns.beginMatch();
           }
@@ -623,7 +631,10 @@ export function createProductionSession(options: Readonly<{
         }
         selectedAiType = intent.aiType;
         try {
-          options.settingsStore?.save(Object.freeze({ aiType: selectedAiType }));
+          options.settingsStore?.save(Object.freeze({
+            aiType: selectedAiType,
+            counterfactualFarmer,
+          }));
         } catch {
           // The in-memory setting remains usable when optional storage fails.
         }

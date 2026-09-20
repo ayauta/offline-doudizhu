@@ -278,7 +278,7 @@ test("chooses and restores computer level through a compact inline segmented con
 
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("offline-doudizhu.settings")!))).toEqual({
     schemaVersion: 1,
-    data: { aiType: "master" },
+    data: { aiType: "master", counterfactualFarmer: false },
   });
   await page.reload();
   await expect(page.getByRole("radio", { name: "高手" })).toBeChecked();
@@ -368,6 +368,33 @@ test("runs an enhanced opponent in the worker without exposing its level at the 
   await expect(page.locator(".bottom-cards--revealed")).toBeVisible({ timeout: 2_500 });
   await expectNoUnavailableNotice(page);
   await expect(page.getByText(/休闲|默认|高手/)).toHaveCount(0);
+  await expectNoViewportOverflow(page);
+});
+
+test("plays a Master match with the counterfactual farmer selector enabled", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 400 });
+  await recordUnavailableNotices(page);
+  // Seeds the experimental flag the same way the settings surface would, so the
+  // packaged model has to parse and score inside the real Worker for this match
+  // to complete at all.
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "offline-doudizhu.settings",
+      JSON.stringify({
+        schemaVersion: 1,
+        data: { aiType: "master", counterfactualFarmer: true },
+      }),
+    );
+  });
+  await useIdentityDeck(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始游戏" }).click();
+  await page.getByRole("button", { name: "叫地主" }).click();
+
+  await expect(page.locator(".bottom-cards--revealed")).toBeVisible({ timeout: 2_500 });
+  // The selector must never surface as a failure to the table: a model that
+  // failed to load would fall back silently, and an exception would show here.
+  await expectNoUnavailableNotice(page);
   await expectNoViewportOverflow(page);
 });
 

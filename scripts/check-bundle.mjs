@@ -114,9 +114,19 @@ const gzipBudgets = [
     pattern: /^assets\/main-[^/]+\.css$/,
   },
   {
-    // 8 355 B baseline + 2 587 B (one enhanced policy module) / 3.
+    // 122 713 B measured + 2 587 B (one enhanced policy module) / 3.
+    //
+    // The budget was 9 217 B until the frozen counterfactual farmer model was
+    // packaged into the worker. That model is 113 496 B gzip of the 122 713 B,
+    // so the increase is one deliberate artifact rather than drift, which is
+    // the thing this budget exists to distinguish. ADR 0018 replaces historical
+    // enhanced-AI asset limits as requirements and asks for an evidence-based
+    // replacement rather than a bypassed check; this is that replacement, kept
+    // on the same anchor as every other limit here.
+    //
+    // If the model is reverted, this limit should go back to 9 217 B with it.
     label: "enhanced AI worker",
-    limitBytes: 9_217,
+    limitBytes: 123_575,
     pattern: /^assets\/ai-worker-[^/]+\.js$/,
   },
 ];
