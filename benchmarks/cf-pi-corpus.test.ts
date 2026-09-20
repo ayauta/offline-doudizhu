@@ -31,8 +31,6 @@ import { dirname, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { parseTreeModel } from "./cf-model.js";
-import { CF_MODEL_JSON, CF_MODEL_SHA256 } from "../src/app/ai/cf-model-data.js";
 import { dealDeck, report } from "./ai-tournament.js";
 import {
   CF_FEATURE_SCHEMA_VERSION,
@@ -61,9 +59,8 @@ import {
   cfPiCaptureGroup,
   cfPiGroupSpecFor,
   cfPiSplitOf,
-  type CfPiBaseline,
 } from "./cf-policy-iteration.js";
-import { cfPiAssertGroup } from "./cf-pi-corpus.js";
+import { cfPiAssertGroup, cfPiFrozenBaseline } from "./cf-pi-corpus.js";
 
 const GENERATE_OUT = process.env.AI_CF_PI_GENERATE;
 const MERGE_DIR = process.env.AI_CF_PI_MERGE;
@@ -108,27 +105,6 @@ function envInt(name: string, fallback: number): number {
   return parsed;
 }
 
-/**
- * The frozen π1 record, built from the artifact the *product ships* and checked
- * against its published checksum. Reading it from `.local/` would make "the
- * baseline is frozen π1" a claim about whatever file happened to be on disk.
- */
-function frozenBaseline(): CfPiBaseline {
-  const parsed = JSON.parse(CF_MODEL_JSON) as { modelSha256?: string };
-  if (parsed.modelSha256 !== CF_MODEL_SHA256) {
-    throw new Error("The shipped model artifact does not carry its own published checksum.");
-  }
-  if (sha256(CF_MODEL_JSON) !== CF_MODEL_SHA256) {
-    throw new Error("The shipped model artifact does not hash to CF_MODEL_SHA256.");
-  }
-  if (CF_PI_MODEL_SHA256 !== CF_MODEL_SHA256) {
-    throw new Error("The π2 round's baseline is not the frozen artifact.");
-  }
-  return Object.freeze({
-    model: parseTreeModel(JSON.parse(CF_MODEL_JSON) as Parameters<typeof parseTreeModel>[0]),
-    threshold: CF_PI_THRESHOLD,
-  });
-}
 
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf8")) as T;
@@ -169,7 +145,7 @@ describe.runIf(ENABLED)("Phase 2 Night Lab π1→π2 corpus", () => {
     // §7.10 — the corpus and the strength run must agree on which game a deal
     // index names. Checked before a single deck is dealt.
     assertPiSeedBase(CF_PI_SEED_BASE);
-    const baseline = frozenBaseline();
+    const baseline = cfPiFrozenBaseline();
 
     if (GENERATE_OUT !== undefined) {
       const dealStart = envInt("AI_CF_PI_DEAL_START", CF_PI_UNIVERSE_START);

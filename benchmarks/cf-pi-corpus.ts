@@ -15,6 +15,8 @@
  * Each assertion names the §7 gate it enforces, so a failure points at a
  * preregistered rule rather than at a line number.
  */
+import { CF_MODEL_JSON, CF_MODEL_SHA256 } from "../src/app/ai/cf-model-data.js";
+import { parseTreeModel } from "./cf-model.js";
 import { generateLegalActions } from "../src/core/rules/index.js";
 import type { Seat } from "../src/core/game/index.js";
 import {
@@ -37,10 +39,13 @@ import {
 } from "./cf-dataset.js";
 import {
   CF_PI_DATASET_VERSION,
+  CF_PI_MODEL_SHA256,
+  CF_PI_THRESHOLD,
   CF_PI_UNIVERSE_END,
   CF_PI_UNIVERSE_START,
   cfPiPoolOf,
   cfPiSplitOf,
+  type CfPiBaseline,
 } from "./cf-policy-iteration.js";
 
 const SEAT_ORDER = Object.freeze(["human", "ai-one", "ai-two"] as const);
@@ -344,4 +349,58 @@ export function cfPiAssertGroup(
 
   bump(failures, "accepted");
   return Object.freeze({ snapshots: group.snapshots.length, rows, overridden });
+}
+
+/**
+ * The frozen π1 record, built from the artifact the *product ships* and checked
+ * against its published identity. Reading it from `.local/` would make "the
+ * baseline is frozen π1" a claim about whatever file happened to be on disk.
+ *
+ * Takes the artifact text as an argument so the guards in `tests/` can point the
+ * same checks at a tampered copy and watch them reject it.
+ *
+ * `CF_MODEL_SHA256` identifies the **LightGBM booster text**, not this JSON
+ * wrapper: `cf-export-model.py` copies the booster's digest into the generated
+ * module as `modelSha256`, and that is the field to bind against. Hashing the
+ * wrapper and comparing it to the constant is a check that can only ever fail —
+ * it did, on the first attempt at this file, before a single seed was dealt.
+ *
+ * What is verified here is everything this side of the boundary can verify: the
+ * digest the artifact claims is the frozen one, the tree table is the width and
+ * depth it claims, and the column order is the frozen schema's. That the table
+ * reproduces LightGBM's own predictions is `cf-model-equivalence.test.ts`.
+ */
+export function cfPiFrozenBaseline(artifactJson: string = CF_MODEL_JSON): CfPiBaseline {
+  const parsed = JSON.parse(artifactJson) as {
+    modelSha256?: string;
+    numTrees?: number;
+    numFeatures?: number;
+    trees?: readonly unknown[];
+    featureNames?: readonly string[];
+  };
+  if (parsed.modelSha256 !== CF_MODEL_SHA256) {
+    throw new Error(
+      `The shipped artifact claims model ${String(parsed.modelSha256)}, ` +
+      `expected ${CF_MODEL_SHA256}.`,
+    );
+  }
+  if (CF_PI_MODEL_SHA256 !== CF_MODEL_SHA256) {
+    throw new Error("The π2 round's baseline is not the frozen artifact.");
+  }
+  if (parsed.trees?.length !== parsed.numTrees || parsed.numTrees === undefined) {
+    throw new Error(
+      `The shipped artifact carries ${String(parsed.trees?.length)} trees, claims ${String(parsed.numTrees)}.`,
+    );
+  }
+  if (parsed.featureNames?.length !== CF_FEATURE_NAMES.length ||
+    parsed.featureNames.some((name, index) => name !== CF_FEATURE_NAMES[index])) {
+    throw new Error("The shipped artifact's feature order is not the frozen schema's.");
+  }
+  if (parsed.numFeatures !== CF_FEATURE_NAMES.length) {
+    throw new Error("The shipped artifact disagrees with the frozen schema width.");
+  }
+  return Object.freeze({
+    model: parseTreeModel(JSON.parse(artifactJson) as Parameters<typeof parseTreeModel>[0]),
+    threshold: CF_PI_THRESHOLD,
+  });
 }

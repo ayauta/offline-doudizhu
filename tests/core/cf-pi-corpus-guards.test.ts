@@ -21,12 +21,15 @@ import { cfSplitOf } from "../../benchmarks/cf-corpus.js";
 import {
   CF_PI_DATASET_VERSION,
   CF_PI_GROUP_SNAPSHOT_CAP,
+  CF_PI_MODEL_SHA256,
+  CF_PI_THRESHOLD,
   cfPiCaptureGroup,
   type CfPiBaseline,
 } from "../../benchmarks/cf-policy-iteration.js";
 import {
   CF_PI_GROUP_EXPECTATION,
   cfPiAssertGroup,
+  cfPiFrozenBaseline,
   type CfPiGroupExpectation,
 } from "../../benchmarks/cf-pi-corpus.js";
 import { CF_MODEL_JSON } from "../../src/app/ai/cf-model-data.js";
@@ -121,6 +124,45 @@ describe("pi2 corpus: the exhaustive battery accepts a real π1 capture", () => 
     // data this file just created.
     expect(accepts(captured())).toBe(true);
     expect(() => cfPiAssertGroup(captured(), cfSplitOf(DEAL) ?? "train", {})).toThrow(/§7.16/);
+  });
+});
+
+describe("pi2 corpus: the baseline artifact identity is checkable", () => {
+  it("accepts the artifact the product ships", () => {
+    const baseline = cfPiFrozenBaseline();
+    expect(baseline.threshold).toBe(CF_PI_THRESHOLD);
+    expect(CF_PI_MODEL_SHA256).toBe(
+      "010a8a4a00524f0694d5881bacdd885d99243acf4d71e2b2fdcae7ae82fc3359");
+    expect(Object.keys(baseline.model).length).toBeGreaterThan(0);
+  });
+
+  it("rejects an artifact claiming a different model", () => {
+    const tampered = JSON.parse(CF_MODEL_JSON) as { modelSha256: string };
+    tampered.modelSha256 = "0".repeat(64);
+    expect(() => cfPiFrozenBaseline(JSON.stringify(tampered))).toThrow(/claims model/);
+  });
+
+  it("rejects an artifact whose tree table does not match its claimed depth", () => {
+    const tampered = JSON.parse(CF_MODEL_JSON) as { trees: unknown[] };
+    tampered.trees.pop();
+    expect(() => cfPiFrozenBaseline(JSON.stringify(tampered))).toThrow(/trees/);
+  });
+
+  it("rejects an artifact whose feature order drifted from the frozen schema", () => {
+    const tampered = JSON.parse(CF_MODEL_JSON) as { featureNames: string[] };
+    const [head, second] = tampered.featureNames;
+    if (head === undefined || second === undefined) {
+      throw new Error("Guard setup lost the feature names.");
+    }
+    tampered.featureNames[0] = second;
+    tampered.featureNames[1] = head;
+    expect(() => cfPiFrozenBaseline(JSON.stringify(tampered))).toThrow(/feature order/);
+  });
+
+  it("rejects an artifact whose declared width is not the frozen schema's", () => {
+    const tampered = JSON.parse(CF_MODEL_JSON) as { numFeatures: number };
+    tampered.numFeatures = 85;
+    expect(() => cfPiFrozenBaseline(JSON.stringify(tampered))).toThrow(/width|trees/);
   });
 });
 
