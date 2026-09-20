@@ -299,7 +299,7 @@ selection-on-discovery 的风险随暴露次数累积，而不是被预登记消
 | **20001–20400** | **已退休**（Discovery V2，暴露计数 = 1） | historical / regression / 假设生成 |
 | 5001–5400 | calibration | 只做机械 preflight 与离线重放 |
 | **30001–30400** | **已退休**（Discovery V3，暴露计数 = 1，被 E5 用过） | historical / regression / **假设生成**，不再决定 KEEP / REVERT |
-| 10001–10400 | final validation | KEEP 前独立复核，**至今从未消耗** |
+| **10001–10400** | **已消耗并永久 retire**（2026-09-21，Phase 2 v1 final validation） | 不得再用于 discovery / calibration / 任何后续判据 |
 
 **已退休的池不得再决定 KEEP / REVERT。**
 
@@ -329,7 +329,10 @@ role-specific mechanism 与它自己的判据。
 3. 但任何由这些诊断启发的新算法，**正式棋力 GO/NO-GO 不得再用 `301–700`**。
 4. 新机制的第一次正式 paired A/B 必须用一个**未消耗的池**。V1/V2/V3 均已退休，因此
    下一次必须开新池（V4）；退休池可以继续做 regression 与假设生成。
-5. KEEP 前仍必须用未消耗的 `10001–10400` 独立复核。
+5. ~~KEEP 前仍必须用未消耗的 `10001–10400` 独立复核。~~ **已于 2026-09-21 执行**：
+   Phase 2 v1 final validation 使用该 pool 一次，判定 FINAL KEEP
+   （combined `+5.292pp` [+4.250, +6.417]，96.7% retained），**该 pool 自此永久 retire**。
+   记录见 [Spec 063 final-validation](../specs/063-counterfactual-farmer-selector-gate-b/final-validation.md)。
 6. `301–700` 后续可以继续做 regression，不能再决定 KEEP / REVERT。
 
 一句话：**可以回看错题，但新机制的考试必须换卷子。**
