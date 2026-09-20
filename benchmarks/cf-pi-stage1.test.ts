@@ -45,6 +45,7 @@ import {
   scheduleFor,
 } from "./ai-tournament.js";
 import { parseTreeModel, type TreeModel } from "./cf-model.js";
+import { CF_FEATURE_NAMES } from "./cf-dataset.js";
 import { createChallengerStrategy } from "./cf-challenger.js";
 import {
   CF_PI_STAGE1_END,
@@ -65,7 +66,34 @@ const CF_PI_S1_TIMEOUT_MS = 4 * 60 * 60 * 1000;
 /** The π2 model, as a benchmark-only artifact. Never reachable from `src/`. */
 const P2_MODEL_PATH = process.env.AI_CF_PI_P2_MODEL ?? ".local/cf-pi-rows/pi2-model.json";
 
+/**
+ * The π2 artifact, with its schema pinned to the frozen one.
+ *
+ * `parseTreeModel` checks that the tree table is internally consistent, but it
+ * cannot know which columns the model expects those trees to be reading: a π2
+ * artifact trained on a reordered feature list would score perfectly happily
+ * and mean something else entirely. §7.18's whole claim is that the candidate
+ * interface did not move, so the column order is checked here rather than
+ * assumed from the fact that the file parsed.
+ */
 function loadP2Model(): TreeModel {
+  const parsed = JSON.parse(readFileSync(P2_MODEL_PATH, "utf8")) as {
+    featureNames?: readonly string[];
+    numFeatures?: number;
+    numTrees?: number;
+    trees?: readonly unknown[];
+  };
+  if (parsed.featureNames === undefined ||
+    parsed.featureNames.length !== CF_FEATURE_NAMES.length ||
+    parsed.featureNames.some((name, index) => name !== CF_FEATURE_NAMES[index])) {
+    throw new Error(`${P2_MODEL_PATH} does not carry the frozen feature order.`);
+  }
+  if (parsed.numFeatures !== CF_FEATURE_NAMES.length) {
+    throw new Error(`${P2_MODEL_PATH} declares ${String(parsed.numFeatures)} features.`);
+  }
+  if (parsed.trees?.length !== parsed.numTrees) {
+    throw new Error(`${P2_MODEL_PATH} carries ${String(parsed.trees?.length)} trees for ${String(parsed.numTrees)}.`);
+  }
   return parseTreeModel(JSON.parse(readFileSync(P2_MODEL_PATH, "utf8")) as Parameters<typeof parseTreeModel>[0]);
 }
 
