@@ -1,11 +1,11 @@
 # Spec 062 实验记录（Gate A v1：数据、训练、calibration）
 
-协议见 [spec.md](spec.md)。状态：**calibration 完成，threshold 已冻结；
-正式 held-out 未运行**。
+协议见 [spec.md](spec.md)。状态：**calibration 完成，threshold 已冻结，
+正式 held-out 已揭盲一次并判定 GATE A PASS**。
 日期：2026-09-20
 
-**本轮在 Step 13 停止。** held-out `4000` groups 已生成并封存，但其 outcome 从未被读取、
-统计或用于任何判断；只有结构完整性与 checksum 被检查过。
+held-out `4000` groups **只被 frozen selector 正式判定一次**。未使用 reserve，
+未开始 Gate B，production `src/` 0 diff。
 
 ## 1. 执行摘要
 
@@ -144,3 +144,104 @@ model     = sha256 010a8a4a00524f0694d5881bacdd885d99243acf4d71e2b2fdcae7ae82fc3
 - 未读取任何 held-out outcome 统计。
 - 未创建 Gate B pool，未接 production selector，`src/` 0 diff。
 - 未生成 reserve `70001–78000`。
+
+---
+
+# 正式 held-out 揭盲（唯一一次）
+
+## 0. 揭盲前 freeze verification（全部通过）
+
+| 检查 | 结果 |
+| --- | --- |
+| HEAD == `2ce4bfb043f55ca407b4fd8c9eb156ccd0617299` | ✅ |
+| worktree clean；`4e20be3` 是 HEAD 的祖先 | ✅ |
+| production `src/` diff vs `ea67aa3` | ✅ 0 |
+| `sha256(model.txt)` == `train-config.modelSha256` | ✅ `010a8a4a00524f0694d5881bacdd885d99243acf4d71e2b2fdcae7ae82fc3359` |
+| schema hash（运行时重算）== manifest | ✅ `0ec9d20f…7d85f0` |
+| corpus checksum（从三个封存文件重算）== manifest | ✅ `75618f65…32748` |
+| threshold 恰为 `0.01` | ✅ |
+| selector 严格 `>`、tie 取 production 候选序 | ✅ 由 `tests/core/cf-selector.test.ts` 钉住（23 tests green） |
+| 4,000 held-out groups 与预登记 `cfSplitTable` **成员完全一致** | ✅ |
+| split crossing | ✅ 0 |
+| held-out 从未进入 train / calibration | ✅ snapshot id 交集 0；universe 无重叠 |
+
+> 注：任务描述里写的 model SHA `010a8a4a00524f0694d5881bacd82fc3359` 是**截断转写**，
+> 实际 artifact 是上表 64 位全串；已核验与 `train-config.json` 一致。
+
+**harness 说明（揭盲前完成，已披露）**：frozen evaluator 此前没有 held-out 的输入通路。
+补的是**纯 plumbing**——row exporter 增加 split 选择、新增 held-out 判定分支、以及
+「held-out 的 label 统计不打印」。**模型 / feature / threshold / selector / 统计规则 / 数据
+一律未动**，并由上表 checksum 在改动前后**逐字节复验**。threshold 由冻结产物
+`threshold.json` 读出，不是重打一遍。
+
+## 1. PRIMARY
+
+| | |
+| --- | ---: |
+| N registered groups | **4,000** |
+| `mu_hat` | **+0.020083** |
+| SE | 0.001923 |
+| **97.5% t interval** | **[+0.015771, +0.024396]** |
+| `mu_min` | 0.005 |
+| override distinct deals | 2,774（门槛 200） |
+| selected-nonzero distinct deals | 459（门槛 50） |
+| integrity | valid |
+
+| PASS 条件 | 实际 | |
+| --- | --- | --- |
+| `mu_hat >= 0.005` | +0.020083 | ✅ |
+| `L > 0` | +0.015771 | ✅ |
+| override deals >= 200 | 2,774 | ✅ |
+| selected-nonzero deals >= 50 | 459 | ✅ |
+| integrity valid | true | ✅ |
+
+## **GATE A PASS**
+
+区间下界 `+0.015771` 是最低工程效应的 **3.15 倍**；上界 `+0.024396` 远高于 `mu_min`，
+因此既不构成 FAIL，也不构成 INCONCLUSIVE。
+
+**与 calibration 的对照（读法很重要）**：calibration `mu_hat` 在 `0.01` 上是 `+0.019083`，
+held-out 是 `+0.020083`。**没有出现收缩**——threshold 是在 calibration 上选的，
+如果选择效应显著，held-out 通常会掉下来。这条对照**不改变判定**（判定只由 held-out
+的预登记规则给出），但它说明 `+1.9pp` 不是同一批数据上的自证。
+
+## 2. Selector diagnostics
+
+| | |
+| --- | ---: |
+| sampled snapshots | 12,000 |
+| override snapshots | 4,100 |
+| deal-equal coverage | 2,774 / 4,000 = **69.35%** |
+| root-level coverage | **34.17%** |
+| raw selected overrides | good 368 / neutral 3,605 / bad 127 |
+| `(good − bad) / overrides` | **+0.0588** |
+
+override 里 **87.9% 是 neutral**——模型提出的大多数偏离并不改变终局，这与 pilot 的
+14% 非零标签密度一致。收益来自少数真实翻转，且方向有利（368 : 127）。
+
+## 3. 预登记 subgroup（descriptive，不能改变 primary）
+
+| subgroup | snapshots | overrides | good | neutral | bad | (good−bad)/ovr |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| farmer position +1 | 6,105 | 1,620 | 148 | 1,420 | 52 | +0.0593 |
+| farmer position +2 | 5,895 | 2,480 | 220 | 2,185 | 75 | +0.0585 |
+| stage min<=2 | 4,470 | 1,599 | 134 | 1,430 | 35 | +0.0619 |
+| stage min 3-4 | 3,267 | 1,339 | 130 | 1,177 | 32 | +0.0732 |
+| stage min 5-9 | 3,315 | 955 | 94 | 819 | 42 | +0.0545 |
+| **stage min>=10** | 948 | 207 | 10 | 179 | **18** | **−0.0386** |
+| expertGap <=0 | 77 | 77 | 5 | 69 | 3 | +0.0260 |
+| expertGap 0-500 | 1,774 | 1,774 | 128 | 1,603 | 43 | +0.0479 |
+| expertGap 500-1500 | 1,723 | 1,723 | 183 | 1,474 | 66 | +0.0679 |
+| expertGap >=1500 | 526 | 526 | 52 | 459 | 15 | +0.0703 |
+
+两个农民相对座位几乎无差异（+0.0593 vs +0.0585）。**唯一为负的是 `stage min>=10`**
+（+10 : 18，n=207，占比很小）。这**不改变判定**，也不允许据此改 primary、改 threshold
+或做 per-stage selector——那属于揭盲后的协议修改。它只是一个留待 Gate B 设计时参考的观察。
+
+## 4. 本轮未做
+
+- 未开始 Gate B，未设计 Gate B。
+- 未生成 reserve `70001–78000`。
+- 未修改 production `src/`（仍 0 diff）。
+- 未改 threshold / model / feature / selector / tie-break / 统计规则 / 数据。
+- 未把 calibration 与 held-out 合并重算，未换 95% 区间。

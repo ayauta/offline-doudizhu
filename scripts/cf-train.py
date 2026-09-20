@@ -56,7 +56,33 @@ def load(path: Path) -> dict:
         return json.load(handle)
 
 
+def score_only(directory: Path, model_path: Path, rows_name: str, out_name: str) -> int:
+    """Apply an already-frozen model artifact to a row file.
+
+    Loads the serialized booster rather than refitting, so the held-out split is
+    scored by exactly the artifact whose checksum was frozen — not by a fresh fit
+    that happens to be deterministic today.
+    """
+    model_text = model_path.read_text()
+    booster = lgb.Booster(model_str=model_text)
+    rows = load(directory / rows_name)["rows"]
+    predictions = booster.predict(np.asarray([row["x"] for row in rows], dtype=np.float64))
+    scores = {row["id"]: float(value) for row, value in zip(rows, predictions)}
+    (directory / out_name).write_text(
+        json.dumps({
+            "scores": scores,
+            "modelSha256": hashlib.sha256(model_text.encode()).hexdigest(),
+        }, sort_keys=True) + "\n"
+    )
+    print(f"scored {len(scores)} rows with {model_path} ({booster.num_trees()} trees)")
+    print(f"score mean {float(np.mean(predictions)):.6f} sd {float(np.std(predictions)):.6f} "
+          f"min {float(np.min(predictions)):.6f} max {float(np.max(predictions)):.6f}")
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if len(argv) == 5 and argv[1] == "--score":
+        return score_only(Path(argv[2]), Path(argv[3]), argv[4].split(":")[0], argv[4].split(":")[1])
     if len(argv) != 2:
         print(__doc__)
         return 2
