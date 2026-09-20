@@ -39,7 +39,7 @@ Worker 因此无法自行读取静态文件，模型只能随包交付。
 为什么是**一个 JSON 字符串字面量**而不是数字数组字面量：后者会让 `tsc` 每次门禁都
 类型检查 9.4 万个数字。字符串是同一条 JSON，`parseTreeModel` 在加载时校验结构。
 
-### 一处必须由 owner 确认的产品改动
+### 产品资产预算变更（owner 已批准，2026-09-21）
 
 `scripts/check-bundle.mjs` 有一条 **reviewed gzip budget**：enhanced AI worker 原为
 **9,217 B**。加入模型后实测 **122,713 B**，超 113,496 B。
@@ -53,8 +53,16 @@ enhanced asset limits 替换为「evidence-based replacement」，并保留「�
 因此我把预算按同一锚定公式更新为 **123,575 B**（122,713 + 2,587/3），
 并在注释里写明：**若模型被 revert，这个上限应随之回到 9,217 B**。
 
-**这是本轮唯一的、产品可见的规则改动。它需要 owner 确认。** 如果不接受，
-模型必须换一种交付方式（例如按需分块加载），或者不交付。
+**这是本轮唯一的、产品可见的规则改动。已获 owner 批准。**
+
+| | |
+| --- | ---: |
+| pre-model anchor（旧上限） | 9,217 B |
+| frozen model 贡献 | ≈ 113,496 B |
+| current shipped bundle | 122,713 B |
+| **approved limit** | **123,575 B** |
+
+**若未来整体 revert Phase 2，worker gzip bundle limit 必须随之恢复到旧 anchor 9,217 B。**
 
 ## 2. Equivalence
 

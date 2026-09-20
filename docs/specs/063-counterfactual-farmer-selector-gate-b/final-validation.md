@@ -92,6 +92,25 @@ shipped discovery → final：combined **−0.1806pp**，farmer **−0.333pp**�
 PHASE 2 v1 — FINAL KEEP
 ```
 
+**owner 批准（2026-09-21）。** 冻结状态自此为 production KEEP，全部参数不变：
+model artifact、threshold `0.01`、feature schema 与 schema hash、activation scope
+（identity + role）、fallback 语义。
+
+### 保留的 provenance
+
+| 产物 | 位置 |
+| --- | --- |
+| model artifact（源） | `.local/cf-rows/model.txt`，sha256 `010a8a4a…82fc3359` |
+| model 转写脚本 | `scripts/cf-export-model.py` |
+| packaged model | `src/app/ai/cf-model-data.ts`（生成物） |
+| training corpus manifest + checksum | `.local/cf-corpus/manifest.json`，`75618f65…32748` |
+| calibration 协议与产物 | `docs/specs/062-…/experiment.md`、`.local/cf-rows/threshold.json` |
+| Gate A 报告 | `docs/specs/062-…/experiment.md` |
+| Gate B-A / B-S | `docs/specs/063-…/experiment.md`、`shipped.md` |
+| Gate B-S2 runtime | `docs/specs/063-…/shipped-delivery.md` |
+| final validation | 本文档 |
+| experiment registry | `docs/research/ai-experiment-results.md` |
+
 ## 7. KEEP 后的处置
 
 * `10001–10400` **permanent retired / final validation consumed**，不得再作为
@@ -101,5 +120,7 @@ PHASE 2 v1 — FINAL KEEP
   calibration 协议与 threshold 产物、Gate A 报告、Gate B-A / B-S / B-S2 报告、
   final validation 结果。
 * **未**自动启动 Phase 2 v2 / π2。
-* 一处仍待 owner 确认的产品改动：`check-bundle.mjs` 的 worker gzip budget
-  由 9,217 B 更新为 123,575 B（见 [shipped-delivery.md](shipped-delivery.md) §1）。
+* 产品资产预算变更 **已获 owner 批准**（2026-09-21）：`check-bundle.mjs` 的 worker
+  gzip budget 由 9,217 B → **123,575 B**。记录见
+  [shipped-delivery.md](shipped-delivery.md) §1；**若未来整体 revert Phase 2，
+  limit 恢复 9,217 B**。
