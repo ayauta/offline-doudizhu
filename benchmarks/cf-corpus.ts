@@ -154,10 +154,19 @@ export type CfStructuralAudit = Readonly<{
  * label field by construction, so a caller that wants held-out outcome
  * statistics has to go and get them on purpose rather than being handed them by
  * a friendly summary.
+ *
+ * `splitOf` is parameterised because a split resolver is bound to *its own*
+ * universe, and this helper is used by more than one round. The v1 default
+ * resolves over `50001..70000`, so auditing a π2 corpus with it reports every
+ * single group as a split mismatch — not because a group is misfiled, but
+ * because the resolver has never heard of that index. That is a silent
+ * false-alarm generator: the number looks like a data defect and is actually a
+ * property of the caller. Rounds other than v1 pass their own resolver.
  */
 export function cfAuditStructure(
   groups: readonly CfGroupResult[],
   split: CfSplit,
+  splitOf: (dealIndex: number) => CfSplit | undefined = cfSplitOf,
 ): CfStructuralAudit {
   let snapshots = 0;
   let rows = 0;
@@ -168,7 +177,7 @@ export function cfAuditStructure(
   let labelIntegrityFailures = 0;
   let productionIndexFailures = 0;
   for (const result of groups) {
-    const expected = cfSplitOf(result.dealIndex);
+    const expected = splitOf(result.dealIndex);
     if (expected !== split) {
       splitMismatches += 1;
     }

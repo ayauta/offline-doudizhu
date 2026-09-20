@@ -299,7 +299,7 @@ describe.runIf(ENABLED)("Phase 2 Night Lab π1→π2 corpus", () => {
       writeFileSync(join(CORPUS_DIR, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
       for (const split of ["train", "calibration", "heldout"] as const) {
-        const audit = cfAuditStructure(bySplit[split], split);
+        const audit = cfAuditStructure(bySplit[split], split, cfPiSplitOf);
         report(
           `[${split}] groups ${audit.groups} (with snapshots ${audit.groupsWithSnapshots}, ` +
           `empty ${audit.zeroSnapshotGroups})  snapshots ${audit.snapshots}  rows ${audit.rows}  ` +
@@ -329,7 +329,7 @@ describe.runIf(ENABLED)("Phase 2 Night Lab π1→π2 corpus", () => {
       ["calibration", calibration, "calibration"],
       ["heldout", heldout, "heldout"],
     ] as const) {
-      const audit = cfAuditStructure(groups, split);
+      const audit = cfAuditStructure(groups, split, cfPiSplitOf);
       report(
         `[${name}] groups ${audit.groups}  snapshots ${audit.snapshots}  rows ${audit.rows}  ` +
         `splitMismatch ${audit.splitMismatches}  schemaMismatch ${audit.schemaMismatches}  ` +

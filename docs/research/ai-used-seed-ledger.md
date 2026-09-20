@@ -50,6 +50,22 @@ tournament 侧 `seedBase = 0`（`AI_BENCH_SEED=0`）使
 
 Stage 1 与 Stage 2 **互不合并、互不补位**。Stage 1 不通过就不跑 Stage 2，也不扩样。
 
+### 2.1 暴露状态更新（2026-09-21 夜，Spec 064 Stage 1 就绪时）
+
+| 范围 | 暴露计数 | 状态 |
+| --- | ---: | --- |
+| `100001–120000` | **0 → 1** | **已生成**（20,000 groups，merged checksum `5a730edd…`）。这批数据就是本轮的 train / calibration / held-out，用毕随本轮退休 |
+| `120001–120200` | **0** | **未暴露**。Stage 1 尚未运行 |
+| `130001–131200` | **0** | **未暴露**。Stage 2 尚未运行 |
+
+生成物在 `.local/cf-pi-corpus/`（`train.json` / `calibration.json` / `heldout.sealed.json` /
+`manifest.json`）与 `.local/cf-pi-shards/`（15 个 shard，179 MiB），均为 ignored 产物。
+π2 模型 artifact 在 `.local/cf-pi-rows/pi2-model.json`，**benchmark-only，`src/` 零改动**。
+记录见 [Spec 064/corpus.md](../specs/064-phase2-night-policy-iteration/corpus.md)。
+
+**held-out 仍然封存**：生成、merge、审计都只报结构计数，`cfAuditStructure` 的返回记录里
+没有 label 字段。
+
 ## 3. 新池「未被触碰」的机械证据（2026-09-21）
 
 在写下 Spec 064 的当时，对 `.local/` 下全部 `.json` / `.txt` / `.log` 产物做了一次

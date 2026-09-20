@@ -17,12 +17,13 @@ import { describe, expect, it } from "vitest";
 import { dealDeck } from "../../benchmarks/ai-tournament.js";
 import { armSchedule, dealGameSeed, scheduleFor } from "../../benchmarks/ai-tournament.js";
 import { CF_GROUP_SNAPSHOT_CAP, type CfGroupResult } from "../../benchmarks/cf-dataset.js";
-import { cfSplitOf } from "../../benchmarks/cf-corpus.js";
+import { cfAuditStructure, cfSplitOf } from "../../benchmarks/cf-corpus.js";
 import {
   CF_PI_DATASET_VERSION,
   CF_PI_GROUP_SNAPSHOT_CAP,
   CF_PI_MODEL_SHA256,
   CF_PI_THRESHOLD,
+  cfPiSplitOf,
   cfPiCaptureGroup,
   type CfPiBaseline,
 } from "../../benchmarks/cf-policy-iteration.js";
@@ -124,6 +125,54 @@ describe("pi2 corpus: the exhaustive battery accepts a real π1 capture", () => 
     // data this file just created.
     expect(accepts(captured())).toBe(true);
     expect(() => cfPiAssertGroup(captured(), cfSplitOf(DEAL) ?? "train", {})).toThrow(/§7.16/);
+  });
+});
+
+describe("pi2 corpus: the structural audit uses the round's own split resolver", () => {
+  /**
+   * A group skeleton at a π2-universe index, with no snapshots.
+   *
+   * Deliberately synthetic: the point is which *resolver* the audit consults,
+   * and that is decided by `dealIndex` alone. Building this from an object
+   * literal costs no seed — no deck is dealt and no game is played — which
+   * matters because the index has to be one the v1 resolver has never heard of
+   * for the two resolvers to disagree at all.
+   */
+  const skeleton = (dealIndex: number): CfGroupResult => Object.freeze({
+    groupId: `deal-${dealIndex}`,
+    dealIndex,
+    totalFarmerRoots: 0,
+    usefulFarmerRoots: 0,
+    sampledRoots: 0,
+    sourceVariantCounts: Object.freeze({}),
+    snapshots: Object.freeze([]),
+    forkGames: 0,
+    variantWinners: Object.freeze({}),
+  });
+
+  it("consults the resolver it is given, not the one v1 is bound to", () => {
+    // Auditing the π2 corpus with v1's resolver reported 12,000/4,000/4,000
+    // mismatches — every group — because `cfSplitOf` resolves over 50001..70000
+    // and has never heard of a 100001+ index. The number read like a data
+    // defect and was a property of the caller.
+    //
+    // Note the earlier version of this guard passed `cfSplitOf` explicitly
+    // *and* used the retired deal 50_011 — where both resolvers agree, so the
+    // parameter was never exercised and a mutation that ignored it survived.
+    // The index below is one only the round's resolver can answer.
+    const piSplit = cfPiSplitOf(100_011);
+    expect(piSplit).toBeDefined();
+    const split = piSplit ?? "train";
+
+    expect(cfAuditStructure([skeleton(100_011)], split, cfPiSplitOf).splitMismatches).toBe(0);
+    // The default is still v1's resolver, and on this index it disagrees —
+    // which is precisely the false alarm, pinned so it cannot return unnoticed.
+    expect(cfAuditStructure([skeleton(100_011)], split).splitMismatches).toBe(1);
+    // The two resolvers are genuinely different functions over these universes.
+    expect(cfSplitOf(100_011)).toBeUndefined();
+    expect(cfSplitOf(DEAL)).toBeDefined();
+    // Stage 1's pool is not training data and has no split anywhere.
+    expect(cfPiSplitOf(120_001)).toBeUndefined();
   });
 });
 
