@@ -72,9 +72,11 @@ function loadP2Model(): TreeModel {
 /**
  * The structural cost gate's counters (spec §10), accumulated over real play.
  *
- * Every decision the composition sees contributes one `cfProposal` call and one
- * traversal per alternative per layer. `proposalCalls` is therefore the number
- * that §7.17 turns on: it must equal the number of decisions, not twice it.
+ * Every *studied* decision the composition reaches contributes one `cfProposal`
+ * call and one traversal per alternative per layer. `proposalCalls` is the
+ * number §7.17 turns on. It is **not** the decision count: landlord roots are
+ * declined before anything is computed (§5.1), so the equality that holds is
+ * `proposalCalls === decisions - landlordDecisions`.
  */
 type PiCost = {
   decisions: number;
