@@ -94,8 +94,19 @@ selector 纯模型成本（designed，jobs>1，**不作为产品性能**）：
 | tree inference / decision | 0.091 ms | 0.117 ms | 0.439 ms |
 | **合计 / decision** | **0.192 ms** | — | — |
 
-约 **0.39 ms / game**。相对 production master 的决策成本可忽略。
-真实产品性能测量未来仍必须 `jobs=1`。
+约 **0.39 ms / game**。
+
+> **更正（Gate B-S 实测）**：上表**漏了一项，而且漏的是最大的一项**。
+> overlay 除了 feature + inference，还要重新推导一次 production shortlist
+> （`cfProposal`，220 analyzer nodes）。Gate B-S 直接测得：
+> **proposal 8.927 ms + feature 0.105 ms + inference 0.078 ms = 9.110 ms / eligible decision**。
+> 也就是说真实 overlay 成本是上表的 **47 倍**，proposal 占了 98%。
+>
+> 上表数字本身没测错，但它测的是三个部分里的两个，而报告时被当成了全部。
+> 这是本项目里第二次「数据没错、读数错了」。Gate B-A 的棋力结论不受影响
+> （overlay 只在 master 搜索之后运行，不改变 any 决策内容），但性能结论被高估了。
+
+真实产品性能测量仍必须 `jobs=1`。
 
 ## 6. 一个必须说明的读数陷阱
 
