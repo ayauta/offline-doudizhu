@@ -39,7 +39,18 @@ import { percentile } from "./ai-stats.js";
 const INVARIANT = process.env.AI_CF_GB_INVARIANT === "1";
 const OUT = process.env.AI_CF_GB_OUT;
 const REPORT = process.env.AI_CF_GB_REPORT;
-const ENABLED = INVARIANT || OUT !== undefined || REPORT !== undefined;
+const DIAG = process.env.AI_CF_GB_DIAG;
+const ENABLED = INVARIANT || OUT !== undefined || REPORT !== undefined || DIAG !== undefined;
+
+/**
+ * A 150-deal shard is a ~17-minute job under contention, which is past the
+ * benchmark config's 15-minute default. The first full Gate B run hit exactly
+ * that: all sixteen shards wrote complete, valid dumps and then reported
+ * "failed", because vitest can only report a synchronous timeout once the test
+ * returns. The budget is stated here instead of inherited so that stops being
+ * routine.
+ */
+const CF_GATE_B_TIMEOUT_MS = 4 * 60 * 60 * 1000;
 
 const MODEL_PATH = process.env.AI_CF_MODEL ?? ".local/cf-rows/model.json";
 const THRESHOLD_FILE = process.env.AI_CF_THRESHOLD_FILE ?? ".local/cf-rows/threshold.json";
@@ -157,6 +168,40 @@ describe.runIf(ENABLED)("Gate B", () => {
       return;
     }
 
+    if (DIAG !== undefined) {
+      // Diagnostics pass. Deterministic and identical to the arm the primary
+      // used — same deals, same seeds — but re-run so that the instrumentation
+      // cannot be accused of having been present for the strength measurement.
+      const { run, games } = runArm("challenger");
+      const records = games.flatMap((stats) => stats.records);
+      const perGameOverrides = games
+        .filter((stats) => stats.decisions > 0)
+        .map((stats) => stats.overrides);
+      writeFileSync(DIAG, `${JSON.stringify({
+        deals: run.perDealA.length,
+        perDealA: run.perDealA,
+        perDealB: run.perDealB,
+        decisions: games.reduce((sum, stats) => sum + stats.decisions, 0),
+        eligible: games.reduce((sum, stats) => sum + stats.eligible, 0),
+        overrides: games.reduce((sum, stats) => sum + stats.overrides, 0),
+        chosenRank: Object.fromEntries(
+          [...games.reduce((map, stats) => {
+            for (const [rank, count] of stats.chosenRank) {
+              map.set(rank, (map.get(rank) ?? 0) + count);
+            }
+            return map;
+          }, new Map<number, number>()).entries()],
+        ),
+        perGameOverrides,
+        perGameFeatureMs: games.filter((s) => s.eligible > 0).map((s) => s.featureMs / s.eligible),
+        perGameInferenceMs: games.filter((s) => s.eligible > 0).map((s) => s.inferenceMs / s.eligible),
+        scores: records.filter((record) => record.overrode).map((record) => record.score),
+        records,
+      }, null, 2)}\n`, "utf8");
+      report(`[gate-b diag] records ${records.length} written to ${DIAG}`);
+      return;
+    }
+
     if (OUT !== undefined) {
       const arm = (process.env.AI_CF_GB_ARM ?? "baseline") as "baseline" | "challenger";
       const { run, games } = runArm(arm);
@@ -223,5 +268,5 @@ describe.runIf(ENABLED)("Gate B", () => {
         : "LANDLORD ARM DIFFERS — INVALID, do not read the farmer number as strength",
     );
     expect(deals).toBeGreaterThan(0);
-  });
+  }, CF_GATE_B_TIMEOUT_MS);
 });

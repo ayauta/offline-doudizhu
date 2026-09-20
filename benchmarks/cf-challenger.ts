@@ -26,6 +26,19 @@ import type { GameCommand } from "../src/core/game/index.js";
 import { cfActionCommand, cfCommandKey, cfProposal, cfRow } from "./cf-dataset.js";
 import { scoreTrees, type TreeModel } from "./cf-model.js";
 
+export type SelectorRecord = Readonly<{
+  /** Production candidate order of the chosen candidate; -1 when declining. */
+  rank: number;
+  overrode: boolean;
+  score: number;
+  /** Distance of the winning score above the threshold; negative when declined. */
+  margin: number;
+  /** The acting seat's distance from the landlord, 1 or 2. */
+  farmerPosition: number;
+  /** Cards left for the player closest to going out. */
+  minRemaining: number;
+}>;
+
 export type SelectorStats = {
   decisions: number;
   eligible: number;
@@ -36,6 +49,7 @@ export type SelectorStats = {
   chosenRank: Map<number, number>;
   /** The score the selector saw at the moment it decided. */
   scores: number[];
+  records: SelectorRecord[];
 };
 
 export function createSelectorStats(): SelectorStats {
@@ -47,6 +61,7 @@ export function createSelectorStats(): SelectorStats {
     inferenceMs: 0,
     chosenRank: new Map(),
     scores: [],
+    records: [],
   };
 }
 
@@ -148,6 +163,21 @@ export function chooseChallengerCommand(
     stats.scores.push(bestScore);
   }
   if (bestIndex < 0 || !(bestScore > options.threshold)) {
+    if (stats !== undefined) {
+      stats.records.push(Object.freeze({
+        rank: -1,
+        overrode: false,
+        score: bestScore,
+        margin: bestScore - options.threshold,
+        farmerPosition: (["human", "ai-one", "ai-two"].indexOf(view.seat) -
+          ["human", "ai-one", "ai-two"].indexOf(view.landlord) + 3) % 3,
+        minRemaining: Math.min(
+          view.remainingCardCounts.human,
+          view.remainingCardCounts["ai-one"],
+          view.remainingCardCounts["ai-two"],
+        ),
+      }));
+    }
     return productionCommand;
   }
   const chosen = proposal.actions[bestIndex];
@@ -157,6 +187,19 @@ export function chooseChallengerCommand(
   if (stats !== undefined) {
     stats.overrides += 1;
     stats.chosenRank.set(bestIndex, (stats.chosenRank.get(bestIndex) ?? 0) + 1);
+    stats.records.push(Object.freeze({
+      rank: bestIndex,
+      overrode: true,
+      score: bestScore,
+      margin: bestScore - options.threshold,
+      farmerPosition: (["human", "ai-one", "ai-two"].indexOf(view.seat) -
+        ["human", "ai-one", "ai-two"].indexOf(view.landlord) + 3) % 3,
+      minRemaining: Math.min(
+        view.remainingCardCounts.human,
+        view.remainingCardCounts["ai-one"],
+        view.remainingCardCounts["ai-two"],
+      ),
+    }));
   }
   return cfActionCommand(view.seat, chosen);
 }
