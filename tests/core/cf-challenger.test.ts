@@ -26,7 +26,11 @@ import {
   cfRow,
 } from "../../benchmarks/cf-dataset.js";
 import { parseTreeModel, scoreTrees, type TreeModel } from "../../benchmarks/cf-model.js";
-import { chooseChallengerCommand } from "../../benchmarks/cf-challenger.js";
+import {
+  chooseChallengerCommand,
+  createChallengerStrategy,
+  createFrozenOverlay,
+} from "../../benchmarks/cf-challenger.js";
 import { redealHidden, toFarmerRoot } from "../support/cf-fixtures.js";
 
 const THRESHOLD = 0.01;
@@ -279,5 +283,32 @@ describe("challenger: information boundary", () => {
     const options = { model: constantModel(1), threshold: THRESHOLD, seat: "ai-one" as const };
     expect(cfCommandKey(chooseChallengerCommand(fixtureA.context, fixtureA.production, options)))
       .toBe(cfCommandKey(chooseChallengerCommand(fixtureB.context, fixtureB.production, options)));
+  });
+});
+
+describe("challenger: the two install forms agree", () => {
+  it("gives the same command as a decorator and as a shipped overlay", () => {
+    // The designed benchmark installs the selector as a decorator around the
+    // measured strategy; the shipped benchmark installs it as an overlay inside
+    // `decideEnhancedAi`. They must be the same decision function, or the two
+    // benchmarks are measuring different things and the translation check is
+    // meaningless.
+    const { context, production } = fixture();
+    const options = {
+      model: splitModel(CF_FEATURE_NAMES.indexOf("cand_cardCount"), 1.5, -1, 1),
+      threshold: THRESHOLD,
+      seat: "ai-one" as const,
+    };
+    const viaDecorator = createChallengerStrategy(
+      { chooseCommand: () => production },
+      options,
+    ).chooseCommand(context);
+    const viaOverlay = createFrozenOverlay(options)(context, production);
+    expect(cfCommandKey(viaOverlay)).toBe(cfCommandKey(viaDecorator));
+
+    // And with a model that always declines, both must return production's own
+    // command object, not a copy of it.
+    const declining = { ...options, model: constantModel(-1) };
+    expect(createFrozenOverlay(declining)(context, production)).toBe(production);
   });
 });

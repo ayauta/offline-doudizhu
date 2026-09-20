@@ -55,9 +55,29 @@ export type EnhancedAiWorkerResponse = Readonly<{
   outcome: AiDecisionOutcome;
 }>;
 
+/**
+ * An optional post-decision overlay for a master play decision.
+ *
+ * It is handed the command production master actually chose — including the
+ * deadline fallback — and returns the command to play. The shipped worker never
+ * provides one, so production behaviour is unchanged by construction: the seam
+ * is part of the runtime, exactly like the clock, and the worker's runtime has
+ * only a clock.
+ *
+ * Anything the overlay throws is caught here and the production command is
+ * played. A selector that cannot answer must never be able to block a legal
+ * move.
+ */
+export type PlayDecisionOverlay = (
+  context: Extract<AiDecisionContext, { readonly kind: "play" }>,
+  productionCommand: GameCommand,
+) => GameCommand;
+
 export type AiDecisionRuntime = Readonly<{
   deadline: number;
   now: () => number;
+  /** Absent in production. Present only when an experiment installs one. */
+  overlay?: PlayDecisionOverlay;
 }>;
 
 function actionCommand(
@@ -95,6 +115,23 @@ export function expertFallbackPlayCommand(
   );
 }
 
+function overlayed(
+  runtime: AiDecisionRuntime,
+  context: Extract<AiDecisionContext, { readonly kind: "play" }>,
+  productionCommand: GameCommand,
+): GameCommand {
+  const overlay = runtime.overlay;
+  if (overlay === undefined) {
+    return productionCommand;
+  }
+  try {
+    return overlay(context, productionCommand);
+  } catch {
+    // A selector that cannot answer plays production's move. It never blocks.
+    return productionCommand;
+  }
+}
+
 export function decideEnhancedAi(
   request: EnhancedAiWorkerRequest,
   runtime: AiDecisionRuntime,
@@ -129,7 +166,10 @@ export function decideEnhancedAi(
       });
     }
     if (runtime.now() >= runtime.deadline) {
-      return Object.freeze({ ok: true, command: expertFallbackPlayCommand(context) });
+      return Object.freeze({
+        ok: true,
+        command: overlayed(runtime, context, expertFallbackPlayCommand(context)),
+      });
     }
 
     const ranked = rankMasterPlayActions(context, {
@@ -139,7 +179,7 @@ export function decideEnhancedAi(
     });
     return Object.freeze({
       ok: true,
-      command: actionCommand(context, ranked[0]?.action),
+      command: overlayed(runtime, context, actionCommand(context, ranked[0]?.action)),
     });
   } catch {
     return Object.freeze({ ok: false, reason: "failed" });

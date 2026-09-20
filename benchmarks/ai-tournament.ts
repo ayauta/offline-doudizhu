@@ -36,6 +36,7 @@ import { generateLegalActions } from "../src/core/rules/index.js";
 import {
   ENHANCED_AI_BUDGET_MS,
   decideEnhancedAi,
+  type PlayDecisionOverlay,
 } from "../src/app/ai/decision-handler.js";
 import type { EnhancedAiType } from "../src/app/ports/ai-decision-service.js";
 import { AI_TYPES, type AiType } from "../src/app/settings/ai-settings.js";
@@ -224,7 +225,11 @@ export function dealDeck(seed: number): readonly CardId[] {
  * "this level's own budget check fired". This measures truncation without
  * adding a single byte to the shipped worker bundle.
  */
-function instrumentedRuntime(deadline: number, sink: { polls: number; reached: boolean }) {
+function instrumentedRuntime(
+  deadline: number,
+  sink: { polls: number; reached: boolean },
+  overlay?: PlayDecisionOverlay,
+) {
   return {
     deadline,
     now: () => {
@@ -235,6 +240,7 @@ function instrumentedRuntime(deadline: number, sink: { polls: number; reached: b
       }
       return value;
     },
+    ...(overlay === undefined ? {} : { overlay }),
   };
 }
 
@@ -257,6 +263,8 @@ export function createMeasuredStrategy(
      * different move.
      */
     masterProposal?: (context: AiDecisionContext) => void;
+    /** Installed inside the shipped handler, so the real deadline applies. */
+    phase2?: PlayDecisionOverlay;
   }>,
 ): AiStrategy {
   let decisionIndex = 0;
@@ -297,6 +305,7 @@ export function createMeasuredStrategy(
         instrumentedRuntime(
           budgetMs === null ? Number.POSITIVE_INFINITY : started + budgetMs,
           sink,
+          options.phase2,
         ),
       );
       const elapsedMs = performance.now() - started;
@@ -315,7 +324,7 @@ export function createMeasuredStrategy(
         const unboundedStarted = performance.now();
         const unboundedOutcome = decideEnhancedAi(
           Object.freeze({ requestId: decisionIndex, aiType: profile, context, seed }),
-          instrumentedRuntime(Number.POSITIVE_INFINITY, unboundedSink),
+          instrumentedRuntime(Number.POSITIVE_INFINITY, unboundedSink, options.phase2),
         );
         if (unboundedOutcome.ok) {
           unbounded = Object.freeze({
@@ -443,6 +452,8 @@ export function playGame(
     seed: number;
     designed?: boolean;
     masterProposal?: (context: AiDecisionContext) => void;
+    /** Installed inside the shipped handler, so the real deadline applies. */
+    phase2?: PlayDecisionOverlay;
     /**
      * Wraps one seat's strategy. The Gate B challenger uses this to install its
      * selector on a single seat — identity is bound by construction, because a
@@ -457,6 +468,7 @@ export function playGame(
     unboundedEvery: options.unboundedEvery,
     designed: options.designed === true,
     ...(options.masterProposal === undefined ? {} : { masterProposal: options.masterProposal }),
+    ...(options.phase2 === undefined ? {} : { phase2: options.phase2 }),
   };
   const build = (seat: Seat, seed: number): AiStrategy => {
     const strategy = createMeasuredStrategy(profiles[seat], recorder, { ...shared, seed });
@@ -676,6 +688,13 @@ export function runPairTournament(
      * the same `playGame`, the same schedule, the same seeds.
      */
     decoratorFor?: (strongSeat: Seat) => ((strategy: AiStrategy) => AiStrategy) | undefined;
+    /**
+     * Installs an overlay inside the shipped handler for the strong seat only.
+     * Unlike `decoratorFor` this runs *inside* `decideEnhancedAi`, so the
+     * master budget, the deadline fallback and the try/catch that protects a
+     * legal move are the shipped ones rather than a re-implementation.
+     */
+    phase2For?: (strongSeat: Seat) => PlayDecisionOverlay | undefined;
   }> = {},
 ): PairRun {
   const maxDeals = options.maxDeals ?? config.deals;
@@ -702,6 +721,7 @@ export function runPairTournament(
     for (const slot of armSchedule(dealIndex)) {
       const profiles = scheduleFor(stronger, weaker, slot.strongSeat);
       const decorator = options.decoratorFor?.(slot.strongSeat);
+      const phase2 = options.phase2For?.(slot.strongSeat);
       const outcome = playGame(deck, slot.landlord, profiles, recorder, {
         unboundedEvery: config.unboundedEvery,
         seed: dealSeed * 100 + SEAT_ORDER.indexOf(slot.strongSeat) * 10 + SEAT_ORDER.indexOf(slot.landlord),
@@ -714,6 +734,7 @@ export function runPairTournament(
           decorate: (seat: Seat, strategy: AiStrategy) =>
             seat === slot.strongSeat ? decorator(strategy) : strategy,
         }),
+        ...(phase2 === undefined ? {} : { phase2 }),
       });
       const strongIsLandlord = slot.strongSeat === slot.landlord;
       const strongerWon = strongIsLandlord

@@ -33,7 +33,12 @@ import {
   scheduleFor,
 } from "./ai-tournament.js";
 import { parseTreeModel, type TreeModel } from "./cf-model.js";
-import { createChallengerStrategy, createSelectorStats, type SelectorStats } from "./cf-challenger.js";
+import {
+  createChallengerStrategy,
+  createFrozenOverlay,
+  createSelectorStats,
+  type SelectorStats,
+} from "./cf-challenger.js";
 import { percentile } from "./ai-stats.js";
 
 const INVARIANT = process.env.AI_CF_GB_INVARIANT === "1";
@@ -77,26 +82,46 @@ function loadModel(): TreeModel {
 
 type ArmRun = Readonly<{ perDealA: number[]; perDealB: number[] }>;
 
+/**
+ * `designed` runs install the selector as a decorator around the measured
+ * strategy; shipped runs install it as an overlay *inside* the shipped handler
+ * so the real 120 ms budget, the deadline fallback and the try/catch all apply.
+ * Nothing else differs between the two, which is what makes the pair a
+ * translation check rather than a second experiment.
+ */
 function runArm(arm: "baseline" | "challenger"): Readonly<{
   run: ArmRun;
   games: SelectorStats[];
+  records: ReturnType<typeof createRecorder>["records"];
+  designed: boolean;
 }> {
   const config = readConfig();
-  expect(config.designed).toBe(true);
   const model = loadModel();
   const threshold = frozenThreshold();
   const perGame: SelectorStats[] = [];
   const recorder = createRecorder();
 
+  const selectorFor = (): SelectorStats => {
+    const stats = createSelectorStats();
+    perGame.push(stats);
+    return stats;
+  };
+
   const pairRun = runPairTournament(config, "master", "default", recorder, {
     quiet: false,
     ...(arm === "challenger" ? {
-      decoratorFor: (strongSeat: Seat) => {
-        const stats = createSelectorStats();
-        perGame.push(stats);
-        return (strategy: ReturnType<typeof createMeasuredStrategy>) =>
-          createChallengerStrategy(strategy, { model, threshold, seat: strongSeat, stats });
-      },
+      ...(config.designed
+        ? {
+          decoratorFor: (strongSeat: Seat) => {
+            const stats = selectorFor();
+            return (strategy: ReturnType<typeof createMeasuredStrategy>) =>
+              createChallengerStrategy(strategy, { model, threshold, seat: strongSeat, stats });
+          },
+        }
+        : {
+          phase2For: (strongSeat: Seat) =>
+            createFrozenOverlay({ model, threshold, seat: strongSeat, stats: selectorFor() }),
+        }),
     } : {}),
   });
 
@@ -106,6 +131,8 @@ function runArm(arm: "baseline" | "challenger"): Readonly<{
       perDealB: [...pairRun.perDealB],
     }),
     games: perGame,
+    records: recorder.records,
+    designed: config.designed,
   });
 }
 
@@ -138,14 +165,16 @@ describe.runIf(ENABLED)("Gate B", () => {
               unboundedEvery: config.unboundedEvery,
               seed: gameSeed,
               designed: true,
-              ...(decorate ? {
-                decorate: (seat: Seat, strategy: ReturnType<typeof createMeasuredStrategy>) =>
-                  seat === strongSeat
-                    ? createChallengerStrategy(strategy, {
-                        model, threshold, seat: strongSeat, stats: createSelectorStats(),
-                      })
-                    : strategy,
-              } : {}),
+              // The shipped form: the overlay runs inside the handler, under the
+              // real deadline. Testing the decorator here would leave the seam
+              // the strength run actually uses unguarded.
+              ...(decorate
+                ? {
+                  phase2: createFrozenOverlay({
+                    model, threshold, seat: strongSeat, stats: createSelectorStats(),
+                  }),
+                }
+                : {}),
             });
             return rec.commands ?? [];
           };
@@ -204,7 +233,7 @@ describe.runIf(ENABLED)("Gate B", () => {
 
     if (OUT !== undefined) {
       const arm = (process.env.AI_CF_GB_ARM ?? "baseline") as "baseline" | "challenger";
-      const { run, games } = runArm(arm);
+      const { run, games, records, designed } = runArm(arm);
       const config = readConfig();
       writeFileSync(OUT, `${JSON.stringify({
         label: `phase2-${arm}`,
@@ -225,8 +254,21 @@ describe.runIf(ENABLED)("Gate B", () => {
         stats.eligible === 0 ? [] : [stats.featureMs / Math.max(1, stats.eligible)]);
       const inferenceMs = games.flatMap((stats) =>
         stats.eligible === 0 ? [] : [stats.inferenceMs / Math.max(1, stats.eligible)]);
+      // Deadline behaviour, read from the shipped recorder rather than inferred.
+      const masterPlays = records.filter((record) => record.profile === "master" && record.kind === "play");
+      const cutoffs = masterPlays.filter((record) => record.reachedDeadline).length;
+      const latencies = masterPlays.map((record) => record.elapsedMs).sort((a, b) => a - b);
+      const quantile = (values: number[], fraction: number) =>
+        values.length === 0 ? 0 : values[Math.min(values.length - 1, Math.floor(fraction * values.length))] ?? 0;
       report(
-        `[gate-b ${arm}] deals ${run.perDealA.length} decisions ${decisions} eligible ${eligible} ` +
+        `[gate-b ${arm}] mode ${designed ? "designed" : "shipped"} deals ${run.perDealA.length} ` +
+        `masterPlay ${masterPlays.length} deadlineCutoffs ${cutoffs} ` +
+        `cutoffRate ${masterPlays.length === 0 ? "0.0" : (100 * cutoffs / masterPlays.length).toFixed(1)}% ` +
+        `masterLatency p50 ${quantile(latencies, 0.5).toFixed(1)}ms p95 ${quantile(latencies, 0.95).toFixed(1)}ms ` +
+        `p99 ${quantile(latencies, 0.99).toFixed(1)}ms max ${(latencies[latencies.length - 1] ?? 0).toFixed(1)}ms`,
+      );
+      report(
+        `[gate-b ${arm}] decisions ${decisions} eligible ${eligible} ` +
         `overrides ${overrides} ` +
         `feature p50 ${percentile(featureMs, 0.5).toFixed(3)}ms p95 ${percentile(featureMs, 0.95).toFixed(3)}ms ` +
         `max ${(featureMs.length === 0 ? 0 : Math.max(...featureMs)).toFixed(3)}ms ` +

@@ -45,6 +45,7 @@ export type SelectorStats = {
   overrides: number;
   featureMs: number;
   inferenceMs: number;
+  proposalMs: number;
   /** Candidate rank chosen, counted by production candidate order. */
   chosenRank: Map<number, number>;
   /** The score the selector saw at the moment it decided. */
@@ -59,6 +60,7 @@ export function createSelectorStats(): SelectorStats {
     overrides: 0,
     featureMs: 0,
     inferenceMs: 0,
+    proposalMs: 0,
     chosenRank: new Map(),
     scores: [],
     records: [],
@@ -110,7 +112,9 @@ export function chooseChallengerCommand(
   }
 
   const playContext = context as PlayContext;
+  const proposalStart = performance.now();
   const proposal = cfProposal(playContext);
+  const proposalEnd = performance.now();
   if (proposal.actions.length < 2) {
     return productionCommand;
   }
@@ -130,6 +134,7 @@ export function chooseChallengerCommand(
 
   if (stats !== undefined) {
     stats.eligible += 1;
+    stats.proposalMs += proposalEnd - proposalStart;
   }
 
   let bestIndex = -1;
@@ -202,6 +207,23 @@ export function chooseChallengerCommand(
     }));
   }
   return cfActionCommand(view.seat, chosen);
+}
+
+/**
+ * The selector in the form the shipped handler consumes.
+ *
+ * This is the same decision function as the decorator path, expressed as a
+ * post-decision overlay so it can run *inside* `decideEnhancedAi` — after the
+ * real master search, under the real deadline, behind the real try/catch. The
+ * two forms exist so that the designed benchmark and the shipped benchmark can
+ * be shown to agree, rather than assumed to.
+ */
+export function createFrozenOverlay(options: ChallengerOptions): (
+  context: AiDecisionContext,
+  productionCommand: GameCommand,
+) => GameCommand {
+  return (context, productionCommand) =>
+    chooseChallengerCommand(context, productionCommand, options);
 }
 
 /** Wraps one seat's production strategy with the frozen selector. */
