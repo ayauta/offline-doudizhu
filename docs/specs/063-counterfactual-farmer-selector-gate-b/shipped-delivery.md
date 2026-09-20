@@ -1,6 +1,6 @@
 # Spec 063 实验记录（Gate B-S2：产品交付闭合）
 
-协议见 [spec.md](spec.md)。状态：**PRODUCT RUNTIME NOT READY**。
+协议见 [spec.md](spec.md)。状态：**GATE B-S2 PASS**。
 日期：2026-09-21
 前置：Gate B-S PASS（[shipped.md](shipped.md)）。
 
@@ -13,11 +13,11 @@
 | hidden-information boundary | ✅ 未变（feature 仍只吃 `PlayingPlayerView`） |
 | fallback 路径 | ✅ 单元层穷举；worker 层「模型不可用即不装 overlay」 |
 | production gates | ✅ `pnpm check` exit 0，Chromium 33 项通过 |
-| **Worker end-to-end timing / cadence** | ❌ **未测量** |
+| **Worker end-to-end timing / cadence** | ✅ 已测（见 §6） |
 
-**因此判定 `PRODUCT RUNTIME NOT READY`**——不是因为工程失败，而是因为 §6 要求的
-真实 Worker 往返延迟、cadence miss、outer timeout、fallback count **本轮没有测**，
-而 §11 的 PASS 明确要求「product timing 合格」。**不能声称没有测过的东西。**
+**判定 `GATE B-S2 PASS`**——§9 的十条全部满足（见 §6）。
+
+> 上一版曾判 NOT READY，唯一原因是当时真实 Worker 往返延迟尚未测量。本轮补测后通过。
 
 ## 1. Delivery
 
@@ -99,20 +99,68 @@ seam（`decideEnhancedAi`）已经 catch 一切异常并返回 production 命令
 
 **未测**：worker cancellation、outer timeout pressure——它们要经真实 Worker 才能构造。
 
-## 5. 未做的事（这就是 NOT READY 的原因）
+## 5. 真实 Worker 往返测量
 
-* **Worker request→response 的 p50/p95/p99/max 未测。**
-* **cadence miss / outer timeout / fallback count / worker cancellation 未测。**
-* 因此 §15 的「是否出现 >480ms response」在 Worker 层面**没有答案**。
+`e2e/ai-worker-timing.spec.ts`，`AI_CF_TIMING=1` 时启用，默认 skip。
+**Chromium production build，jobs=1，真实 Worker，两臂各自 18/7 副真实对局。**
 
-已有的、能说的：decision 层（handler 内，jobs=1，designed=false）master latency
-p50 31.8 ms / p95 99.6 ms / max 171.1 ms，**0 个 decision 超过 480 ms**；
-overlay 9.11 ms / eligible decision；真实 Worker 里模型能加载、能出招、整局能走完
-（`pnpm check` 的 Chromium 新增用例）。这些**不等于** worker 往返延迟。
+插桩**完全在应用之外**：在应用代码加载前把页面里的 `Worker` 换成子类，
+记录 `postMessage` 与配对的 `message` 事件时间戳。`src/` 里**没有任何测试钩子**，
+因此不存在「插桩 on/off 行为是否一致」的问题——没有东西可关。
 
-要做完这一步需要：在 Playwright 里对 worker 往返打点（需要一处测试专用的观测钩子，
-或对 presentation beat 做外部观测），按 jobs=1 跑 baseline 与 challenger 两臂。
-这是一块独立的工作，本轮没有把它做扎实，因此不声称通过。
+### 激活验证（不是假设）
+
+基线臂 `flagged 0`，挑战臂 `flagged 145/145`。请求数 372 → 401（18 副）
+与 129 → 145（7 副）：selector 确实改变了出牌，游戏因此不同。
+
+### Warm request→response
+
+| | N | p50 | p95 | p99 | max |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| baseline | 372 | 26.0 ms | 83.6 ms | 115.7 ms | 122.4 ms |
+| challenger | 401 | 24.5 ms | 70.9 ms | 105.7 ms | 134.6 ms |
+
+**受控对比**（只取「master 决策 + 农民座位」，两臂同口径）：
+
+| | N | p50 | p95 | max |
+| --- | ---: | ---: | ---: | ---: |
+| baseline | 129 | 24.3 ms | 80.7 ms | 113.8 ms |
+| challenger | 145 | 26.1 ms | 68.6 ms | 115.5 ms |
+| Δ | | **+1.8 ms** | −12.1 ms | +1.7 ms |
+
+**一个我没有解释清楚的观测**：benchmark 里 overlay 自身耗时 9.11 ms，
+这里受控 p50 只涨 1.8 ms。两者口径不同（前者是 overlay 内部计时，后者是端到端
+墙钟差），但这个差距**我没有在这次预算内查清**，因此如实记录为未解释，
+而不是编一个说法。它不影响任何一条 PASS 判据。
+
+### Cold
+
+N = **6** 次独立页面加载（每次全新浏览器进程）：
+
+| | p50 | p95 | max |
+| --- | ---: | ---: | ---: |
+| worker created → first valid AI response | 43.6 ms | 47.2 ms | 47.2 ms |
+
+样本 `[42.1, 46.5, 43.6, 42.0, 39.8, 47.2]` ms；worker 创建发生在页面加载后
+317–336 ms。**应用没有 ready 信号**，所以「creation → ready」不可单独观测，
+只能报 creation → 首个有效响应。
+
+### 失败计数（两臂全为 0）
+
+| | baseline | challenger |
+| --- | ---: | ---: |
+| responses > 480 ms | **0** | **0** |
+| responses > 520 ms（beat） | 0 | 0 |
+| outer timeout（`ok:false`） | **0** | **0** |
+| fallback | 0 | 0 |
+| worker cancellation（发出未回） | **0** | **0** |
+| malformed / empty response | **0** | **0** |
+
+### 内部 deadline / overlay 分阶段
+
+master cutoff rate 与 overlay 分阶段计时**无法从 Worker 外部观测**（那需要生产侧钩子）。
+它们来自 Gate B-S 的同一 shipped handler、同一 120 ms 预算：cutoff **0.8% → 0.9%**，
+overlay 9.11 ms / eligible decision（proposal 8.927 + feature 0.105 + inference 0.078）。
 
 ## 6. 未触碰
 
