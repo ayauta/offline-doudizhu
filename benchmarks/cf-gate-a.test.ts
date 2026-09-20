@@ -27,7 +27,7 @@ import {
   type CfLabel,
   type CfSplit,
 } from "./cf-dataset.js";
-import { cfSchemaHash } from "./cf-corpus.js";
+import { cfLabelTally, cfSchemaHash } from "./cf-corpus.js";
 import {
   CF_THRESHOLD_GRID,
   cfChooseOverride,
@@ -148,10 +148,7 @@ describe.runIf(ENABLED)("Gate A v1 rows and calibration", () => {
         const payload = exportSplit(loadGroups(CORPUS_DIR, `${split}.json`), split);
         const text = `${JSON.stringify(payload)}\n`;
         writeFileSync(join(DUMP_DIR, `${split}.rows.json`), text, "utf8");
-        const labels = payload.rows.reduce<Record<string, number>>((counts, row) => {
-          counts[String(row.y)] = (counts[String(row.y)] ?? 0) + 1;
-          return counts;
-        }, {});
+        const labels = cfLabelTally(payload.rows.map((row) => row.y));
         const weights = payload.rows.map((row) => row.w);
         report(
           `[rows ${split}] groups ${payload.registeredGroups.length} ` +

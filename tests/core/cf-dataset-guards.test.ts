@@ -41,6 +41,7 @@ import {
 import { ENHANCED_AI_SEARCH } from "../../src/app/ai/decision-handler.js";
 import { seededRandom } from "../support/harness.js";
 import { dealDeck, startWithLandlord } from "../../benchmarks/ai-tournament.js";
+import { cfLabelTally } from "../../benchmarks/cf-corpus.js";
 import {
   CF_ACTION_CAT_NAMES,
   CF_ACTION_NUM_NAMES,
@@ -771,5 +772,24 @@ describe("cf dataset: split", () => {
       }
     }
     expect(violations).toBe(0);
+  });
+});
+
+describe("cf dataset: label reporting", () => {
+  it("keys the tally on the same three names the report reads", () => {
+    // The first version keyed its map on `String(label)`, which yields "1" and
+    // not "+1", while the report read counts["+1"]. Every positive label was
+    // counted and then never displayed — the corpus looked like it contained no
+    // +1 at all while holding thousands of them. The keys are the contract.
+    const tally = cfLabelTally([1, 1, 0, -1, 0, 1]);
+    expect(tally).toEqual({ "+1": 3, "0": 2, "-1": 1 });
+    expect([...Object.keys(tally)].sort()).toEqual(["+1", "-1", "0"]);
+  });
+
+  it("accounts for every label it is given", () => {
+    const labels = [1, -1, 0, 0, 1, -1, -1] as const;
+    const tally = cfLabelTally(labels);
+    expect(tally["+1"] + tally["0"] + tally["-1"]).toBe(labels.length);
+    expect(cfLabelTally([])).toEqual({ "+1": 0, "0": 0, "-1": 0 });
   });
 });

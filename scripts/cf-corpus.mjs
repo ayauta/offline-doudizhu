@@ -16,7 +16,7 @@
  * Nothing here prints an outcome for it.
  */
 import { spawn } from "node:child_process";
-import { mkdirSync, rmSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -77,18 +77,51 @@ function policyCommit() {
   return process.env.AI_CF_POLICY_COMMIT ?? "uncommitted";
 }
 
+function shardPath(window) {
+  return join(SHARD_DIR, `shard-${String(window.start).padStart(6, "0")}.json`);
+}
+
+/**
+ * A shard file counts as done when it parses, covers the window it claims, and
+ * carries one group per requested deal. A half-written file from a killed
+ * process fails that and is regenerated.
+ */
+function shardIsComplete(path, window) {
+  if (!existsSync(path)) return false;
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    return parsed?.shard?.dealStart === window.start &&
+      parsed?.shard?.deals === window.count &&
+      Array.isArray(parsed?.groups) &&
+      parsed.groups.length === window.count;
+  } catch {
+    return false;
+  }
+}
+
 async function generate() {
   mkdirSync(SHARD_DIR, { recursive: true });
-  for (const name of readdirSync(SHARD_DIR).filter((entry) => entry.endsWith(".json"))) {
-    rmSync(join(SHARD_DIR, name));
+  if (process.env.AI_CF_FRESH === "1") {
+    for (const name of readdirSync(SHARD_DIR).filter((entry) => entry.endsWith(".json"))) {
+      rmSync(join(SHARD_DIR, name));
+    }
   }
   const windows = shardWindows(UNIVERSE_SIZE, jobs);
-  console.log(`generating ${UNIVERSE_SIZE} groups across ${windows.length} shard(s)`);
+  const pending = windows.filter((window) => !shardIsComplete(shardPath(window), window));
+  const reused = windows.length - pending.length;
+  console.log(
+    `generating ${UNIVERSE_SIZE} groups across ${windows.length} shard(s)` +
+    (reused > 0 ? ` — ${reused} already complete and kept` : ""),
+  );
+  if (pending.length === 0) {
+    console.log("nothing to do");
+    return 0;
+  }
   const started = Date.now();
-  const codes = await Promise.all(windows.map((window) => run(
+  const codes = await Promise.all(pending.map((window) => run(
     ["run", "--config", CONFIG, BENCH],
     {
-      AI_CF_GENERATE: join(SHARD_DIR, `shard-${String(window.start).padStart(6, "0")}.json`),
+      AI_CF_GENERATE: shardPath(window),
       AI_CF_DEAL_START: String(window.start),
       AI_CF_DEALS: String(window.count),
       AI_CF_JOBS: String(jobs),
@@ -116,7 +149,6 @@ async function verify() {
   const codeA = await run(args, { ...base, AI_CF_GENERATE: first, AI_CF_JOBS: "1" });
   const codeB = await run(args, { ...base, AI_CF_GENERATE: second, AI_CF_JOBS: "16" });
   if (codeA !== 0 || codeB !== 0) return 1;
-  const { readFileSync } = await import("node:fs");
   const a = readFileSync(first);
   const b = readFileSync(second);
   if (a.equals(b)) {

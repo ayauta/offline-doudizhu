@@ -30,7 +30,6 @@ import {
   CF_UNIVERSE_START,
   cfCaptureGroup,
   type CfGroupResult,
-  type CfLabel,
   type CfRow,
   type CfSplit,
 } from "./cf-dataset.js";
@@ -38,6 +37,7 @@ import {
   CF_LGBM_CONFIG_VERSION,
   cfAuditStructure,
   cfGroupSpecFor,
+  cfLabelTally,
   cfRowsForGroup,
   cfSchemaHash,
   cfSeatCoverage,
@@ -54,6 +54,21 @@ const POLICY_COMMIT = process.env.AI_CF_POLICY_COMMIT ?? "unset";
 const BASELINE_COMMIT = process.env.AI_CF_BASELINE_COMMIT ?? "ea67aa3";
 
 const ENABLED = GENERATE_OUT !== undefined || MERGE_DIR !== undefined || AUDIT_DIR !== undefined;
+
+/**
+ * Generating a shard is a multi-hour job, so the runner needs an explicit
+ * budget rather than the config's 15-minute default.
+ *
+ * The first full run of this file timed out on every shard — and *still wrote
+ * every shard file*, because vitest cannot interrupt a synchronous test: the
+ * work finished, the file landed, and the timeout was reported afterwards. The
+ * driver read those reports as failures and skipped the merge, so a corpus that
+ * was complete on disk looked like one that had never been built. The timeout
+ * is now stated here instead of inherited, and the driver resumes rather than
+ * restarting, so neither a slow machine nor a suspended one can turn finished
+ * work into a reported failure.
+ */
+const CF_GENERATE_TIMEOUT_MS = 6 * 60 * 60 * 1000;
 
 function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -79,20 +94,15 @@ function splitOfOrThrow(dealIndex: number): CfSplit {
   return split;
 }
 
-function labelCounts(rows: readonly CfRow[]): Record<string, number> {
-  const counts: Record<string, number> = { "+1": 0, "0": 0, "-1": 0 };
-  for (const row of rows) {
-    const key = String(row.y as CfLabel);
-    counts[key] = (counts[key] ?? 0) + 1;
-  }
-  return counts;
+function labelCounts(rows: readonly CfRow[]): Readonly<{ "+1": number; "0": number; "-1": number }> {
+  return cfLabelTally(rows.map((row) => row.y));
 }
 
 /** Group-level outcome summary — only ever called on train and calibration. */
 function outcomeSummary(rows: readonly CfRow[]): readonly string[] {
   const counts = labelCounts(rows);
   const total = rows.length;
-  const nonzero = (counts["+1"] ?? 0) + (counts["-1"] ?? 0);
+  const nonzero = counts["+1"] + counts["-1"];
   const groups = new Set(rows.map((row) => row.groupId));
   const roots = new Set(rows.map((row) => row.snapshotId));
   const byGroup = new Map<string, number>();
@@ -284,5 +294,5 @@ describe.runIf(ENABLED)("Gate A v1 corpus", () => {
     expect(train.length + calibration.length + heldout.length).toBe(
       CF_SPLIT_COUNTS.train + CF_SPLIT_COUNTS.calibration + CF_SPLIT_COUNTS.heldout,
     );
-  });
+  }, CF_GENERATE_TIMEOUT_MS);
 });

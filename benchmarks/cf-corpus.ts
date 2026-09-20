@@ -22,6 +22,7 @@ import {
   cfRows,
   cfSplitTable,
   type CfGroupResult,
+  type CfLabel,
   type CfGroupSpec,
   type CfRow,
   type CfSplit,
@@ -201,6 +202,32 @@ export function cfAuditStructure(
     labelIntegrityFailures,
     productionIndexFailures,
   });
+}
+
+/**
+ * Counts labels into the three buckets the spec names.
+ *
+ * Written as an exported, tested function because the first version of this
+ * tally keyed its map on `String(label)` — which produces `"1"`, not `"+1"` —
+ * while the report read `counts["+1"]`. Every positive label was counted and
+ * then never displayed, and the corpus looked like it contained no `+1` at all.
+ * The data was fine; only the reading of it was wrong, which is the most
+ * expensive kind of bug to notice late.
+ */
+export function cfLabelTally(
+  labels: Iterable<CfLabel>,
+): Readonly<{ "+1": number; "0": number; "-1": number }> {
+  const tally = { "+1": 0, "0": 0, "-1": 0 };
+  for (const label of labels) {
+    if (label > 0) {
+      tally["+1"] += 1;
+    } else if (label < 0) {
+      tally["-1"] += 1;
+    } else {
+      tally["0"] += 1;
+    }
+  }
+  return Object.freeze(tally);
 }
 
 export function cfRowsForGroup(result: CfGroupResult, split: CfSplit): readonly CfRow[] {
