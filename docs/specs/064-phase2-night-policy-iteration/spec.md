@@ -4,6 +4,11 @@
 Stage 2 对局被运行**之前**写死。此后任何修改都使本轮预登记失效。
 日期：2026-09-21
 分支：`research/phase2-night-lab`，起点 `96dc640`（tag `ai-v1`）。
+
+**修订 2026-09-21，仍在任何 seed 暴露之前**（三个新池暴露计数 = 0、无 π2 模型、无对局）：
+补齐 §7 的 legality / baseline identity / seed overlap / 单次 proposal / candidate
+interface 五条门禁，并写入 §14 的运行纪律与 **08:30 CST 硬停**。补写与冻结属于**同一次**
+预登记动作：本文件在补写之后**仍然没有见过任何本轮数据**。
 前置：Spec 062（Gate A **PASS**）、Spec 063（Gate B-A/B-S/B-S2 **PASS**、final
 validation **FINAL KEEP**）。结果记录见
 [062/experiment.md](../062-counterfactual-policy-improvement/experiment.md)、
@@ -171,7 +176,26 @@ out = c2.overrode ? C[c2.index] : b1
     corpus 与 tournament 对同一 (dealIndex, strongSeat, landlord) 得到同一 `gameSeed`；
 11. **hidden-hand invariance**：重发隐藏手牌，feature 与 selector 命令逐位不变；
 12. **determinism**：同一输入重复运行逐字节相同；
-13. **landlord identity**：landlord root 上零 proposal / 零模型遍历 / 原对象返回。
+13. **landlord identity**：landlord root 上零 proposal / 零模型遍历 / 原对象返回；
+14. **legality**：`C` 中每个候选、`b0`、`b1`、以及 challenger 的输出，都必须落在引擎自己
+    的合法动作集合内（`src/core/rules` 的 `generateLegalActions` 与引擎既有命令校验，不另
+    造一套）；数据集每一行的 `a` 也必须是该 context 下的合法命令。出现任何非法候选 =
+    **INVALID**，**不是**「跳过这一行」；
+15. **baseline identity**：baseline 臂必须**逐位**就是 frozen π1 —— 同一 model
+    sha、同一 `0.01`、同一 tie 规则。测试必须用 frozen selector **独立重新导出** `b1`，
+    并与 baseline 臂实际产生的命令流逐位比对；且 baseline 臂**根本不构造 π2 model**
+    （零 π2 遍历、零 π2 artifact 读取）。任何一处不等 = INVALID；
+16. **seed overlap**：三个池两两不交，每个生成 group 的 `dealIndex` 必须严格落在**自己**
+    池的区间内，且与 §8 / ledger §1 列出的全部不可用区间**交集为空**。这条要对**全部**生成
+    物机械断言，不是抽样。发现重叠 = 本轮 INVALID，且**不得重抽**——看到重叠之后再抽新
+    数字，本身就是 selection；
+17. **单次 proposal**：每个被研究的 root 上 `cfProposal` 恰好调用 **1** 次（两层共享同一
+    对象）、raw production master 恰好调用 **1** 次；用计数器断言 `=== 1`。这是 §10 成本门
+    的运行时前提，也是「组合只多一次模型遍历、不多一次 proposal」这句话的唯一证据；
+18. **candidate interface 不变**：π2 数据行与 v1 **逐字段同接口**（同一 `CfRow` shape、
+    同一列序、`a ∈ C \ {b1}`、cap ≤ 3、`b0 ∈ C` 的 eligibility 规则）。v1 的读取端
+    （`cf-model.ts` / `cf-dataset.ts`）**不改一行**就能消费 π2 行；接口一旦漂移 = INVALID
+    （那等于换 schema，而 schema 是冻结项）。
 
 **这些测试必须先在旧代码上变红**，再实现到绿。守卫之所以是守卫，是因为它曾经红过。
 
@@ -272,7 +296,37 @@ out = c2.overrode ? C[c2.index] : b1
 
 以上任何一条都是**新 hypothesis**，必须开**新池**并重新预登记。
 
-## 14. 产出
+## 14. 运行纪律、停止规则与 08:30 CST 硬停
+
+**Night-only。** 本轮全部计算（dataset 生成、π2 训练、Stage 1、Stage 2）只在**本夜**进行，
+不跨日续跑、不「明天接着跑」：跨夜续跑会把同一个池拆成两段被分别解释的结果。
+
+**硬停：`08:30`（CST，UTC+8）。** 到点**无条件下停**：杀掉仍在执行的 stage，已产出的部分
+结果一律记为 **INCOMPLETE**。
+
+* INCOMPLETE **不得**被解释成 KEEP、REVERT、POSITIVE 或 NEGATIVE，也不得据此调参数后重跑；
+* 被 INCOMPLETE 触及的池**按已暴露处理并退休**（即使只跑了一部分，这些对局的结果已经被
+  看到），**不得**在下一夜用同一池续做；要继续这条机制线，必须**开新池 + 重新预登记**；
+* 硬停优先于本节其它任何规则，也优先于 Stage 1 / Stage 2 的完成度。
+
+**逐级停止规则**（任一触发即停；不得换 threshold / 换模型 / 换 subgroup 抢救，见 §13）：
+
+| 触发 | 动作 |
+| --- | --- |
+| 任一 integrity gate（§7）失败 | 允许修实现，但**该池已消费的部分不得回收**；本轮不得用同一池出判定 |
+| landlord identity（§7 第 13 条）出现任何 divergence | INVALID，先修实现，再谈结果 |
+| Stage 1 继续条件任一不满足（**含点估计恰好为 0**） | **本机制线 STOP**，不进 Stage 2 |
+| Stage 2 判据任一不满足 | **REVERT**；不扩样、不回头解释 Stage 1 |
+| 结构成本门（§10）不通过 | 按对应 stage 的停止规则处理（Stage 1 → STOP，Stage 2 → REVERT） |
+| `08:30` CST | 无条件下停，见上 |
+
+**无 peek。** Stage 1 的两臂在跑完固定 200 组之前不得被查看中间结果；不存在「看几副再决定
+要不要跑完」这一步。
+
+**无生产提升。** Night Lab 的任何结果（**包括 NIGHT KEEP**）都**不**触发 `src/` 或 Worker
+的行为变更；产品化是另一条独立流程（§0）。
+
+## 15. 产出
 
 * 本 spec（预登记 commit，**在实现之前**）
 * [docs/research/ai-used-seed-ledger.md](../../research/ai-used-seed-ledger.md)（种子池 ledger）
