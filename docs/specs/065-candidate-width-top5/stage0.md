@@ -73,18 +73,28 @@ top5 候选集**完全在 `benchmarks/` 里构造**，用的是 `src/core` 已�
 `rankPlayActionsWithProposal`。产品的 `cfProposal`、`CF_CANDIDATE_LIMIT`、Worker、
 任何 delivery entry **一个字节未动**。
 
-### 3.2 三个共享文件只增加了**带默认值**的参数
+### 3.2 冻结的校验器**一字未改**
 
-| 文件 | 新增 | 默认值 |
-| --- | --- | --- |
-| `benchmarks/cf-dataset.ts` | `CfCaptureOptions.proposalFor` | shipped `cfProposal` |
-| `benchmarks/cf-pi-corpus.ts` | `CfPiGroupExpectation.proposalFor` / `.candidateLimit` / `.datasetVersion` | shipped / `CF_CANDIDATE_LIMIT` / `CF_PI_DATASET_VERSION` |
+初版为了复用，把 Spec 064 的校验器 `benchmarks/cf-pi-corpus.ts` 加了三个带默认值的字段
+（`proposalFor` / `candidateLimit` / `datasetVersion`）。默认值等于原值，29 条 064 守卫也确实
+全绿——但它仍然**改动了那个产出已记录结果的校验器**，而那是不该付出的代价。
 
-**所有默认值都是原值**，所以 Spec 064 的 29 条守卫**一行未改、全部通过**。
-共享 `cf-pi-corpus.ts` 的 §7 全套判据（而不是为 065 重写一份）是刻意的：
-那套判据已经在 20,000 个 group 上验证过，重写它等于把已经证明的安全网换成一个未证明的。
+现在它已**逐字节恢复到记录时的版本**（`git diff --cached ca6c5df` 为空），
+Spec 065 改用**专用副本** `benchmarks/cf-top5-battery.ts`：逻辑逐条对应，只有 universe /
+split resolver / 候选宽度 / dataset version / proposal 函数不同。副本由
+`tests/core/cf-top5-battery.test.ts` 的 14 条守卫证明（含真实 capture 的正例、以及 12 条
+「破坏一条规则就必须被拒」的变异）。
 
----
+**为什么副本在这里安全、在 `cf-dataset.ts` 却不安全**：校验器对数据**没有副作用**，
+副本不会让两份数据分叉；而生成器会。所以 `cf-dataset.ts` 的 capture 只增加了**一个带默认值
+的 `proposalFor`**（默认 = shipped `cfProposal`），而不是复制一份生成器——两份生成同一个
+corpus 的代码会漂移，而 corpus 是后面每一个数字的地基。
+
+| 文件 | 处理 |
+| --- | --- |
+| `benchmarks/cf-pi-corpus.ts`（064 校验器） | **逐字节恢复，未改动** |
+| `benchmarks/cf-dataset.ts`（生成器） | 仅加 `CfCaptureOptions.proposalFor`，默认 = shipped |
+| `benchmarks/cf-top5-battery.ts`（065 校验器） | **专用副本**，14 条守卫 |
 
 ## 4. 守卫与变异
 
@@ -110,9 +120,9 @@ top5 候选集**完全在 `benchmarks/` 里构造**，用的是 `src/core` 已�
 
 两者都发生在任何长跑之前，且都是**发牌之前**失败——没有消耗任何 seed。
 
-1. **driver 的第一次冒烟**：battery 仍在校验 Spec 064 的 dataset version（3），
+1. **driver 的第一次冒烟**：校验器仍在校验 Spec 064 的 dataset version（3），
    而 top5 capture 写的是 4 → `§7.18 … carries dataset version 4`。
-   修法：把 `datasetVersion` 加进 expectation。
+   这直接促成了 §3.2 的重构：**没有**去改冻结校验器的签名，而是给它做了一份 top5 专用副本。
    **没有任何 shard 被写出**，因为断言在生成循环里、写文件之前。
 
 2. **runner 的第一次冒烟**：`AI_CF_PI_S1_ARM` 这个环境变量名没有被改名，
@@ -125,23 +135,49 @@ top5 候选集**完全在 `benchmarks/` 里构造**，用的是 `src/core` 已�
 
 ---
 
-## 6. 成本与投影
+## 6. 成本与投影（可复现）
 
-退休种子实测（单进程，无竞争）：
+测速不是一次性探针。harness 本身已提交：
 
-| | v1 / top3 | 本轮 top5 |
-| --- | ---: | ---: |
-| s/group | 3.06 | **3.41**（1.11×） |
-| 平均候选宽度 | ~2.7 | **4.09** |
-| forks/group | — | 12.3 |
+```bash
+source scripts/activate-toolchain.sh
+AI_CF_T5_RATE_N=30 node node_modules/vitest/vitest.mjs run \
+  --config vitest.benchmark.config.ts benchmarks/cf-top5-rate.test.ts
+```
 
-**只贵 11%**，因为一次 capture 的主要成本是**访问阶段**（在 π1 下把整局打完），
-而访问阶段不受宽度影响；宽度只影响 fork 的数量。
+它在**同一批退休 deal**（`50_001` 起，默认 30 组）上跑 **top3 与 top5 两次 capture**，
+所以「放宽的代价」是在相同工作量上量出来的比值，而不是与另一夜记住的数字相比。
+结果写入 `AI_CF_T5_RATE_OUT`（默认 `/tmp/cf-top5-rate.json`）。
 
-20,000 groups 投影：单进程 1,138 min；15 分片 76 min；按 Spec 064 实测的
-**2.2× 竞争系数** → **约 167 min**。
+**样本 30 组 × 2 次独立运行**（单进程，无竞争）：
 
----
+| | top3 | top5 | 比值 |
+| --- | ---: | ---: | ---: |
+| run 1 | 3.251 s/group | **3.783 s/group** | 1.164× |
+| run 2 | 3.281 s/group | **3.913 s/group** | 1.193× |
+| 结构性计数 | 90 snapshots / 245 forks | 90 snapshots / 363 forks | 两次运行**完全相同** |
+| meanCandidates | 2.72 | **4.03** | |
+
+时间抖动 0.9% / 3.4%；结构性计数**逐位相同**，所以计时差异来自机器而不是来自数据。
+
+**20,000 groups 投影**（15 分片并行）：串行 1,261 / 1,304 min → ÷15 = 84 / 87 min →
+按 Spec 064 实测的 **2.2× 竞争系数** → **185 / 191 min**。
+
+**只贵 16–19%**：一次 capture 的主要成本是**访问阶段**（在 π1 下把整局打完），
+而访问阶段不受宽度影响；宽度只增加 fork 的数量（245 → 363）。
+
+### 6.1 时间预算（以真实系统时间计）
+
+| 项 | 值 |
+| --- | --- |
+| 测速完成 | 2026-09-22 **01:2x CST** |
+| 语料生成（15 分片） | **185–191 min** |
+| 生成完成（预估） | **约 04:40 CST** |
+| merge + audit + rows + train + export | 约 25 min |
+| Stage 1（200 组） | 约 15 min |
+| Stage 2（1,200 组） | 约 90 min |
+| 全部完成（预估） | **约 06:50 CST** |
+| **硬停 08:30 CST 余量** | **约 100 min** |
 
 ## 7. 零暴露
 

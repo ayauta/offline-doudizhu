@@ -35,7 +35,7 @@ import {
 import { CF_LGBM_CONFIG_VERSION, cfAuditStructure, cfSchemaHash, sha256 } from "./cf-corpus.js";
 import { CF_PI_MODEL_SHA256, CF_PI_THRESHOLD } from "./cf-policy-iteration.js";
 import { cfPiFrozenBaseline } from "./cf-pi-corpus.js";
-import { cfPiAssertGroup } from "./cf-pi-corpus.js";
+import { cfTop5AssertGroup } from "./cf-top5-battery.js";
 import {
   CF_TOP5_DATASET_VERSION,
   CF_TOP5_LIMIT,
@@ -44,7 +44,6 @@ import {
   cfTop5CaptureGroup,
 } from "./cf-top5.js";
 import {
-  CF_TOP5_GROUP_EXPECTATION,
   CF_TOP5_GROUP_SNAPSHOT_CAP,
   CF_TOP5_SEED_BASE,
   CF_TOP5_SPLIT_COUNTS,
@@ -54,6 +53,7 @@ import {
   cfTop5GroupSpecFor,
   cfTop5SplitOf,
 } from "./cf-top5-corpus.js";
+import { CF_TOP5_BATTERY_EXPECTATION } from "./cf-top5-battery.js";
 import { CF_SPLIT_COUNTS } from "./cf-dataset.js";
 
 const GENERATE_OUT = process.env.AI_CF_T5_GENERATE;
@@ -129,7 +129,7 @@ describe.runIf(ENABLED)("Spec 065 top5 corpus", () => {
         const split = splitOfOrThrow(dealIndex);
         const spec = cfTop5GroupSpecFor(dealIndex, POLICY_COMMIT);
         const result = cfTop5CaptureGroup(dealDeck(spec.dealSeed), spec, baseline);
-        const audit = cfPiAssertGroup(result, split, failures, CF_TOP5_GROUP_EXPECTATION);
+        const audit = cfTop5AssertGroup(result, split, failures, CF_TOP5_BATTERY_EXPECTATION);
         snapshots += audit.snapshots;
         rows += audit.rows;
         overridden += audit.overridden;
@@ -200,7 +200,7 @@ describe.runIf(ENABLED)("Spec 065 top5 corpus", () => {
             throw new Error(`§7.16 deal ${group.dealIndex} appears in more than one shard.`);
           }
           seenDeals.add(group.dealIndex);
-          const audit = cfPiAssertGroup(group, split, failures, CF_TOP5_GROUP_EXPECTATION);
+          const audit = cfTop5AssertGroup(group, split, failures, CF_TOP5_BATTERY_EXPECTATION);
           snapshots += audit.snapshots;
           rows += audit.rows;
           overridden += audit.overridden;

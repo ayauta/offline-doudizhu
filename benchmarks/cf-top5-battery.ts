@@ -1,29 +1,30 @@
 /**
- * Exhaustive integrity checks for the π1→π2 corpus (spec 064 §7).
+ * Spec 065's own §7 battery — the integrity checks for the *top5* corpus.
  *
- * Kept apart from the driver (`cf-pi-corpus.test.ts`) for the same reason
- * `cf-corpus.ts` is apart from `cf-corpus.test.ts`: this module is pure, so the
- * guards in `tests/` can import it and prove it rejects bad input, while the
- * driver is the thing that touches the filesystem and runs for hours.
+ * This is a deliberate copy of `cf-pi-corpus.ts`, not an import of it. That
+ * file validated the Spec 064 π2 corpus end to end — 20,000 groups, recorded,
+ * and cited as the evidence that the corpus was sound — and it is frozen.
+ * Widening its signature so a second round could reuse it would mean the
+ * validator that produced a recorded result is no longer the validator that is
+ * on disk, which is a worse property to lose than a few hundred duplicated
+ * lines are to keep.
  *
- * **Every check here is exhaustive, never sampled.** Spec §7.16 says so in
- * words — "机械断言，不是抽样" — and the reason is that a corpus is generated
- * once and then trusted for the rest of the round: a defect that survives into
- * the merged file is not caught later by any downstream check, because the
- * downstream checks read the same rows and agree with themselves.
+ * Duplication is safe *here* and only here: a validator has no side effects on
+ * the data. The same argument does **not** apply to `cf-dataset.ts`, whose
+ * generator is parameterised with a default instead of copied — two generators
+ * of the same corpus can drift, and the corpus is what every later number rests
+ * on. See Spec 065 `stage0.md` §3.2.
  *
- * Each assertion names the §7 gate it enforces, so a failure points at a
- * preregistered rule rather than at a line number.
+ * Every check below mirrors its counterpart one for one; the only differences
+ * are the round's universe, split resolver, candidate width, dataset version
+ * and proposal function. `tests/core/cf-top5-battery.test.ts` runs the whole
+ * thing over a retired deal and mutation-tests each gate.
  */
-import { CF_MODEL_JSON, CF_MODEL_SHA256 } from "../src/app/ai/cf-model-data.js";
-import { parseTreeModel } from "./cf-model.js";
 import { generateLegalActions } from "../src/core/rules/index.js";
 import type { Seat } from "../src/core/game/index.js";
 import {
-  CF_CANDIDATE_LIMIT,
   cfActionCommand,
   cfCommandKey,
-  cfProposal,
   type CfProposal,
 } from "../src/app/ai/cf-selector.js";
 import {
@@ -37,16 +38,19 @@ import {
   type CfSnapshot,
   type CfSplit,
 } from "./cf-dataset.js";
+// The frozen π1 baseline is *imported*, not copied: it is the same champion
+// both rounds measure against, and a second copy could drift from the one the
+// product ships.
+import { cfPiFrozenBaseline } from "./cf-pi-corpus.js";
+import { CF_TOP5_DATASET_VERSION, CF_TOP5_LIMIT, cfProposal5 } from "./cf-top5.js";
 import {
-  CF_PI_DATASET_VERSION,
-  CF_PI_MODEL_SHA256,
-  CF_PI_THRESHOLD,
-  CF_PI_UNIVERSE_END,
-  CF_PI_UNIVERSE_START,
-  cfPiPoolOf,
-  cfPiSplitOf,
-  type CfPiBaseline,
-} from "./cf-policy-iteration.js";
+  CF_TOP5_UNIVERSE_END,
+  CF_TOP5_UNIVERSE_START,
+  cfTop5PoolOf,
+  cfTop5SplitOf,
+} from "./cf-top5-corpus.js";
+
+export { cfPiFrozenBaseline };
 
 const SEAT_ORDER = Object.freeze(["human", "ai-one", "ai-two"] as const);
 
@@ -60,7 +64,7 @@ const SEAT_ORDER = Object.freeze(["human", "ai-one", "ai-two"] as const);
  * The round's own values are the default, so a production call site cannot get
  * this wrong by forgetting to pass it.
  */
-export type CfPiGroupExpectation = Readonly<{
+export type CfTop5GroupExpectation = Readonly<{
   universeStart: number;
   universeEnd: number;
   splitOf: (dealIndex: number) => CfSplit | undefined;
@@ -69,11 +73,11 @@ export type CfPiGroupExpectation = Readonly<{
   expectedPool: string;
 }>;
 
-export const CF_PI_GROUP_EXPECTATION: CfPiGroupExpectation = Object.freeze({
-  universeStart: CF_PI_UNIVERSE_START,
-  universeEnd: CF_PI_UNIVERSE_END,
-  splitOf: cfPiSplitOf,
-  poolOf: cfPiPoolOf,
+export const CF_TOP5_BATTERY_EXPECTATION: CfTop5GroupExpectation = Object.freeze({
+  universeStart: CF_TOP5_UNIVERSE_START,
+  universeEnd: CF_TOP5_UNIVERSE_END,
+  splitOf: cfTop5SplitOf,
+  poolOf: cfTop5PoolOf,
   expectedPool: "dataset",
 });
 
@@ -110,12 +114,12 @@ function bump(failures: Record<string, number>, gate: string): void {
  * rejected 0/3, and `pi2 corpus: every gate rejects its own violation` has a
  * case that pins exactly that.
  */
-export function cfPiProposalMatches(snapshot: CfSnapshot): boolean {
+export function cfTop5ProposalMatches(snapshot: CfSnapshot): boolean {
   const legalActions = generateLegalActions({
     hand: snapshot.view.hand,
     currentPlay: snapshot.view.currentPlay,
   });
-  const proposal: CfProposal = cfProposal(Object.freeze({
+  const proposal: CfProposal = cfProposal5(Object.freeze({
     kind: "play" as const,
     view: snapshot.view,
     legalActions,
@@ -149,7 +153,7 @@ export function cfPiProposalMatches(snapshot: CfSnapshot): boolean {
  * produces for this snapshot's own view, and every candidate, `b0` and `b1`
  * must be one of those actions. Anything else is INVALID, never a skipped row.
  */
-export function cfPiLegalityHolds(snapshot: CfSnapshot): boolean {
+export function cfTop5LegalityHolds(snapshot: CfSnapshot): boolean {
   const legalActions = generateLegalActions({
     hand: snapshot.view.hand,
     currentPlay: snapshot.view.currentPlay,
@@ -185,11 +189,11 @@ export function cfPiLegalityHolds(snapshot: CfSnapshot): boolean {
  * Validates one group exhaustively. Returns the number of snapshots and rows
  * accepted; throws on the first violation so a bad shard never reaches disk.
  */
-export function cfPiAssertGroup(
+export function cfTop5AssertGroup(
   group: CfGroupResult,
   split: CfSplit,
   failures: Record<string, number>,
-  expectation: CfPiGroupExpectation = CF_PI_GROUP_EXPECTATION,
+  expectation: CfTop5GroupExpectation = CF_TOP5_BATTERY_EXPECTATION,
 ): Readonly<{ snapshots: number; rows: number; overridden: number }> {
   const dealIndex = group.dealIndex;
 
@@ -235,7 +239,7 @@ export function cfPiAssertGroup(
   let overridden = 0;
   for (const snapshot of group.snapshots) {
     const meta = snapshot.meta;
-    if (meta.datasetVersion !== CF_PI_DATASET_VERSION) {
+    if (meta.datasetVersion !== CF_TOP5_DATASET_VERSION) {
       throw new CfInvalidError(`§7.18 ${meta.snapshotId} carries dataset version ${meta.datasetVersion}.`);
     }
     if (meta.featureSchemaVersion !== CF_FEATURE_SCHEMA_VERSION) {
@@ -266,7 +270,7 @@ export function cfPiAssertGroup(
     }
 
     // §7.3 — at least two candidates, never wider than the frozen cap.
-    if (snapshot.candidates.length < 2 || snapshot.candidates.length > CF_CANDIDATE_LIMIT) {
+    if (snapshot.candidates.length < 2 || snapshot.candidates.length > CF_TOP5_LIMIT) {
       throw new CfInvalidError(`§7.3 ${meta.snapshotId} has ${snapshot.candidates.length} candidates.`);
     }
     const keys = new Set<string>();
@@ -281,10 +285,10 @@ export function cfPiAssertGroup(
       throw new CfInvalidError(`§7.3 ${meta.snapshotId} repeats a candidate.`);
     }
 
-    if (!cfPiLegalityHolds(snapshot)) {
+    if (!cfTop5LegalityHolds(snapshot)) {
       throw new CfInvalidError(`§7.14 ${meta.snapshotId} is not legal under the engine's own generator.`);
     }
-    if (!cfPiProposalMatches(snapshot)) {
+    if (!cfTop5ProposalMatches(snapshot)) {
       throw new CfInvalidError(`§7.3 ${meta.snapshotId} does not reproduce the frozen candidate order.`);
     }
 
@@ -351,56 +355,3 @@ export function cfPiAssertGroup(
   return Object.freeze({ snapshots: group.snapshots.length, rows, overridden });
 }
 
-/**
- * The frozen π1 record, built from the artifact the *product ships* and checked
- * against its published identity. Reading it from `.local/` would make "the
- * baseline is frozen π1" a claim about whatever file happened to be on disk.
- *
- * Takes the artifact text as an argument so the guards in `tests/` can point the
- * same checks at a tampered copy and watch them reject it.
- *
- * `CF_MODEL_SHA256` identifies the **LightGBM booster text**, not this JSON
- * wrapper: `cf-export-model.py` copies the booster's digest into the generated
- * module as `modelSha256`, and that is the field to bind against. Hashing the
- * wrapper and comparing it to the constant is a check that can only ever fail —
- * it did, on the first attempt at this file, before a single seed was dealt.
- *
- * What is verified here is everything this side of the boundary can verify: the
- * digest the artifact claims is the frozen one, the tree table is the width and
- * depth it claims, and the column order is the frozen schema's. That the table
- * reproduces LightGBM's own predictions is `cf-model-equivalence.test.ts`.
- */
-export function cfPiFrozenBaseline(artifactJson: string = CF_MODEL_JSON): CfPiBaseline {
-  const parsed = JSON.parse(artifactJson) as {
-    modelSha256?: string;
-    numTrees?: number;
-    numFeatures?: number;
-    trees?: readonly unknown[];
-    featureNames?: readonly string[];
-  };
-  if (parsed.modelSha256 !== CF_MODEL_SHA256) {
-    throw new Error(
-      `The shipped artifact claims model ${String(parsed.modelSha256)}, ` +
-      `expected ${CF_MODEL_SHA256}.`,
-    );
-  }
-  if (CF_PI_MODEL_SHA256 !== CF_MODEL_SHA256) {
-    throw new Error("The π2 round's baseline is not the frozen artifact.");
-  }
-  if (parsed.trees?.length !== parsed.numTrees || parsed.numTrees === undefined) {
-    throw new Error(
-      `The shipped artifact carries ${String(parsed.trees?.length)} trees, claims ${String(parsed.numTrees)}.`,
-    );
-  }
-  if (parsed.featureNames?.length !== CF_FEATURE_NAMES.length ||
-    parsed.featureNames.some((name, index) => name !== CF_FEATURE_NAMES[index])) {
-    throw new Error("The shipped artifact's feature order is not the frozen schema's.");
-  }
-  if (parsed.numFeatures !== CF_FEATURE_NAMES.length) {
-    throw new Error("The shipped artifact disagrees with the frozen schema width.");
-  }
-  return Object.freeze({
-    model: parseTreeModel(JSON.parse(artifactJson) as Parameters<typeof parseTreeModel>[0]),
-    threshold: CF_PI_THRESHOLD,
-  });
-}

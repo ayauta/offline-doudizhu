@@ -9,10 +9,9 @@
  * validator that has already been proven, and the point of a new mechanism
  * family is to change one thing, not to re-derive the safety net.
  */
-import { CF_PI_GROUP_EXPECTATION, type CfPiGroupExpectation } from "./cf-pi-corpus.js";
 import { CF_GROUP_SNAPSHOT_CAP, cfSplitTable, type CfSplit } from "./cf-dataset.js";
 import { CF_SPLIT_COUNTS } from "./cf-dataset.js";
-import { CF_TOP5_DATASET_VERSION, CF_TOP5_LIMIT, CF_TOP5_SPLIT_SALT, cfProposal5 } from "./cf-top5.js";
+import { CF_TOP5_DATASET_VERSION, CF_TOP5_SPLIT_SALT } from "./cf-top5.js";
 import { CfInvalidError } from "./cf-dataset.js";
 import { armSchedule, dealGameSeed, scheduleFor } from "./ai-tournament.js";
 
@@ -85,22 +84,6 @@ export function cfTop5SplitOf(dealIndex: number): CfSplit | undefined {
   }
   return splitTable.get(dealIndex);
 }
-
-/**
- * The round's expectation: the battery's own rules, pointed at this universe
- * and at the five-wide interface.
- */
-export const CF_TOP5_GROUP_EXPECTATION: CfPiGroupExpectation = Object.freeze({
-  ...CF_PI_GROUP_EXPECTATION,
-  universeStart: CF_TOP5_UNIVERSE_START,
-  universeEnd: CF_TOP5_UNIVERSE_END,
-  splitOf: cfTop5SplitOf,
-  poolOf: cfTop5PoolOf,
-  expectedPool: "dataset",
-  proposalFor: cfProposal5,
-  candidateLimit: CF_TOP5_LIMIT,
-  datasetVersion: CF_TOP5_DATASET_VERSION,
-});
 
 export function assertTop5SeedBase(seedBase: number): void {
   if (seedBase !== CF_TOP5_SEED_BASE) {
