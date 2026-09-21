@@ -4,6 +4,8 @@
  * Three env-gated modes.
  *
  *   invariant  AI_CF_T5_S1_INVARIANT=1 AI_BENCH_DEAL_START=160001 AI_BENCH_DEALS=8
+ *   arm        AI_CF_T5_S1_ARM_STDOUT=baseline|challenger   (one arm, printed to
+ *              stdout, writes NO file — driven by scripts/cf-top5-stage-run.mjs)
  *   combined   AI_CF_T5_S1_COMBINED=<result.json> AI_BENCH_DEAL_START=160001 AI_BENCH_DEALS=200
  *   smoke      AI_CF_T5_S1_OUT=<arm.json> AI_CF_T5_S1_ARM=baseline|challenger \
  *              AI_BENCH_DEAL_START=50001 AI_BENCH_DEALS=2      (retired seeds only)
@@ -79,10 +81,21 @@ const INVARIANT = process.env.AI_CF_T5_S1_INVARIANT === "1";
  * partial result simply exists.
  */
 const COMBINED = process.env.AI_CF_T5_S1_COMBINED;
+/**
+ * One arm, its result printed to stdout and **nothing written to disk**.
+ *
+ * This is how the formal stages run the two arms in parallel without ever
+ * creating a partial result: the children hold their numbers in memory and the
+ * parent collects them and writes the single combined document once both have
+ * exited. A child that wrote its own file would reintroduce exactly the
+ * one-armed-on-disk state §14 forbids.
+ */
+const ARM_STDOUT = process.env.AI_CF_T5_S1_ARM_STDOUT as "baseline" | "challenger" | undefined;
 /** Smoke mode. Retired ranges only; the formal pools refuse it. */
 const OUT = process.env.AI_CF_T5_S1_OUT;
 const REPORT = process.env.AI_CF_T5_S1_REPORT;
-const ENABLED = INVARIANT || COMBINED !== undefined || OUT !== undefined || REPORT !== undefined;
+const ENABLED = INVARIANT || COMBINED !== undefined || ARM_STDOUT !== undefined ||
+  OUT !== undefined || REPORT !== undefined;
 
 const CF_PI_S1_TIMEOUT_MS = 4 * 60 * 60 * 1000;
 
@@ -272,6 +285,16 @@ describe.runIf(ENABLED)("Spec 065 Stage 1 / Stage 2", () => {
       report(`\nStage 1 arm-A invariant: ${games} games, ${commandCount} baseline commands`);
       report(`divergent games ${divergences}${firstDivergence >= 0 ? ` (first #${firstDivergence})` : ""}`);
       expect(divergences).toBe(0);
+      return;
+    }
+
+    if (ARM_STDOUT !== undefined) {
+      const arm = ARM_STDOUT;
+      // No file, no temp path, no partial anything: the result leaves through
+      // stdout and the parent process is the only writer.
+      const result = runArm(arm);
+      process.stdout.write(`CF_TOP5_ARM_RESULT=${JSON.stringify({ arm, ...result })}\n`);
+      expect(result.perDealA.length).toBeGreaterThan(0);
       return;
     }
 

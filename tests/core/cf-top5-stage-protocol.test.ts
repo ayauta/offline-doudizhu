@@ -98,6 +98,47 @@ describe("spec065 §14: the combined result is written once, atomically", () => 
   });
 });
 
+describe("spec065 §14: parallel arms still leave no partial result", () => {
+  const COORDINATOR = "scripts/cf-top5-stage-run.mjs";
+  const coordinator = (): string => readFileSync(COORDINATOR, "utf8");
+
+  it("has the children write nothing, so no arm can reach disk on its own", () => {
+    // The arm mode's whole point: the result leaves through stdout. A child
+    // that wrote a file would put a complete one-armed result on disk the
+    // moment it finished, which is the violation this protocol exists to stop.
+    const runner = source("benchmarks/cf-top5-stage1.test.ts");
+    const armAt = runner.indexOf("if (ARM_STDOUT !== undefined) {");
+    const combinedAt = runner.indexOf("if (COMBINED !== undefined) {");
+    expect(armAt).toBeGreaterThanOrEqual(0);
+    const armBlock = runner.slice(armAt, combinedAt);
+    expect(armBlock).toContain("process.stdout.write(");
+    for (const writer of ["writeFileSync", "writeCombinedAtomic", "renameSync", "mkdirSync"]) {
+      expect(armBlock, `the arm mode must not call ${writer}`).not.toContain(writer);
+    }
+  });
+
+  it("writes the combined file exactly once, after both arms have exited", () => {
+    const text = coordinator();
+    const writes = text.match(/renameSync\(temporary, outPath\)/g) ?? [];
+    expect(writes.length).toBe(1);
+    const writeAt = text.indexOf("renameSync(temporary, outPath)");
+    // Both arms must be awaited before the write.
+    const awaitAt = text.indexOf("await Promise.all(");
+    expect(awaitAt).toBeGreaterThanOrEqual(0);
+    expect(writeAt).toBeGreaterThan(awaitAt);
+  });
+
+  it("refuses to leave a surviving .partial behind", () => {
+    expect(coordinator()).toContain(".partial");
+    expect(coordinator()).toMatch(/process\.exit\(1\)/);
+  });
+
+  it("never passes quiet: false through to the arms", () => {
+    expect(coordinator()).not.toMatch(/quiet:\s*false/);
+    expect(source("benchmarks/cf-top5-stage1.test.ts")).toMatch(/^\s*quiet:\s*true/m);
+  });
+});
+
 describe("spec065 §14: a one-armed document is not reportable", () => {
   it("refuses to derive paired dumps from a combined file missing an arm", () => {
     // The report path re-checks this itself, so a hand-edited or truncated
@@ -164,14 +205,21 @@ describe("spec065 §14: the runner cannot regress into a partial-result shape", 
     }
   });
 
-  it("refuses the per-arm mode before it can run an arm on a formal range", () => {
+  it("refuses the per-arm *file* mode before it can run an arm on a formal range", () => {
     for (const path of RUNNERS) {
       const text = source(path);
-      const guardAt = text.indexOf("assertNotFormalRange(");
-      expect(guardAt, `${path} must guard the per-arm mode`).toBeGreaterThanOrEqual(0);
-      // The guard must precede the per-arm run, not follow it.
-      const armRunAt = text.indexOf("runArm(arm)");
-      expect(armRunAt).toBeGreaterThan(guardAt);
+      // Scoped to the branch that writes a file. The stdout arm mode also runs
+      // an arm — legitimately, on formal ranges, because it writes nothing and
+      // the coordinator is the only writer. The prohibition is on per-arm
+      // *files*, so the guard has to name that branch rather than the call.
+      const outAt = text.indexOf("if (OUT !== undefined) {");
+      const reportAt = text.indexOf("if (REPORT");
+      expect(outAt, `${path} must have a per-arm file mode`).toBeGreaterThanOrEqual(0);
+      const fileBlock = text.slice(outAt, reportAt > outAt ? reportAt : undefined);
+      const guardAt = fileBlock.indexOf("assertNotFormalRange(");
+      const runAt = fileBlock.indexOf("runArm(arm)");
+      expect(guardAt, `${path}: the file mode must guard before running`).toBeGreaterThanOrEqual(0);
+      expect(runAt).toBeGreaterThan(guardAt);
     }
   });
 
