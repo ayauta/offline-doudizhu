@@ -1,0 +1,133 @@
+/**
+ * Spec 065 §14 protocol guards — the stage runner must not be able to leave a
+ * partial result on disk.
+ *
+ * Spec 064's Stage 1 died because intermediate results became readable: the
+ * runner streamed per-deal totals into a log. The first cut of this round's
+ * runner repeated it more quietly, writing one file per arm, so a complete
+ * baseline-only result existed while the challenger was still running. Nothing
+ * had to go wrong for it to be read; it was simply there.
+ *
+ * These guards pin the three properties that make the violation impossible
+ * rather than merely discouraged.
+ */
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, describe, expect, it } from "vitest";
+
+import { CfInvalidError } from "../../benchmarks/cf-dataset.js";
+import {
+  CF_TOP5_FORMAL_RANGES,
+  assertNotFormalRange,
+  splitCombined,
+  writeCombinedAtomic,
+} from "../../benchmarks/cf-top5-stage.js";
+
+const RUNNERS = ["benchmarks/cf-top5-stage1.test.ts"];
+
+let scratch: string | null = null;
+afterEach(() => {
+  if (scratch !== null) {
+    rmSync(scratch, { recursive: true, force: true });
+    scratch = null;
+  }
+});
+
+describe("spec065 §14: a formal pool admits exactly one output mode", () => {
+  it("refuses a per-arm write anywhere inside either formal pool", () => {
+    for (const range of CF_TOP5_FORMAL_RANGES) {
+      expect(() => assertNotFormalRange(range.start, 1, "The per-arm mode")).toThrow(CfInvalidError);
+      expect(() => assertNotFormalRange(range.end, 1, "The per-arm mode")).toThrow(CfInvalidError);
+    }
+    // The pools are the preregistered ones, not something retyped nearby.
+    expect(CF_TOP5_FORMAL_RANGES.map((r) => [r.name, r.start, r.end])).toEqual([
+      ["stage1", 160_001, 160_200],
+      ["stage2", 170_001, 171_200],
+    ]);
+  });
+
+  it("refuses a window that merely overlaps a formal pool", () => {
+    // Starting one below the pool still deals a formal card on the next
+    // iteration, so "the first deal was outside" must not be enough.
+    expect(() => assertNotFormalRange(170_000, 2, "The per-arm mode")).toThrow(/stage2/);
+    expect(() => assertNotFormalRange(160_200, 2, "The per-arm mode")).toThrow(/stage1/);
+    // …and the fully-covering window too.
+    expect(() => assertNotFormalRange(150_000, 30_000, "The per-arm mode")).toThrow(CfInvalidError);
+  });
+
+  it("allows retired ranges, which is what a smoke run needs", () => {
+    expect(() => assertNotFormalRange(50_001, 30, "The per-arm mode")).not.toThrow();
+    expect(() => assertNotFormalRange(100_001, 200, "The per-arm mode")).not.toThrow();
+    expect(() => assertNotFormalRange(140_001, 200, "The per-arm mode")).not.toThrow();
+  });
+});
+
+describe("spec065 §14: the combined result is written once, atomically", () => {
+  it("leaves no partial file and no temp fragment behind", () => {
+    scratch = mkdtempSync(join(tmpdir(), "cf-top5-"));
+    const path = join(scratch, "result.json");
+    expect(existsSync(path)).toBe(false);
+    writeCombinedAtomic(path, { arms: { baseline: 1, challenger: 2 } });
+    expect(existsSync(path)).toBe(true);
+    // The destination was never a half-written document, and the temp name is
+    // gone — a crash cannot leave a readable fragment where someone watches.
+    expect(readdirSync(scratch)).toEqual(["result.json"]);
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ arms: { baseline: 1, challenger: 2 } });
+  });
+
+  it("keeps both arms in the one document, so neither can be read alone", () => {
+    const combined = {
+      label: "spec065-top5-combined",
+      config: {},
+      preregisteredUniverse: { start: 160_001, end: 160_200 },
+      preregisteredStage2: { start: 170_001, end: 171_200 },
+      arms: {
+        baseline: { perDealA: [1], perDealB: [2], cost: {} },
+        challenger: { perDealA: [1], perDealB: [3], cost: {} },
+      },
+      completedAt: "t",
+    };
+    const { baseline, challenger } = splitCombined(combined);
+    expect(JSON.stringify(baseline)).toContain("[1]");
+    expect(JSON.stringify(challenger)).toContain("[3]");
+  });
+});
+
+describe("spec065 §14: the runner cannot regress into a partial-result shape", () => {
+  const source = (path: string): string => readFileSync(path, "utf8");
+
+  it("writes the combined result exactly once, after both arms have run", () => {
+    for (const path of RUNNERS) {
+      const text = source(path);
+      const writes = text.match(/writeCombinedAtomic\(/g) ?? [];
+      expect(writes.length, `${path} must write the combined file exactly once`).toBe(1);
+      // …and that single write must come after both arms were computed.
+      const writeAt = text.indexOf("writeCombinedAtomic(");
+      for (const arm of ['runArm("baseline")', 'runArm("challenger")']) {
+        const armAt = text.indexOf(arm);
+        expect(armAt, `${path} must run ${arm}`).toBeGreaterThanOrEqual(0);
+        expect(writeAt, `${path}: the write must follow ${arm}`).toBeGreaterThan(armAt);
+      }
+    }
+  });
+
+  it("refuses the per-arm mode before it can run an arm on a formal range", () => {
+    for (const path of RUNNERS) {
+      const text = source(path);
+      const guardAt = text.indexOf("assertNotFormalRange(");
+      expect(guardAt, `${path} must guard the per-arm mode`).toBeGreaterThanOrEqual(0);
+      // The guard must precede the per-arm run, not follow it.
+      const armRunAt = text.indexOf("runArm(arm)");
+      expect(armRunAt).toBeGreaterThan(guardAt);
+    }
+  });
+
+  it("never passes quiet: false in a stage runner", () => {
+    for (const path of RUNNERS) {
+      expect(source(path), path).not.toMatch(/^\s*quiet:\s*false/m);
+      expect(source(path), path).toMatch(/^\s*quiet:\s*true/m);
+    }
+  });
+});

@@ -14,7 +14,7 @@
  */
 import { readFileSync } from "node:fs";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { dealDeck } from "../../benchmarks/ai-tournament.js";
 import { armSchedule, dealGameSeed, scheduleFor } from "../../benchmarks/ai-tournament.js";
@@ -37,6 +37,15 @@ import {
 } from "../../benchmarks/cf-pi-corpus.js";
 import { CF_MODEL_JSON } from "../../src/app/ai/cf-model-data.js";
 import { parseTreeModel } from "../../src/core/ai/cf-model.js";
+
+// Capturing real roots plays whole games to terminal, so this suite cannot live
+// inside vitest's 5 s default: a fixture costs seconds on an idle machine and
+// tens of seconds when a 15-shard corpus generation is using every core. That
+// was always true — it only became visible when the corpus ran alongside
+// `pnpm check` and every capture-heavy test crossed the limit at once. Stated
+// per file rather than inherited.
+vi.setConfig({ testTimeout: 300_000 });
+
 
 /**
  * The round's expectation, retargeted at a spent pool. Only the window and the

@@ -4,9 +4,10 @@
  * Three env-gated modes.
  *
  *   invariant  AI_CF_T5_S1_INVARIANT=1 AI_BENCH_DEAL_START=160001 AI_BENCH_DEALS=8
- *   run        AI_CF_T5_S1_OUT=<shard.json> AI_CF_T5_S1_ARM=baseline|challenger \
- *              AI_BENCH_DEAL_START=160001 AI_BENCH_DEALS=200
- *   report     AI_CF_T5_S1_REPORT=<baseline.json>,<challenger.json>
+ *   combined   AI_CF_T5_S1_COMBINED=<result.json> AI_BENCH_DEAL_START=160001 AI_BENCH_DEALS=200
+ *   smoke      AI_CF_T5_S1_OUT=<arm.json> AI_CF_T5_S1_ARM=baseline|challenger \
+ *              AI_BENCH_DEAL_START=50001 AI_BENCH_DEALS=2      (retired seeds only)
+ *   report     AI_CF_T5_S1_REPORT=<combined.json>
  *
  * The two arms differ in exactly one thing: whether the strong seat's strategy
  * is the frozen selector alone (baseline) or the frozen selector with the π2
@@ -53,6 +54,12 @@ import { CF_FEATURE_NAMES } from "./cf-dataset.js";
 import { createChallengerStrategy } from "./cf-challenger.js";
 import { CF_PI_THRESHOLD } from "./cf-policy-iteration.js";
 import { cfPiFrozenBaseline } from "./cf-pi-corpus.js";
+import {
+  assertNotFormalRange,
+  splitCombined,
+  writeCombinedAtomic,
+  type CfTop5CombinedResult,
+} from "./cf-top5-stage.js";
 import { cfSelectTop5FarmerAction } from "./cf-top5.js";
 import {
   CF_TOP5_STAGE1_END,
@@ -63,9 +70,19 @@ import {
 } from "./cf-top5-corpus.js";
 
 const INVARIANT = process.env.AI_CF_T5_S1_INVARIANT === "1";
+/**
+ * The formal mode: both arms, one process, one file, written once at the end.
+ *
+ * §14 requires that a formal stage's results exist only as a completed whole.
+ * A per-arm file would make "the baseline finished" a readable state, which is
+ * exactly the shape of the Spec 064 violation — no misbehaviour required, the
+ * partial result simply exists.
+ */
+const COMBINED = process.env.AI_CF_T5_S1_COMBINED;
+/** Smoke mode. Retired ranges only; the formal pools refuse it. */
 const OUT = process.env.AI_CF_T5_S1_OUT;
 const REPORT = process.env.AI_CF_T5_S1_REPORT;
-const ENABLED = INVARIANT || OUT !== undefined || REPORT !== undefined;
+const ENABLED = INVARIANT || COMBINED !== undefined || OUT !== undefined || REPORT !== undefined;
 
 const CF_PI_S1_TIMEOUT_MS = 4 * 60 * 60 * 1000;
 
@@ -258,10 +275,50 @@ describe.runIf(ENABLED)("Spec 065 Stage 1 / Stage 2", () => {
       return;
     }
 
+    if (COMBINED !== undefined) {
+      const config = readConfig();
+      // Both arms, sequentially, in this one process. Nothing is written until
+      // both are complete — the baseline's numbers have nowhere to go.
+      const baseline = runArm("baseline");
+      const challenger = runArm("challenger");
+      const payload = {
+        label: "spec065-top5-combined",
+        config: {
+          deals: config.deals,
+          seedBase: config.seedBase,
+          dealStart: config.dealStart,
+          designed: config.designed,
+        },
+        preregisteredUniverse: { start: CF_TOP5_STAGE1_START, end: CF_TOP5_STAGE1_END },
+        preregisteredStage2: { start: CF_TOP5_STAGE2_START, end: CF_TOP5_STAGE2_END },
+        arms: { baseline, challenger },
+        completedAt: new Date().toISOString(),
+      };
+      writeCombinedAtomic(COMBINED, payload);
+      report(
+        `[spec065 combined] deals ${baseline.perDealA.length} written once to ${COMBINED}`,
+      );
+      report(`[spec065 cost] baseline ${JSON.stringify(baseline.cost)}`);
+      report(`[spec065 cost] challenger ${JSON.stringify(challenger.cost)}`);
+      expect(baseline.perDealA.length).toBe(challenger.perDealA.length);
+      // §10 — within the challenger arm, the widened layer must out-traverse
+      // the narrow one. The baseline arm is frozen π1 alone and has no composed
+      // cost to compare against, so comparing across arms would be vacuous.
+      expect(challenger.cost.challengerRows)
+        .toBeGreaterThanOrEqual(challenger.cost.baselineRows);
+      // §7.17 — one shared candidate set per studied root.
+      expect(challenger.cost.proposalCalls)
+        .toBe(challenger.cost.decisions - challenger.cost.landlordDecisions);
+      return;
+    }
+
     if (OUT !== undefined) {
       const arm = (process.env.AI_CF_T5_S1_ARM ?? "baseline") as "baseline" | "challenger";
-      const { perDealA, perDealB, cost } = runArm(arm);
       const config = readConfig();
+      // A per-arm file on a formal pool is the partial-result shape §14 forbids.
+      assertNotFormalRange(
+        config.dealStart, config.deals, `The per-arm mode (arm ${arm})`);
+      const { perDealA, perDealB, cost } = runArm(arm);
       writeFileSync(OUT, `${JSON.stringify({
         label: `spec065-top5-${arm}`,
         config: {
@@ -316,22 +373,18 @@ describe.runIf(ENABLED)("Spec 065 Stage 1 / Stage 2", () => {
       return;
     }
 
-    const [basePath, candPath] = (REPORT as string).split(",");
-    if (basePath === undefined || candPath === undefined) {
-      throw new Error("AI_CF_T5_S1_REPORT must be <baseline.json>,<challenger.json>");
-    }
-    const base = JSON.parse(readFileSync(basePath, "utf8")) as {
-      runs: Record<string, { perDealA: number[]; perDealB: number[] }>;
-      cost?: PiCost;
-    };
-    const cand = JSON.parse(readFileSync(candPath, "utf8")) as {
-      runs: Record<string, { perDealA: number[]; perDealB: number[] }>;
-      cost?: PiCost;
-    };
+    // The report is a *view* of a completed combined result, never a merge of
+    // two independently-written files: both arms were already on disk together
+    // before this ran.
+    const combined = JSON.parse(readFileSync(REPORT as string, "utf8")) as CfTop5CombinedResult;
+    const { baseline, challenger } = splitCombined(combined);
+    const base = baseline as { runs: Record<string, unknown> };
+    const cand = challenger as { runs: Record<string, unknown> };
     report(`\n== Spec 065 paired run ==`);
-    report(`baseline    ${basePath}`);
-    report(`challenger  ${candPath}`);
-    report(`cost        ${JSON.stringify(cand.cost)}`);
+    report(`combined    ${REPORT as string}`);
+    report(`completed   ${combined.completedAt}`);
+    report(`cost        baseline ${JSON.stringify(combined.arms.baseline.cost)}`);
+    report(`cost        challenger ${JSON.stringify(combined.arms.challenger.cost)}`);
     // Deliberately no verdict here. The paired interval, the continue condition
     // and the STOP rule live in `paired-compare.test.ts` and spec §9, and Stage
     // 1 is not allowed to KEEP under any outcome.

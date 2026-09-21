@@ -17,7 +17,7 @@
  * Fixtures are **retired deals only** (`50_0xx`, the spent Phase 2 v1 dataset).
  * `140001+` is never dealt here — this file must cost Spec 065 no seed at all.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   cfActionCommand,
@@ -43,14 +43,20 @@ import {
   cfTop5IncludesTop3,
 } from "../../benchmarks/cf-top5.js";
 
+// Capturing real roots plays whole games to terminal, so this suite cannot live
+// inside vitest's 5 s default: a fixture costs seconds on an idle machine and
+// tens of seconds when a 15-shard corpus generation is using every core. That
+// was always true — it only became visible when the corpus ran alongside
+// `pnpm check` and every capture-heavy test crossed the limit at once. Stated
+// per file rather than inherited.
+vi.setConfig({ testTimeout: 300_000 });
+
+
 const STUDIED = "ai-one" as const;
 const LANDLORD = "human" as const;
 const OTHER = "ai-two" as const;
 
 const DEAL = 50_011;
-
-/** Capturing real roots plays whole games; the 5s default is not a fair budget. */
-const SLOW = 300_000;
 
 /** A tree-table model that counts how many walks start (see cf-policy-iteration tests). */
 function countingModel(value: number): Readonly<{
@@ -251,7 +257,7 @@ describe("spec065: the width is a widening, not a reordering", () => {
     // Non-vacuity: on a majority of real roots the two widths genuinely differ,
     // so this is not a test of `slice(0,3) === slice(0,3)`.
     expect(widened).toBeGreaterThan(0.25 * all.length);
-  }, SLOW);
+  });
 
   it("never returns more than five candidates, nor more than the ranking offers", () => {
     for (const root of roots()) {
@@ -261,7 +267,7 @@ describe("spec065: the width is a widening, not a reordering", () => {
       expect(cfProposalN(root.context, CF_TOP5_LIMIT).actions.length)
         .toBe(root.proposal5.actions.length);
     }
-  }, SLOW);
+  });
 
   it("builds the π1 prefix as a real prefix, sharing the same actions", () => {
     for (const root of wide()) {
@@ -272,7 +278,7 @@ describe("spec065: the width is a widening, not a reordering", () => {
         expect(keyAt(prefix, index)).toBe(keyAt(root.proposal5, index));
       }
     }
-  }, SLOW);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -299,7 +305,7 @@ describe("spec065: the first layer is exactly frozen π1", () => {
       checked += 1;
     }
     expect(checked).toBeGreaterThan(20);
-  }, SLOW);
+  });
 
   it("declines the π1 layer when b0 is outside C3, even though it is inside C5", () => {
     const outsideTop3 = roots().filter(
@@ -323,7 +329,7 @@ describe("spec065: the first layer is exactly frozen π1", () => {
       // …and the challenger's layer still gets the whole of C5 \ {b1}.
       expect(outcome.challengerRows).toBe(root.proposal5.actions.length - 1);
     }
-  }, SLOW);
+  });
 
   it("rebuilds b1 when π1 overrode and the second layer declined", () => {
     const root = wide().find((candidate) => {
@@ -342,7 +348,7 @@ describe("spec065: the first layer is exactly frozen π1", () => {
     expect(outcome.overrode).toBe(false);
     expect(cfCommandKey(outcome.command)).toBe(keyAt(root.proposal5, outcome.baselineIndex));
     expect(cfCommandKey(outcome.command)).not.toBe(root.rawKey);
-  }, SLOW);
+  });
 
   it("hands back the caller's own object when nothing overrides", () => {
     for (const root of roots()) {
@@ -351,7 +357,7 @@ describe("spec065: the first layer is exactly frozen π1", () => {
       }));
       expect(outcome.command).toBe(root.raw);
     }
-  }, SLOW);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -368,7 +374,7 @@ describe("spec065: the second layer scores the five-wide set", () => {
         : 0;
       expect(outcome.baselineRows).toBe(baseline);
     }
-  }, SLOW);
+  });
 
   it("can select a candidate that top3 never offered", () => {
     // The whole point of the widening, and it cannot be shown with a constant
@@ -387,7 +393,7 @@ describe("spec065: the second layer scores the five-wide set", () => {
       }
     }
     expect(demonstrated).toBeGreaterThan(0);
-  }, SLOW);
+  });
 
   it("computes the candidate set exactly once per root (§7.17)", () => {
     for (const root of wide()) {
@@ -401,7 +407,7 @@ describe("spec065: the second layer scores the five-wide set", () => {
       expect(calls).toBe(1);
       expect(outcome.proposals).toBe(1);
     }
-  }, SLOW);
+  });
 
   it("requires a strict score above the threshold in both layers (§7.4)", () => {
     const root = wide()[0];
@@ -421,7 +427,7 @@ describe("spec065: the second layer scores the five-wide set", () => {
     }));
     expect(above.overrode).toBe(true);
     expect(above.command).not.toBe(root.raw);
-  }, SLOW);
+  });
 
   it("breaks ties by the original C5 order in both layers (§7.5)", () => {
     for (const root of wide()) {
@@ -435,7 +441,7 @@ describe("spec065: the second layer scores the five-wide set", () => {
       expect(outcome.challengerIndex).toBe(
         firstOther(root.proposal5, [outcome.baselineIndex]));
     }
-  }, SLOW);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -469,7 +475,7 @@ describe("spec065: scope", () => {
     expect(counted.traversals()).toBe(0);
     expect(outcome.baselineRows).toBe(0);
     expect(outcome.challengerRows).toBe(0);
-  }, SLOW);
+  });
 
   it("never fires for a seat it was not bound to (§7.9)", () => {
     const root = roots()[0];
@@ -488,7 +494,7 @@ describe("spec065: scope", () => {
     expect(calls).toBe(0);
     expect(outcome.proposals).toBe(0);
     expect(outcome.challengerRows).toBe(0);
-  }, SLOW);
+  });
 
   it("does no work at all when disabled (§7.9)", () => {
     const root = roots()[0];
@@ -505,7 +511,7 @@ describe("spec065: scope", () => {
     }));
     expect(outcome.command).toBe(root.raw);
     expect(calls).toBe(0);
-  }, SLOW);
+  });
 
   it("declines the whole composition when production's action is not a candidate (§4)", () => {
     const root = roots()[0];
@@ -523,7 +529,7 @@ describe("spec065: scope", () => {
     } else {
       expect(outcome.proposals).toBe(1);
     }
-  }, SLOW);
+  });
 
   it("answers with a command the engine accepts (§7.14)", () => {
     let checked = 0;
@@ -539,7 +545,7 @@ describe("spec065: scope", () => {
       checked += 1;
     }
     expect(checked).toBeGreaterThan(20);
-  }, SLOW);
+  });
 
   it("is deterministic and blind to the hidden hands (§7.11, §7.12)", () => {
     const root = roots()[0];
@@ -551,7 +557,7 @@ describe("spec065: scope", () => {
     expect(cfCommandKey(second.command)).toBe(cfCommandKey(first.command));
     expect(second.challengerIndex).toBe(first.challengerIndex);
     expect(second.baselineIndex).toBe(first.baselineIndex);
-  }, SLOW);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -595,5 +601,5 @@ describe("spec065: the wider candidate set is still a v1 row", () => {
     // Non-vacuity: the loop must actually have reached wide roots.
     expect(rootsChecked).toBeGreaterThan(0);
     expect(rowsChecked).toBeGreaterThan(rootsChecked * CF_TOP3_LIMIT);
-  }, SLOW);
+  });
 });

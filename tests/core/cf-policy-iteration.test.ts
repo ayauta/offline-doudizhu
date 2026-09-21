@@ -37,7 +37,7 @@
  *     refusal only*, which builds a spec object out of arithmetic and plays
  *     nothing.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createPlayerView, type AiDecisionContext, type AiStrategy } from "../../src/core/ai/index.js";
 import {
@@ -121,6 +121,15 @@ import {
   startWithLandlord,
 } from "../../benchmarks/ai-tournament.js";
 import { LIGHT_TIERS, redealHidden, studiedTiers, toFarmerRoot } from "../support/cf-fixtures.js";
+
+// Capturing real roots plays whole games to terminal, so this suite cannot live
+// inside vitest's 5 s default: a fixture costs seconds on an idle machine and
+// tens of seconds when a 15-shard corpus generation is using every core. That
+// was always true — it only became visible when the corpus ran alongside
+// `pnpm check` and every capture-heavy test crossed the limit at once. Stated
+// per file rather than inherited.
+vi.setConfig({ testTimeout: 300_000 });
+
 
 // ---------------------------------------------------------------------------
 // Synthetic models

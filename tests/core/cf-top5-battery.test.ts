@@ -10,7 +10,7 @@
  *
  * Retired seeds only (`50_011`). Spec 065's pool is not touched here.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { armSchedule, dealDeck, dealGameSeed, scheduleFor } from "../../benchmarks/ai-tournament.js";
 import { CF_GROUP_SNAPSHOT_CAP, type CfGroupResult } from "../../benchmarks/cf-dataset.js";
@@ -22,6 +22,15 @@ import {
   cfTop5AssertGroup,
   type CfTop5GroupExpectation,
 } from "../../benchmarks/cf-top5-battery.js";
+
+// Capturing real roots plays whole games to terminal, so this suite cannot live
+// inside vitest's 5 s default: a fixture costs seconds on an idle machine and
+// tens of seconds when a 15-shard corpus generation is using every core. That
+// was always true — it only became visible when the corpus ran alongside
+// `pnpm check` and every capture-heavy test crossed the limit at once. Stated
+// per file rather than inherited.
+vi.setConfig({ testTimeout: 300_000 });
+
 
 const DEAL = 50_011;
 

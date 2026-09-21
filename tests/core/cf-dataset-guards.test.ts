@@ -16,7 +16,7 @@
  *     two-action root "the top three" and "everything legal" are the same set
  *     and the check would pass on any rule at all.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { SEAT_ORDER, transition, type PlayingState, type Seat } from "../../src/core/game/index.js";
 import { generateLegalActions, type ValidatedPlayAction } from "../../src/core/rules/index.js";
@@ -71,6 +71,15 @@ import {
   type CfPolicyCounters,
   type CfSnapshot,
 } from "../../benchmarks/cf-dataset.js";
+
+// Capturing real roots plays whole games to terminal, so this suite cannot live
+// inside vitest's 5 s default: a fixture costs seconds on an idle machine and
+// tens of seconds when a 15-shard corpus generation is using every core. That
+// was always true — it only became visible when the corpus ran alongside
+// `pnpm check` and every capture-heavy test crossed the limit at once. Stated
+// per file rather than inherited.
+vi.setConfig({ testTimeout: 300_000 });
+
 
 /** A group spec whose studied seat is a farmer in every variant. */
 function groupSpecFor(

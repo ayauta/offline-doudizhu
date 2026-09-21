@@ -179,6 +179,47 @@ AI_CF_T5_RATE_N=30 node node_modules/vitest/vitest.mjs run \
 | 全部完成（预估） | **约 06:50 CST** |
 | **硬停 08:30 CST 余量** | **约 100 min** |
 
+## 6.2 §14 的 no-peek：从「靠自觉」改成「不可能」
+
+初版 runner 每臂各写一个 `AI_CF_T5_S1_OUT` 文件。**baseline 一跑完，磁盘上就存在一份
+可读的、只有一臂的结果**，而 challenger 还在跑。没有人需要做错任何事——它就是在那里。
+Spec 064 的 Stage 1 死于同一个形态（当时是逐副累积胜负被流进日志），所以这一轮不能只是
+「提醒大家别去读」。
+
+修法（`benchmarks/cf-top5-stage.ts`）：
+
+| 规则 | 实现 |
+| --- | --- |
+| 正式 stage **只有一个输出模式** | `AI_CF_T5_S1_COMBINED=<path>`：单进程跑**两臂**，最后**原子写一个** combined 文件 |
+| **原子** | 先写 `<path>.partial` 再 `renameSync`；目标路径要么是旧的（不存在），要么是完整的 |
+| **一次** | 该模式下 `writeCombinedAtomic` 只被调用一次，且在**两臂都算完之后** |
+| 单臂模式**拒绝正式池** | `assertNotFormalRange`：窗口与 `160001–160200` / `170001–171200` **有任何交集**就抛错（起点差一个也不行——第二副就进池了）。单臂只允许退休区间 smoke |
+| report 是**完成后的视图** | `AI_CF_T5_S1_REPORT=<combined.json>` 从已完成的 combined 文件派生 `paired-compare` 需要的两份 dump；派发生在两臂都落盘之后，不构成部分状态 |
+
+守卫 `tests/core/cf-top5-stage-protocol.test.ts`（8 条）：
+
+* 两个正式池的**起止点与整个覆盖窗口**都被拒绝；退休区间（`50001` / `100001` / `140001`）放行；
+* combined 文件写入后**目录里只有它一个**，没有 `.partial` 残留；
+* runner 源码里 `writeCombinedAtomic(` **恰好出现一次**，且位置在 `runArm("baseline")` 与
+  `runArm("challenger")` **之后**；
+* `assertNotFormalRange(` 的位置在 `runArm(arm)` **之前**（守卫必须先于跑臂）；
+* 两个 runner 都不出现 `quiet: false`。
+
+**变异全部 RED**：P1 摘掉单臂守卫 / P2 写两次 / P3 写在跑臂之前 / P4 正式池守卫不再抛错 /
+P5 原子写退化成直接写——五条各自击落对应的守卫。
+
+### 6.3 附带修掉的一处 gate 脆弱性
+
+加上语料生成后 `pnpm check` 有 9 条超时——**不是断言失败**，而是 capture 类测试在 5 s
+默认预算下，遇上 15 分片占满 CPU 时集体越线（同一条测试空闲时 1,376 ms、有载荷时 7,699 ms）。
+这是**本来就存在**的脆弱性，只是被语料暴露。改为按文件声明 `vi.setConfig({ testTimeout })`，
+不再依赖默认值。修完 `pnpm check` 在语料**仍在跑**的情况下 EXIT=0。
+
+（另有一条 Playwright 动画测试在满负载下偶发失败；单独重跑 5.2 s 通过，`src/` 零改动，
+判定为载荷抖动而非回归。）
+
+---
+
 ## 7. 零暴露
 
 | 范围 | 状态 |
