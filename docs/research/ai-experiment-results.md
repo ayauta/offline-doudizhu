@@ -292,12 +292,6 @@ AI 内部提速不属于这一类：出厂 master 路径读时钟，把合法动
 **本节的权威 ledger 已移到 [ai-used-seed-ledger.md](ai-used-seed-ledger.md)**（2026-09-21
 建立）。本节保留历史叙述与退休理由；池的当前状态、新分配与机械证据以 ledger 为准。
 
-**2026-09-22 收尾更新：** Spec 064 已越过 2026-09-21 08:30 CST 硬停止线并终止。
-dataset `100001–120000` 已完整生成、暴露计数 1；Stage 1 `120001–120200` 与 Stage 2
-`130001–131200` 均未运行、暴露计数仍为 0。该实验没有强度判定，状态是
-**TERMINATED / NO VERDICT**。权威交接见
-[Spec 064 hard-stop](../specs/064-phase2-night-policy-iteration/hard-stop.md)。
-
 **2026-09-21 记录：本轮尚未暴露任何新 seed。** Spec 064（Phase 2 Night Lab）预登记时
 分配了三个新池（dataset `100001–120000`、Stage 1 `120001–120200`、Stage 2
 `130001–131200`），但**一个都还没有生成、没有训练、没有跑过对局**；扫描当时 `.local/`

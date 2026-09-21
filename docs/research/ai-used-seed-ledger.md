@@ -63,18 +63,6 @@ Stage 1 与 Stage 2 **互不合并、互不补位**。Stage 1 不通过就不跑
 π2 模型 artifact 在 `.local/cf-pi-rows/pi2-model.json`，**benchmark-only，`src/` 零改动**。
 记录见 [Spec 064/corpus.md](../specs/064-phase2-night-policy-iteration/corpus.md)。
 
-### 2.2 硬停止更新（2026-09-22 收尾核验）
-
-Spec 064 已按 2026-09-21 08:30 CST 硬停止线终止，记录见
-[hard-stop.md](../specs/064-phase2-night-policy-iteration/hard-stop.md)。停止时：
-
-- `100001–120000` 保持**暴露计数 1、已退休**；
-- `120001–120200` 与 `130001–131200` 均未运行，保持**暴露计数 0**；
-- 两个未暴露评估池仍属于已经终止的 Spec 064，**不得把它们解释成已完成的验证，
-  也不得在没有新预登记时跨日续跑或改作其它机制的正式判定**。
-
-本轮状态是 **TERMINATED / NO VERDICT**，不是 NIGHT KEEP 或 REVERT。
-
 **held-out 仍然封存**：生成、merge、审计都只报结构计数，`cfAuditStructure` 的返回记录里
 没有 label 字段。
 
