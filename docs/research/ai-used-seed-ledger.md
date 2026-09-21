@@ -80,6 +80,9 @@ Stage 1 与 Stage 2 **互不合并、互不补位**。Stage 1 不通过就不跑
 `130001–131200`（Stage 2，未暴露但属于 064 的预登记）。
 详见 [Spec 065](../specs/065-candidate-width-top5/spec.md)。
 
+**暴露状态（2026-09-22，生成启动时记录）**：`140001–160000` **0 → 1**（top5 dataset 正在生成）。
+`160001–160200` 与 `170001–171200` **仍为 0**。
+
 **预登记前的零重叠核验（2026-09-22）**：对 `.local/` 下 626 个 `.json`/`.txt`/`.log` 产物
 做字段级扫描（`dealIndex` / `dealStart` / `deal-<n>` / `variantId` / shard 文件名）：
 三个新池与两个 gap 的 **overlap 全部 = 0**，历史最大 deal index = **120000**。
