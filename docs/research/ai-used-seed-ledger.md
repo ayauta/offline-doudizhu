@@ -66,6 +66,27 @@ Stage 1 与 Stage 2 **互不合并、互不补位**。Stage 1 不通过就不跑
 **held-out 仍然封存**：生成、merge、审计都只报结构计数，`cfAuditStructure` 的返回记录里
 没有 label 字段。
 
+## 2.2 新分配（Spec 065 / 候选接口 top3→top5，2026-09-22）
+
+| 范围 | 身份 | 规模 | 用途 |
+| --- | --- | ---: | --- |
+| **`140001–160000`** | **top5 dataset** | 20,000 groups | train / calibration / held-out = 12,000 / 4,000 / 4,000 |
+| **`160001–160200`** | **Stage 1 screen** | **恰好 200 groups** | 固定 200 组 paired 整局筛选；**不能 KEEP** |
+| **`170001–171200`** | **Stage 2 confirmation** | **恰好 1,200 groups** | 唯一一次正式判定（NIGHT KEEP / REVERT） |
+| `160201–170000`、`171201` 起 | **未分配** | — | 本轮不得使用 |
+
+**Spec 064 的池对本机制线一律不可用**，包括 `100001–120000`（π2 dataset）、
+**`120001–120200`（Stage 1，已因 no-peek 违规退休，未跑完、无判定）**、
+`130001–131200`（Stage 2，未暴露但属于 064 的预登记）。
+详见 [Spec 065](../specs/065-candidate-width-top5/spec.md)。
+
+**预登记前的零重叠核验（2026-09-22）**：对 `.local/` 下 626 个 `.json`/`.txt`/`.log` 产物
+做字段级扫描（`dealIndex` / `dealStart` / `deal-<n>` / `variantId` / shard 文件名）：
+三个新池与两个 gap 的 **overlap 全部 = 0**，历史最大 deal index = **120000**。
+边界同 §3：字段级正则，不是语义解析。
+
+---
+
 ## 3. 新池「未被触碰」的机械证据（2026-09-21）
 
 在写下 Spec 064 的当时，对 `.local/` 下全部 `.json` / `.txt` / `.log` 产物做了一次
