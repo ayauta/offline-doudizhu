@@ -55,7 +55,7 @@ Stage 1 与 Stage 2 **互不合并、互不补位**。Stage 1 不通过就不跑
 | 范围 | 暴露计数 | 状态 |
 | --- | ---: | --- |
 | `100001–120000` | **0 → 1** | **已生成**（20,000 groups，merged checksum `5a730edd…`）。这批数据就是本轮的 train / calibration / held-out，用毕随本轮退休 |
-| `120001–120200` | **0** | **未暴露**。Stage 1 尚未运行 |
+| `120001–120200` | **0 → 1** | **Stage 1 运行中**（2026-09-22 00:2x CST 起，恰好 200 组）。启动即视为已暴露；结果出来后按 §12 用毕即退休 |
 | `130001–131200` | **0** | **未暴露**。Stage 2 尚未运行 |
 
 生成物在 `.local/cf-pi-corpus/`（`train.json` / `calibration.json` / `heldout.sealed.json` /
