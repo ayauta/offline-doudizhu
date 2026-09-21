@@ -27,6 +27,9 @@ import {
 
 const RUNNERS = ["benchmarks/cf-top5-stage1.test.ts"];
 
+/** Source text of a runner, for the order-of-operations guards. */
+const source = (path: string): string => readFileSync(path, "utf8");
+
 let scratch: string | null = null;
 afterEach(() => {
   if (scratch !== null) {
@@ -95,9 +98,57 @@ describe("spec065 §14: the combined result is written once, atomically", () => 
   });
 });
 
-describe("spec065 §14: the runner cannot regress into a partial-result shape", () => {
-  const source = (path: string): string => readFileSync(path, "utf8");
+describe("spec065 §14: a one-armed document is not reportable", () => {
+  it("refuses to derive paired dumps from a combined file missing an arm", () => {
+    // The report path re-checks this itself, so a hand-edited or truncated
+    // combined file cannot be turned into a "result". The check is duplicated
+    // here against `splitCombined` because that is the function a future
+    // caller would reach for.
+    const oneArmed = {
+      label: "x", config: {},
+      preregisteredUniverse: { start: 160_001, end: 160_200 },
+      preregisteredStage2: { start: 170_001, end: 171_200 },
+      arms: { baseline: { perDealA: [1], perDealB: [1], cost: {} } },
+      completedAt: "t",
+    } as unknown as Parameters<typeof splitCombined>[0];
+    expect(() => splitCombined(oneArmed)).toThrow();
+  });
 
+  it("checks both arms are present before deriving anything", () => {
+    // A source guard rather than a behavioural one: the runner is env-gated and
+    // spawning it with a hand-built one-armed file would cost more than it
+    // proves. Note that `splitCombined` also throws on a missing arm — that is
+    // the belt; this is the braces, and it is the half that produces a readable
+    // error instead of a TypeError.
+    for (const path of RUNNERS) {
+      const text = source(path);
+      const checkAt = text.indexOf("combined.arms?.[arm] === undefined");
+      const splitAt = text.indexOf("splitCombined(");
+      expect(checkAt, `${path} must check for both arms`).toBeGreaterThanOrEqual(0);
+      expect(splitAt, `${path} must derive after the check`).toBeGreaterThan(checkAt);
+    }
+  });
+
+  it("only writes the derived dumps from the report path, never the run path", () => {
+    for (const path of RUNNERS) {
+      const text = source(path);
+      // The dumps are written after `splitCombined`, which reads the completed
+      // document — so they cannot exist before both arms do.
+      const dumpAt = text.indexOf(".baseline.json");
+      const splitAt = text.indexOf("splitCombined(");
+      expect(splitAt).toBeGreaterThanOrEqual(0);
+      expect(dumpAt).toBeGreaterThan(splitAt);
+      // …and never in the combined mode, which writes exactly one file.
+      const combinedAt = text.indexOf("if (COMBINED !== undefined)");
+      const reportAt = text.indexOf("if (REPORT");
+      if (reportAt >= 0 && reportAt > combinedAt) {
+        expect(dumpAt).toBeGreaterThan(reportAt);
+      }
+    }
+  });
+});
+
+describe("spec065 §14: the runner cannot regress into a partial-result shape", () => {
   it("writes the combined result exactly once, after both arms have run", () => {
     for (const path of RUNNERS) {
       const text = source(path);

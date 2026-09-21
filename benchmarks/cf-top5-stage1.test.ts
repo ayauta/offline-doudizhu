@@ -377,9 +377,25 @@ describe.runIf(ENABLED)("Spec 065 Stage 1 / Stage 2", () => {
     // two independently-written files: both arms were already on disk together
     // before this ran.
     const combined = JSON.parse(readFileSync(REPORT as string, "utf8")) as CfTop5CombinedResult;
+    // Refuse to derive anything from a document that is missing an arm: a
+    // "combined" file with one arm would be exactly the partial result this
+    // whole protocol exists to prevent, and it must not be reportable either.
+    for (const arm of ["baseline", "challenger"] as const) {
+      if (combined.arms?.[arm] === undefined) {
+        throw new Error(`The combined result has no ${arm} arm; refusing to report on it.`);
+      }
+    }
     const { baseline, challenger } = splitCombined(combined);
     const base = baseline as { runs: Record<string, unknown> };
     const cand = challenger as { runs: Record<string, unknown> };
+    // The two dumps `paired-compare.test.ts` reads. Written here, *after* both
+    // arms were already on disk together, so deriving them cannot create a
+    // partial state — they are views of a finished result, not results.
+    const baselinePath = `${REPORT as string}.baseline.json`;
+    const challengerPath = `${REPORT as string}.challenger.json`;
+    writeFileSync(baselinePath, `${JSON.stringify(baseline)}\n`, "utf8");
+    writeFileSync(challengerPath, `${JSON.stringify(challenger)}\n`, "utf8");
+    report(`paired dumps ${baselinePath} , ${challengerPath}`);
     report(`\n== Spec 065 paired run ==`);
     report(`combined    ${REPORT as string}`);
     report(`completed   ${combined.completedAt}`);
