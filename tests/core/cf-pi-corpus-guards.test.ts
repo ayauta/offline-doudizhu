@@ -12,6 +12,8 @@
  * Each case breaks exactly one preregistered rule and asserts the battery
  * rejects it. A case that stayed green would mean that gate is decoration.
  */
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import { dealDeck } from "../../benchmarks/ai-tournament.js";
@@ -385,5 +387,32 @@ describe("pi2 corpus: every gate rejects its own violation", () => {
     const group = copy();
     const other = cfSplitOf(DEAL) === "train" ? "calibration" : "train";
     expect(() => cfPiAssertGroup(group, other, {}, RETIRED)).toThrow(/§7.16/);
+  });
+});
+
+describe("pi2 protocol: a no-peek stage runner must not stream intermediate results", () => {
+  /**
+   * Stage 1 was invalidated on 2026-09-22 by exactly this: `runArm` passed
+   * `quiet: false`, so `runPairTournament` printed a cumulative win total and
+   * win rate after every deal, and the redirected stdout left 40/200 deals'
+   * running numbers on disk where they were read.
+   *
+   * §14's no-peek rule is a statement about what is *readable*, not about
+   * whether anyone reads it. A source assertion is a blunt instrument, but the
+   * property being protected is blunt: this file must never turn intermediate
+   * results into text. The guard also pins that the results are still produced
+   * — a runner that stopped calling `runPairTournament` at all would satisfy
+   * "no streaming" while measuring nothing.
+   */
+  const source = (): string =>
+    readFileSync("benchmarks/cf-pi-stage1.test.ts", "utf8");
+
+  it("never passes quiet: false to the tournament runner", () => {
+    expect(source()).not.toMatch(/^\s*quiet:\s*false/m);
+  });
+
+  it("still passes quiet: true, and still runs the paired tournament", () => {
+    expect(source()).toMatch(/^\s*quiet:\s*true/m);
+    expect(source()).toContain("runPairTournament(");
   });
 });

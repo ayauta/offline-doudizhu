@@ -55,8 +55,8 @@ Stage 1 与 Stage 2 **互不合并、互不补位**。Stage 1 不通过就不跑
 | 范围 | 暴露计数 | 状态 |
 | --- | ---: | --- |
 | `100001–120000` | **0 → 1** | **已生成**（20,000 groups，merged checksum `5a730edd…`）。这批数据就是本轮的 train / calibration / held-out，用毕随本轮退休 |
-| `120001–120200` | **0 → 1** | **Stage 1 运行中**（2026-09-22 00:2x CST 起，恰好 200 组）。启动即视为已暴露；结果出来后按 §12 用毕即退休 |
-| `130001–131200` | **0** | **未暴露**。Stage 2 尚未运行 |
+| `120001–120200` | **0 → 1** | **已退休 2026-09-22**：Stage 1 在 `00:26:49` 被强制终止（no-peek 违规），**未跑完、无判定**。按 §12/§14 该池已暴露，不得再用于任何 KEEP / REVERT |
+| `130001–131200` | **0** | **未暴露**，且**本轮不得使用**（Stage 1 INVALID ⇒ 不进 Stage 2）。留待新池 + 重新预登记之后的另一轮 |
 
 生成物在 `.local/cf-pi-corpus/`（`train.json` / `calibration.json` / `heldout.sealed.json` /
 `manifest.json`）与 `.local/cf-pi-shards/`（15 个 shard，179 MiB），均为 ignored 产物。

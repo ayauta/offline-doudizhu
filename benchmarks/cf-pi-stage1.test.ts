@@ -136,8 +136,16 @@ function runArm(arm: "baseline" | "challenger"): Readonly<{
   const cost = emptyCost();
   const recorder = createRecorder();
 
+  // `quiet: true` is a protocol requirement, not a preference. `quiet: false`
+  // makes `runPairTournament` print a cumulative win total and win rate after
+  // every single deal (see its `report` call). If that stdout is redirected to
+  // a file — as it is here — the run leaves a readable intermediate result on
+  // disk for the whole two-arm window, and §14's no-peek rule then rests on
+  // nobody opening it. A guarantee that holds only while nobody looks is not a
+  // guarantee: the results must not exist in readable form until both arms are
+  // done. Stage 1 was invalidated by exactly this on 2026-09-22.
   const pairRun = runPairTournament(config, "master", "default", recorder, {
-    quiet: false,
+    quiet: true,
     decoratorFor: (strongSeat: Seat) => {
       if (arm === "baseline") {
         // Frozen π1 and nothing else — the same wrapper Gate B measured.
