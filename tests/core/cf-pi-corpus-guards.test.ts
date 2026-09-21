@@ -404,15 +404,20 @@ describe("pi2 protocol: a no-peek stage runner must not stream intermediate resu
    * — a runner that stopped calling `runPairTournament` at all would satisfy
    * "no streaming" while measuring nothing.
    */
-  const source = (): string =>
-    readFileSync("benchmarks/cf-pi-stage1.test.ts", "utf8");
+  const RUNNERS = ["benchmarks/cf-pi-stage1.test.ts", "benchmarks/cf-top5-stage1.test.ts"];
+  const sources = (): readonly (readonly [string, string])[] =>
+    RUNNERS.map((path) => [path, readFileSync(path, "utf8")] as const);
 
-  it("never passes quiet: false to the tournament runner", () => {
-    expect(source()).not.toMatch(/^\s*quiet:\s*false/m);
+  it("never passes quiet: false in any stage runner", () => {
+    for (const [path, source] of sources()) {
+      expect(source, path).not.toMatch(/^\s*quiet:\s*false/m);
+    }
   });
 
   it("still passes quiet: true, and still runs the paired tournament", () => {
-    expect(source()).toMatch(/^\s*quiet:\s*true/m);
-    expect(source()).toContain("runPairTournament(");
+    for (const [path, source] of sources()) {
+      expect(source, path).toMatch(/^\s*quiet:\s*true/m);
+      expect(source, path).toContain("runPairTournament(");
+    }
   });
 });

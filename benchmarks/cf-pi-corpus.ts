@@ -67,7 +67,22 @@ export type CfPiGroupExpectation = Readonly<{
   poolOf: (dealIndex: number) => string | null;
   /** The only pool a corpus group may come from. */
   expectedPool: string;
+  /**
+   * The candidate set a snapshot is expected to have been built from, and the
+   * widest it may be. Both default to the shipped top3 contract; Spec 065
+   * passes its top5 proposal and limit. Without this the battery would reject
+   * every five-wide snapshot as "not the frozen shortlist order" — correctly,
+   * since it was asked about a different interface.
+   */
+  proposalFor?: (context: Parameters<typeof cfProposal>[0]) => CfProposal;
+  candidateLimit?: number;
+  /** The dataset version this round stamps on its snapshots. */
+  datasetVersion?: number;
 }>;
+
+/** The shipped top3 contract, used whenever an expectation does not widen it. */
+const SHIPPED_PROPOSAL = cfProposal;
+const SHIPPED_LIMIT = CF_CANDIDATE_LIMIT;
 
 export const CF_PI_GROUP_EXPECTATION: CfPiGroupExpectation = Object.freeze({
   universeStart: CF_PI_UNIVERSE_START,
@@ -110,12 +125,15 @@ function bump(failures: Record<string, number>, gate: string): void {
  * rejected 0/3, and `pi2 corpus: every gate rejects its own violation` has a
  * case that pins exactly that.
  */
-export function cfPiProposalMatches(snapshot: CfSnapshot): boolean {
+export function cfPiProposalMatches(
+  snapshot: CfSnapshot,
+  proposalFor: (context: Parameters<typeof cfProposal>[0]) => CfProposal = SHIPPED_PROPOSAL,
+): boolean {
   const legalActions = generateLegalActions({
     hand: snapshot.view.hand,
     currentPlay: snapshot.view.currentPlay,
   });
-  const proposal: CfProposal = cfProposal(Object.freeze({
+  const proposal: CfProposal = proposalFor(Object.freeze({
     kind: "play" as const,
     view: snapshot.view,
     legalActions,
@@ -235,7 +253,8 @@ export function cfPiAssertGroup(
   let overridden = 0;
   for (const snapshot of group.snapshots) {
     const meta = snapshot.meta;
-    if (meta.datasetVersion !== CF_PI_DATASET_VERSION) {
+    const expectedDataset = expectation.datasetVersion ?? CF_PI_DATASET_VERSION;
+    if (meta.datasetVersion !== expectedDataset) {
       throw new CfInvalidError(`§7.18 ${meta.snapshotId} carries dataset version ${meta.datasetVersion}.`);
     }
     if (meta.featureSchemaVersion !== CF_FEATURE_SCHEMA_VERSION) {
@@ -266,7 +285,8 @@ export function cfPiAssertGroup(
     }
 
     // §7.3 — at least two candidates, never wider than the frozen cap.
-    if (snapshot.candidates.length < 2 || snapshot.candidates.length > CF_CANDIDATE_LIMIT) {
+    const limit = expectation.candidateLimit ?? SHIPPED_LIMIT;
+    if (snapshot.candidates.length < 2 || snapshot.candidates.length > limit) {
       throw new CfInvalidError(`§7.3 ${meta.snapshotId} has ${snapshot.candidates.length} candidates.`);
     }
     const keys = new Set<string>();
@@ -284,7 +304,7 @@ export function cfPiAssertGroup(
     if (!cfPiLegalityHolds(snapshot)) {
       throw new CfInvalidError(`§7.14 ${meta.snapshotId} is not legal under the engine's own generator.`);
     }
-    if (!cfPiProposalMatches(snapshot)) {
+    if (!cfPiProposalMatches(snapshot, expectation.proposalFor ?? SHIPPED_PROPOSAL)) {
       throw new CfInvalidError(`§7.3 ${meta.snapshotId} does not reproduce the frozen candidate order.`);
     }
 

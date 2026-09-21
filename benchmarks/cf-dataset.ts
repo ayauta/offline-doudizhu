@@ -695,6 +695,16 @@ export type CfCaptureOptions = Readonly<{
   /** Provenance only, so a π2 corpus cannot be mistaken for a v1 one. */
   datasetVersion?: number;
   /**
+   * The candidate set a snapshot is built from. Defaults to the shipped
+   * `cfProposal` (top3), so every existing caller is byte-identical.
+   *
+   * Spec 065 widens this to top5. Note what is *not* parameterised: the visit
+   * still runs `policyFor`, which is frozen π1, and π1 computes its own top3
+   * proposal internally. Widening the capture must not widen π1, or the
+   * comparator changes and the experiment measures nothing.
+   */
+  proposalFor?: (context: PlayContext) => CfProposal;
+  /**
    * Policy-iteration mode. Records `rawProductionIndex` in each snapshot's meta,
    * so the raw production action can be told apart from the reference, and
    * verifies that the reference branch reproduces the variant's *own*
@@ -724,6 +734,7 @@ export function cfCaptureGroup(
   const snapshotSalt = options.snapshotSalt ?? CF_SNAPSHOT_SALT;
   const datasetVersion = options.datasetVersion ?? CF_DATASET_VERSION;
   const recordRawProduction = options.recordRawProduction === true;
+  const proposalFor = options.proposalFor ?? cfProposal;
   const allRoots: PendingRoot[] = [];
   const variantWinners: Record<string, Seat> = {};
   /** Each variant's own continuation, for the reference-branch replay check. */
@@ -759,7 +770,7 @@ export function cfCaptureGroup(
   let forkGames = 0;
 
   for (const root of ordered) {
-    const proposal = cfProposal(root.context);
+    const proposal = proposalFor(root.context);
     if (!cfIsEligible(proposal, root.seat, root.command)) {
       continue;
     }
