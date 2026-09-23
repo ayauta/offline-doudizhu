@@ -29,7 +29,7 @@ PASS 之后才允许分配 fresh pool」。下面逐项列出 §33 清单的真�
 | 13 | protocol freeze commit | **未提交** | protocol 文件已在，但 Stage 0 未完成，故未冻结 |
 | 14 | τ/λ/top3/feature 的不可变 identity | **完成** | `benchmarks/farmer-pi-identity.ts`，写进 protocol 的 `identities` 块 |
 | 15 | worker 的 protocolHash 语义 | **完成** | 见 §6（原缺口已修） |
-| 16 | miniature real-pipeline E2E（§7/§8/§9） | **部分完成** | 见 §12：可达路径全部走通，后段三 stage 因数据无信号而不可达 |
+| 16 | miniature real-pipeline E2E（§7/§8/§9） | **部分完成** | 见 §12：可达路径全部走通；后段三 stage 由 §14 的 test-only harness 补齐 |
 
 **因此：fresh pool 未分配，π1→π2 未开始。** §46 N/O 未执行。
 
@@ -291,3 +291,56 @@ mean ≈ 0 时，任何 n 都不可能满足。把 rehearsal 的池扩大十倍�
 | protocol freeze | **未做** | 待上项 |
 | FACTORY FREEZE | **未做** | 待上项 |
 | fresh pool | **未分配** | 真实 ledger 仍 16 行 |
+
+
+---
+
+## 14. Downstream wiring harness（`benchmarks/farmer-pi-downstream-wiring.test.ts`）
+
+**TEST ONLY。** 正式 `scripts/farmer-pi.mjs` 不暴露任何 stage-skip 能力——`--help` 里
+没有 `--start-stage` / `--stage` / `--skip` / `--from` / `--resume-at`，且传未知 flag 会被
+拒绝。这条由 harness 的一个断言核查（并已实测）。
+
+### 允许合成的范围：只有 upstream prerequisite
+
+`writeCandidateLayerFixture()` 造一个 `rehearsalOnly: true`、`lightgbmVersion: "wiring-fixture"`、
+sha 不是 64 位十六进制的常数 layer，threshold `-1e9`（永不 override）。它的作用是
+「存在一个候选」，不是「候选有棋力」。**没有挑选 retired seeds 直到 positive。**
+
+### 真实的部分
+
+champion/candidate policy、对局、每副结果、paired 聚合、seal、Stage-1 统计量、
+formal 样本量规则、formal 统计量、verdict 公式、archive —— 全部走正式实现。
+
+### 覆盖与结果（8/8 PASS，62 s）
+
+| edge | 证据 |
+| --- | --- |
+| 双臂真实运行 retired deals | 3 副 × 2 arms，worker 真实落 checkpoint |
+| 两臂 configHash 不同 | 断言（这也是它们不能共用目录的原因） |
+| 每个 arm seal | `completion: SEALED`，`deals: 3` |
+| record seal → `strength-verdict` | 真实 Stage-1 判定：`deals`/`mean`/`variance`/`proceed`/`integrityValid` |
+| 未 seal 不得产出 verdict | 拒绝（负向） |
+| runner 无 stage-skip | `--help` 无相关 flag；未知 flag 被拒 |
+| fixture 不可被误认为模型 | `rehearsalOnly`、非 64 位 sha |
+| 真实 ledger / champion archive 未被触碰 | 前后字节相同；`ai-v2-research` / `ai-v3-research` 不存在 |
+
+### Mutation
+
+把 fixture 副本的 namespace 改回真实的 `200001–450000` → **`addresses only pools the
+ledger already records as retired` 变红**（1 failed | 7 passed）。守卫不是装饰。
+
+### 仍未覆盖（诚实记录）
+
+* `decide` 的 PROMOTE 分支与 `writeChampion` 的真实 archive 写入**没有端到端证据**：
+  它需要一份 formal PASS 的 sealed verdict，而制造它就是在造 verdict——§4 禁止。
+  `formalVerdict` 的 PASS/FAIL 分支由 unit guard 与 `farmer-pi-rehearsal.test.ts` 覆盖。
+* formal stage 的双臂真实运行未单独跑（Stage-1 的双臂已跑通同一条代码路径）。
+
+## 15. Stage 0 判定：**仍未完成**
+
+`8/8` 的 harness 补上了 offline/stage1/formal 的大部分接线边，但 §14 末尾两条仍未覆盖，
+且 **`pnpm check` 尚未在本轮最终 HEAD 上重跑**。
+
+因此以下仍未做：protocol freeze、exact SHA-256、FACTORY FREEZE commit、attempt-001。
+fresh pool 未分配（真实 ledger 仍 16 行）；production `ai-v1` 未改动。
