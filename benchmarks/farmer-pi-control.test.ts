@@ -151,6 +151,8 @@ import {
   writeFileAtomic,
   writeManifest,
   writeVerdictOnce,
+  type PiFormalVerdictRecord,
+  type PiStage1Verdict,
   type PiStageManifest,
 } from "./farmer-pi-stage.js";
 import {
@@ -764,10 +766,13 @@ function writeChampion(
   // attempt directory to see what promoted it. The protocol hash is recorded
   // with it because the archive cites none of its own — the archive names a
   // champion, and the champion names the protocol it was measured under.
-  writeJsonFile(join(CHAMPION_DIR, `${chain.championId}.formal.json`), {
+  const evidenceDir = rehearsalOnly ? join(root, "champions-rehearsal") : CHAMPION_DIR;
+  mkdirSync(evidenceDir, { recursive: true });
+  writeJsonFile(join(evidenceDir, `${chain.championId}.formal.json`), {
     ...readJson(join(formalDir, "verdict.json")) as Record<string, unknown>,
     protocolHash,
     attemptId: attempt.attemptId,
+    ...(rehearsalOnly ? { rehearsalOnly: true } : {}),
   });
   answer(`champion ${chain.championId} layers ${chain.layers.length} archive ${path}`);
 }
@@ -1793,6 +1798,7 @@ function strengthVerdict(config: ControlConfig): void {
   if (stage === "stage1") {
     const screen = stage1Decision(differences);
     const written = Object.freeze({
+      kind: "stage1" as const,
       stage,
       deals: screen.deals,
       mean: screen.mean,
@@ -1813,17 +1819,19 @@ function strengthVerdict(config: ControlConfig): void {
       `${recorded === null ? "" : " (recorded)"}`,
     );
     emit({
+      kind: "stage1",
       deals: screen.deals,
       mean: screen.mean,
       variance: screen.variance,
       proceed: screen.proceed,
       integrityValid,
       recorded: recorded !== null,
-    });
+    } satisfies PiStage1Verdict);
     return;
   }
   const verdict = formalVerdict(differences, integrityValid, protocol.formal.alpha);
   const written = Object.freeze({
+    kind: "formal" as const,
     ...verdict,
     stage,
     arms,
@@ -1841,6 +1849,7 @@ function strengthVerdict(config: ControlConfig): void {
     `integrity ${String(verdict.integrityValid)}${recorded === null ? "" : " (recorded)"}`,
   );
   emit({
+    kind: "formal",
     n: verdict.n,
     mean: verdict.mean,
     lower: verdict.lower,
@@ -1848,7 +1857,7 @@ function strengthVerdict(config: ControlConfig): void {
     decision: verdict.decision,
     reasons: verdict.reasons,
     recorded: recorded !== null,
-  });
+  } satisfies PiFormalVerdictRecord);
 }
 
 // ---------------------------------------------------------------------------

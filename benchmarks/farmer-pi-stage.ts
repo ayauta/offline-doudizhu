@@ -667,6 +667,39 @@ export function chooseFormalN(required: number): PiFormalPlan {
   return Object.freeze({ required, n: last, powerCapped: true });
 }
 
+/**
+ * The two shapes a strength stage's verdict comes in, as a discriminated union.
+ *
+ * They are genuinely different structures — a screen has a `variance` and a
+ * `proceed`, a formal test has an `n`, a `lower` bound and a `decision` — and a
+ * consumer that reads them by guessing which fields are present is a consumer
+ * that will one day read `undefined` and treat it as a number. The `kind` field
+ * is additive: no value, formula or field meaning changes, and every existing
+ * reader that knows which stage it asked about keeps working.
+ */
+export type PiStage1Verdict = Readonly<{
+  kind: "stage1";
+  deals: number;
+  mean: number;
+  variance: number;
+  proceed: boolean;
+  integrityValid: boolean;
+  recorded: boolean;
+}>;
+
+export type PiFormalVerdictRecord = Readonly<{
+  kind: "formal";
+  n: number;
+  mean: number;
+  lower: number;
+  alpha: number;
+  decision: "PROMOTE" | "REJECT";
+  reasons: readonly string[];
+  recorded: boolean;
+}>;
+
+export type PiStrengthVerdict = PiStage1Verdict | PiFormalVerdictRecord;
+
 export type PiFormalVerdict = Readonly<{
   n: number;
   mean: number;
