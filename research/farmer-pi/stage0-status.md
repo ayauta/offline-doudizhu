@@ -3,7 +3,7 @@
 记录日期：2026-09-23。分支：`research/farmer-policy-iteration-v1`（从 `98ea3f9` 分出）。
 本节在 closure 工作中更新（`e3f5e02` 之后）。
 
-**状态：Stage 0 未完成。Factory 尚未启动，没有分配任何 fresh pool。**
+**状态：STAGE 0 COMPLETE（2026-09-23，commit `FACTORY FREEZE`）。fresh pool 尚未分配。**
 
 这一条必须放在最前面，因为 §46 的顺序是「先完成 infrastructure + rehearsal + protocol freeze，
 PASS 之后才允许分配 fresh pool」。下面逐项列出 §33 清单的真实状态。
@@ -344,3 +344,103 @@ ledger already records as retired` 变红**（1 failed | 7 passed）。守卫不
 
 因此以下仍未做：protocol freeze、exact SHA-256、FACTORY FREEZE commit、attempt-001。
 fresh pool 未分配（真实 ledger 仍 16 行）；production `ai-v1` 未改动。
+
+
+---
+
+## 16. STAGE 0 COMPLETE
+
+判定日期 2026-09-23。freeze commit 记录见 git log `bench(ai): freeze farmer policy iteration factory v1`。
+
+### 1. Real miniature scientific path
+
+在退休种子（复制的 ledger，namespace 指向 `discovery-v1` 301–700）上真实跑通：
+
+```text
+reserve → corpus×3 → train(真实 LightGBM 4.6.0) → calibrate → DECIDED/REJECT
+        → 自动 retry → corpus×3 → train → calibrate → DECIDED/REJECT
+        → FACTORY_STOPPED — DOUBLE_REJECT
+```
+
+结果记为 **`REHEARSAL_CALIBRATION_NO_GO`**：rehearsal 路径的真实结果，不是 candidate
+REJECT，不是 π1→π2 evidence，不计 attempt budget，不消耗 fresh pool。
+
+观察到的 alternative label 分布（+1 = 8 / 0 = 150 / −1 = 10）**仅作 descriptive
+debugging**。168 个 alternative 的 rehearsal 样本不足以支持任何棋力结论，本文件不作结论。
+
+### 2. Test-only downstream coverage
+
+自然不可达的状态机分支由 isolated `REHEARSAL_ONLY` fixture 覆盖，
+正式 `scripts/farmer-pi.mjs` **没有**任何 stage-skip / promote / fixture flag
+（`--help` 无相关项，未知 flag 被拒——两个 harness 各有断言核查）。
+
+`benchmarks/farmer-pi-downstream-wiring.test.ts`（9/9）：
+
+| edge | 证据 |
+| --- | --- |
+| Stage 1 双臂真实运行 + 逐副 checkpoint + 分目录 seal | 3 副 × 2 arms |
+| sealed record → 真实 Stage-1 统计量 | `deals`/`mean`/`variance`/`proceed` |
+| 未 seal 不得产出 verdict | 拒绝 |
+| fixture 只覆盖 retired 区间 | mutation 证明（`200001` → 1 failed \| 7 passed） |
+
+`benchmarks/farmer-pi-promote-wiring.test.ts`（4/4）：
+
+| edge | 证据 |
+| --- | --- |
+| `readSealedVerdict → decideOutcome → PROMOTE → writeChampion → archive` | 读 `factory.json`：`championId ai-v2-research`、`generation 2` |
+| sealed formal FAIL → REJECTED | 不推进 generation、不写 archive |
+| verdict 非 PROMOTE/REJECT → INTEGRITY_STOP | 停在 decision |
+| 不改真实 ledger / 不建真实 archive / 不建 tag | 逐条断言 |
+
+写这两个 harness 时发现并修掉的两个真问题：rehearsal 的 `.formal.json` 证据会写进真实
+champions 目录；Stage-1 与 formal 的 verdict 依赖调用方猜字段（现为 discriminated union，
+`kind` 字段纯增量，未改任何值、公式或字段含义）。
+
+### 3. 逐项结果（最终 HEAD `109bbf2`）
+
+| 项 | 结果 |
+| --- | --- |
+| runner 唯一、无 stage-skip | PASS |
+| protocolHash 语义（worker 自行重算并拒绝错配） | PASS |
+| no-peek（`--guard-selftest` 8/8；console 只有序号/计数/吞吐） | PASS |
+| deadline pause/resume | PASS（真实中断 → exit 3 → 同 attempt 恢复） |
+| checkpoint integrity（幂等 / 篡改 → INTEGRITY_STOP） | PASS |
+| champion-chain guards（27 条 + 3 个 mutation） | PASS |
+| identity hashes（τ/λ/strong/top3/schema） | PASS |
+| 真实 LightGBM | PASS |
+| downstream wiring | PASS（9/9） |
+| promotion wiring | PASS（4/4） |
+| `pnpm check` @ `109bbf2` | **PASS — 586 tests, exit 0** |
+
+### 4. Frozen identities
+
+```
+protocol-v1.yaml    45aa9ee46b5865c030cb7e9221542c86f06c1b7223b4cbea89d8e8f22f1a4018  (8900 B)
+pool-ledger.jsonl   0d32a1d0b0ebc5d5a646b54005c26adb16aad27d31be9c125e9f67b8d4d19c00  (7237 B)
+tau  (teammate)     2a39386007949cf1c37010c1d97f61e8468a3d41b44df50cebf70c9cc46b7297  src/core/ai/index.ts, 15 modules
+lambda (landlord)   2a39386007949cf1c37010c1d97f61e8468a3d41b44df50cebf70c9cc46b7297  same tier, recorded separately
+strong seat          a6ae8a6aebd31e88172a12a64845284f799b1487abc07a49d934188a0cee89e3  src/app/ai/decision-handler.ts, 19
+top3                 e63d084ecd2d7e262886e682bbaad87490fccf340081092ae42200505b922df2  src/app/ai/cf-selector.ts, 22
+feature schema       0ec9d20f4abde4b7c5d72751b488de2180723863d3a6248593404c8bee7d85f0  version 2, 86 columns
+pi1 model            010a8a4a00524f0694d5881bacdd885d99243acf4d71e2b2fdcae7ae82fc3359  M1, 256 trees × 86 features
+pi1 threshold        0.01
+```
+
+LightGBM 4.6.0；objective regression；256 iterations；depth 6；leaves 31；lr 0.05；
+min_data 100；L1 0；L2 5；max_bin 63；threads 1；deterministic；force_col_wise；seed 20260920。
+
+RNG keyed/counter；splits 6000/2000/2000 + 200 + 4800；calibration grid `0 .01 .02 .04 .08 .16`
++ Bonferroni ×6；offline ≥100 override / ≥20 nonzero；Stage1 200 副 `mean_D > 0`；
+formal N ∈ {1200,2400,4800}，α = 0.005 单侧，farmer mean_D ≥ +0.01 且 lower > 0；
+retry 每个 champion 一次；attempt cap 10；double-reject 停止；
+no-peek 为输出协议；checkpoint 以 deal 为单位原子落盘；deadline 为绝对 UTC。
+
+### 5. 尚未做
+
+**尚未分配 fresh pool。** 真实 ledger 仍 16 行，namespace `200001–450000` 仍为 RESERVED；
+production `ai-v1` 未改动。
+
+**一个已知缺口，供 attempt-001 之前决定**：`championChainById` 只认 `ai-v1`。
+一次真实 PROMOTE 之后 Factory 会指向 `ai-v2-research`，而加载器还不会构造它的链——
+promotion wiring 用的是 rehearsal 归档路径，真实路径需要加载器扩展。
+这是实现层的补齐，不改 scientific meaning。
