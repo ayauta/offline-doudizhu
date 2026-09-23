@@ -25,11 +25,11 @@ PASS 之后才允许分配 fresh pool」。下面逐项列出 §33 清单的真�
 | 9 | Windows host launcher / watchdog | **完成** | `scripts/farmer-pi-host.mjs`，进程级实测 |
 | 10 | champion archive | **完成** | `benchmarks/farmer-pi-champions.ts` |
 | 11 | retired-seed rehearsal（含故障注入） | **完成** | `benchmarks/farmer-pi-rehearsal.test.ts`，9/9 |
-| 12 | 单一命令 runner（§31） | **未完成** | `scripts/farmer-pi.mjs` 尚未编写；规格已定，见 §9 |
+| 12 | 单一命令 runner（§31） | **完成，CLI smoke 通过** | `scripts/farmer-pi.mjs` + `benchmarks/farmer-pi-control.test.ts`（15 个 mode） |
 | 13 | protocol freeze commit | **未提交** | protocol 文件已在，但 Stage 0 未完成，故未冻结 |
 | 14 | τ/λ/top3/feature 的不可变 identity | **完成** | `benchmarks/farmer-pi-identity.ts`，写进 protocol 的 `identities` 块 |
 | 15 | worker 的 protocolHash 语义 | **完成** | 见 §6（原缺口已修） |
-| 16 | miniature real-pipeline E2E（§7/§8/§9） | **未完成** | 依赖 runner |
+| 16 | miniature real-pipeline E2E（§7/§8/§9） | **未完成** | runner 已就绪，E2E 尚未跑 |
 
 **因此：fresh pool 未分配，π1→π2 未开始。** §46 N/O 未执行。
 
@@ -107,16 +107,38 @@ node node_modules/vitest/vitest.mjs run --config vitest.benchmark.config.ts \
 runner 改动必须开新 protocol/version；不改变 semantics 的普通修复允许，只移动
 `runnerCommit`。
 
-## 9. runner 的规格（已定，实现中）
+## 9. runner —— 已完成（`8e54701`）
 
-一条命令：`node scripts/farmer-pi.mjs <status|inspect|run>`。
+```
+node scripts/farmer-pi.mjs status   [--root <dir>]
+node scripts/farmer-pi.mjs inspect  [--root <dir>]
+node scripts/farmer-pi.mjs run      [--root <dir>] [--deadline <ISO-8601 带偏移>] \
+                                    [--protocol <path>] [--ledger <path>]
+```
 
-* `run` 幂等且 resume-safe：有未完成 attempt 就恢复它，绝不偷偷建新的。
-* 每个 transition 写原子状态；持有 `acquireRunLock`。
-* 任何 payload 的读取都必须走 `readSealedStage`（未 SEALED 就抛 `IntegrityError`）。
-* verdict 只来自冻结公式（`cfSelectThreshold` / `offlineVerdict` /
-  `stage1Decision` / `formalVerdict`），runner 没有任何「看起来不错就继续」的分支。
-* deadline 先于一切检查；已过期则记 `PAUSED_DEADLINE` 并退出，不启动任何工作。
+**分工**：`scripts/farmer-pi.mjs` 只拥有*进程*（决定下一步、spawn、看墙钟、杀子进程、
+写 journal）；全部*推导*由 `benchmarks/farmer-pi-control.test.ts` 经进程边界提供。
+之所以这样切，是因为 `.mjs` 无法 import `.ts`，而在 JS 里再实现一份冻结规则，
+就是前两轮失败的同一种形状。
+
+* `run` 是对状态机的循环，没有「指定 stage」的入口 ⇒ 无法手工跳 stage。
+* `register` 每次先问 ⇒ resume 恢复磁盘上的 attempt，而不是新建。
+* 任何 stage payload 都由 control plane 在 seal 之后读取，runner 进程里不存在它 ⇒
+  console 上没有可打印的 strength。
+* deadline 先于一切检查；已过期则什么都不启动并退 3。
+
+**CLI smoke 结果**：`status` / `inspect` 正常；已过期的 absolute deadline → 不启动、
+退 3；无偏移的 deadline → 拒绝；未知 mode → 拒绝。
+
+当前 protocol hash：`45aa9ee46b5865c030cb7e9221542c86f06c1b7223b4cbea89d8e8f22f1a4018`。
+
+## 10. 下一步：miniature E2E 需要的东西
+
+miniature 必须在**退休种子**上跑完整状态机，因此需要一个 rehearsal 专用的
+protocol（缩小 pool 规模）和一份**复制的** ledger（namespace 指向退休区间，例如
+`301–700`，400 副足够 16 个 25-deal block）。两者都通过 `--protocol` / `--ledger`
+指定，**真实 ledger 与真实 namespace 不被触碰**。rehearsal 产出的 verdict 必须标记
+`REHEARSAL_ONLY`，不得注册为 research champion。
 
 ## 7. 下一步（按 §46）
 
