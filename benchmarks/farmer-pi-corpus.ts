@@ -33,10 +33,14 @@ import {
   CF_SPLIT_COUNTS,
   CfInvalidError,
   cfCaptureGroup,
+  cfRow,
   type CfGroupResult,
   type CfGroupSpec,
+  type CfLabel,
+  type CfSnapshot,
   type CfSplit,
 } from "./cf-dataset.js";
+import { cfScoredRootFromSnapshot, type CfScoredRoot } from "./cf-selector.js";
 import { armSchedule, dealGameSeed, scheduleFor } from "./ai-tournament.js";
 import { cfChainPolicy, type ChampionChain } from "./farmer-pi-chain.js";
 import type { Range } from "./farmer-pi-pools.js";
@@ -180,3 +184,52 @@ export const FACTORY_DATASET_SIZES: Readonly<Record<string, number>> = Object.fr
   calibration: 2_000,
   offline: 2_000,
 });
+
+/**
+ * One layer's scores at every root of a captured group, in the shape the
+ * threshold machinery reads.
+ *
+ * This is the seam between the corpus and the calibration: the corpus recorded,
+ * for each sampled root, the reference action the champion actually played
+ * (`productionIndex`) and the counterfactual label of every candidate; this
+ * turns a *layer* into the per-root scores that `cfChooseOverride` and
+ * `cfThresholdOutcome` decide thresholds with.
+ *
+ * Two things it deliberately does not do. It does not re-propose — the
+ * candidate set is the one the capture recorded, in the captured order, which
+ * is also the frozen tie-break order. And it does not score the reference: a
+ * layer is choosing among the *alternatives* to the action it was handed, and a
+ * layer that could score "keep the current action" would be answering a
+ * different question from the one §5 asks.
+ */
+export function factoryScoredRoots(
+  group: CfGroupResult,
+  scoreOf: (snapshotId: string, candidateOrder: number) => number,
+): readonly CfScoredRoot[] {
+  return Object.freeze(group.snapshots.map((snapshot) =>
+    cfScoredRootFromSnapshot(snapshot, scoreOf)));
+}
+
+/** The row a single (snapshot, candidate) pair would train on, or `null` for the reference. */
+export function factoryCandidateRow(
+  snapshot: CfSnapshot,
+  candidateOrder: number,
+): { x: readonly number[]; y: CfLabel } | null {
+  if (candidateOrder === snapshot.productionIndex) {
+    return null;
+  }
+  const candidate = snapshot.candidates[candidateOrder];
+  const reference = snapshot.candidates[snapshot.productionIndex];
+  const label = snapshot.labels[candidateOrder];
+  if (candidate === undefined || reference === undefined || label === undefined) {
+    throw new CfInvalidError(`Snapshot ${snapshot.meta.snapshotId} is missing a candidate or label.`);
+  }
+  const action = snapshot.actions[candidate.actionIndex];
+  const referenceAction = snapshot.actions[reference.actionIndex];
+  if (action === undefined || referenceAction === undefined) {
+    throw new CfInvalidError(`Snapshot ${snapshot.meta.snapshotId} has a candidate outside its actions.`);
+  }
+  // The reference is the champion's own action, which is what §11 asks for and
+  // what the `a0_*` column block has always held.
+  return Object.freeze({ x: cfRow(snapshot.view, action, referenceAction), y: label });
+}

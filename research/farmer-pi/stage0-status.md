@@ -1,6 +1,7 @@
 # Factory v1 — Stage 0 状态
 
 记录日期：2026-09-23。分支：`research/farmer-policy-iteration-v1`（从 `98ea3f9` 分出）。
+本节在 closure 工作中更新（`e3f5e02` 之后）。
 
 **状态：Stage 0 未完成。Factory 尚未启动，没有分配任何 fresh pool。**
 
@@ -24,8 +25,11 @@ PASS 之后才允许分配 fresh pool」。下面逐项列出 §33 清单的真�
 | 9 | Windows host launcher / watchdog | **完成** | `scripts/farmer-pi-host.mjs`，进程级实测 |
 | 10 | champion archive | **完成** | `benchmarks/farmer-pi-champions.ts` |
 | 11 | retired-seed rehearsal（含故障注入） | **完成** | `benchmarks/farmer-pi-rehearsal.test.ts`，9/9 |
-| 12 | 单一命令 runner（§31） | **未完成** | `scripts/farmer-pi.mjs` 尚未编写 |
+| 12 | 单一命令 runner（§31） | **未完成** | `scripts/farmer-pi.mjs` 尚未编写；规格已定，见 §9 |
 | 13 | protocol freeze commit | **未提交** | protocol 文件已在，但 Stage 0 未完成，故未冻结 |
+| 14 | τ/λ/top3/feature 的不可变 identity | **完成** | `benchmarks/farmer-pi-identity.ts`，写进 protocol 的 `identities` 块 |
+| 15 | worker 的 protocolHash 语义 | **完成** | 见 §6（原缺口已修） |
+| 16 | miniature real-pipeline E2E（§7/§8/§9） | **未完成** | 依赖 runner |
 
 **因此：fresh pool 未分配，π1→π2 未开始。** §46 N/O 未执行。
 
@@ -85,17 +89,34 @@ node node_modules/vitest/vitest.mjs run --config vitest.benchmark.config.ts \
   benchmarks/farmer-pi-rehearsal.test.ts
 ```
 
-## 6. 已知接线缺口（写下来而不是留着）
+## 6. protocolHash 的接线缺口 —— 已修（`e3f5e02`）
 
-`benchmarks/farmer-pi-stage.test.ts` 的 stage worker 目前用
-`AI_FPI_POLICY_COMMIT`（driver commit）作为 `armConfigHash` 里的 `protocolHash`，
-因为该 worker 的 env 契约里没有 protocol 文件的位置。**这是错的语义**：
-§25 要求 champion archive 与 attempt 记录引用的是 `protocol-v1.yaml` 的 SHA-256，
-不是 driver 的 commit。
+原缺口：两个 worker 都用 `AI_FPI_POLICY_COMMIT`（runner 的 git commit）当作
+`protocolHash`，而 §25 要求的是 `protocol-v1.yaml` 字节的 SHA-256。已改为：
 
-修法只有一个：worker 在读 env 时调用 `loadProtocol().hash`，并用
-`assertProtocolHash(registered, actual)` 在起第一个 deal 之前核对。
-这条排在 runner 之前做，因为 runner 正是那个登记 hash 的地方。
+* runner 通过 `AI_FPI_PROTOCOL_HASH` 传它登记的那个 hash；
+* worker 自己 `loadProtocol()` 重新读文件、重新哈希，用
+  `assertProtocolHash(registered, actual)` 比对，不一致就拒绝，**在起第一个 deal 之前**；
+* runner 的 commit 以 `runnerCommit` 单独记录，永不与 protocolHash 互相顶替。
+
+负向测试（`tests/core/farmer-pi-protocol.test.ts`）：protocol 追加 1 字节 →
+`assertProtocolHash` 拒绝；attempt 登记的 hash 与文件不符 → `assertAttemptProtocol`
+拒绝；protocol 里的 identity hash 与工作树不符 → `verifyIdentities` 拒绝。
+
+**frozen policy（已写进 protocol 的 `runner` 块）**：改变 scientific semantics 的
+runner 改动必须开新 protocol/version；不改变 semantics 的普通修复允许，只移动
+`runnerCommit`。
+
+## 9. runner 的规格（已定，实现中）
+
+一条命令：`node scripts/farmer-pi.mjs <status|inspect|run>`。
+
+* `run` 幂等且 resume-safe：有未完成 attempt 就恢复它，绝不偷偷建新的。
+* 每个 transition 写原子状态；持有 `acquireRunLock`。
+* 任何 payload 的读取都必须走 `readSealedStage`（未 SEALED 就抛 `IntegrityError`）。
+* verdict 只来自冻结公式（`cfSelectThreshold` / `offlineVerdict` /
+  `stage1Decision` / `formalVerdict`），runner 没有任何「看起来不错就继续」的分支。
+* deadline 先于一切检查；已过期则记 `PAUSED_DEADLINE` 并退出，不启动任何工作。
 
 ## 7. 下一步（按 §46）
 
