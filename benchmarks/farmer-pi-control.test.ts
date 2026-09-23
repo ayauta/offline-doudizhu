@@ -118,7 +118,13 @@ import {
   type ChampionArchive,
 } from "./farmer-pi-champions.js";
 import { factoryCandidateRow, factoryScoredRoots, factorySplitOfPurpose } from "./farmer-pi-corpus.js";
-import { allocateAttempt, ledgerPools, transitionPool, type PoolState } from "./farmer-pi-pools.js";
+import {
+  allocateAttempt,
+  ledgerPools,
+  transitionPool,
+  type AttemptLayoutSpec,
+  type PoolState,
+} from "./farmer-pi-pools.js";
 import { PROTOCOL_PATH, loadProtocol, type FactoryProtocol } from "./farmer-pi-protocol.js";
 import {
   FACTORY_ALPHA,
@@ -391,34 +397,50 @@ export function assertProtocolMatchesFrozen(protocol: FactoryProtocol): void {
       mismatches.push(`${name}: protocol ${String(fromProtocol)} vs code ${String(frozen)}`);
     }
   };
+
+  // These must match in *every* document, rehearsal or not. They are what a
+  // verdict *means*: a different threshold grid applies a different Bonferroni
+  // divisor, a different alpha or floor decides a different question, and a
+  // different design delta sizes the sample against a different effect. A
+  // rehearsal that moved one of these would not be rehearsing this Factory.
   check(
     "calibration.thresholds",
     protocol.calibration.thresholds.join(","),
     CF_THRESHOLD_GRID.join(","),
   );
-  check("calibration.minOverrideDeals", protocol.calibration.minOverrideDeals, CF_MIN_OVERRIDE_DEALS);
-  check(
-    "calibration.minSelectedNonzeroDeals",
-    protocol.calibration.minSelectedNonzeroDeals,
-    CF_MIN_SELECTED_NONZERO_DEALS,
-  );
-  check("offline.groups", protocol.offline.groups, 2_000);
-  check(
-    "offline.minOverrideDeals",
-    protocol.offline.minOverrideDeals,
-    FACTORY_OFFLINE_MIN_OVERRIDE_DEALS,
-  );
-  check(
-    "offline.minSelectedNonzeroDeals",
-    protocol.offline.minSelectedNonzeroDeals,
-    FACTORY_OFFLINE_MIN_SELECTED_NONZERO_DEALS,
-  );
-  check("stage1.deals", protocol.stage1.deals, FACTORY_STAGE1_DEALS);
-  check("attempt.stage1Deals", protocol.attempt.stage1Deals, FACTORY_STAGE1_DEALS);
   check("formal.alpha", protocol.formal.alpha, FACTORY_ALPHA);
   check("formal.promotionFloor", protocol.formal.promotionFloor, FACTORY_PROMOTION_FLOOR);
   check("formal.designDelta", protocol.formal.designDelta, FACTORY_DESIGN_DELTA);
-  check("formal.ladder", protocol.formal.ladder.join(","), FACTORY_FORMAL_LADDER.join(","));
+
+  // These are sizes and support floors, and they are what a rehearsal has to
+  // shrink: a 4-deal offline pool cannot clear a floor of 100 override deals,
+  // and a rehearsal that always stopped at the first screen would never reach
+  // the stages after it. A document may differ here only by saying so out loud
+  // — `rehearsalOnly: true` — and the archive below is what stops that from
+  // being a way to produce evidence.
+  if (!protocol.rehearsalOnly) {
+    check("calibration.minOverrideDeals", protocol.calibration.minOverrideDeals, CF_MIN_OVERRIDE_DEALS);
+    check(
+      "calibration.minSelectedNonzeroDeals",
+      protocol.calibration.minSelectedNonzeroDeals,
+      CF_MIN_SELECTED_NONZERO_DEALS,
+    );
+    check("offline.groups", protocol.offline.groups, 2_000);
+    check(
+      "offline.minOverrideDeals",
+      protocol.offline.minOverrideDeals,
+      FACTORY_OFFLINE_MIN_OVERRIDE_DEALS,
+    );
+    check(
+      "offline.minSelectedNonzeroDeals",
+      protocol.offline.minSelectedNonzeroDeals,
+      FACTORY_OFFLINE_MIN_SELECTED_NONZERO_DEALS,
+    );
+    check("stage1.deals", protocol.stage1.deals, FACTORY_STAGE1_DEALS);
+    check("attempt.stage1Deals", protocol.attempt.stage1Deals, FACTORY_STAGE1_DEALS);
+    check("formal.ladder", protocol.formal.ladder.join(","), FACTORY_FORMAL_LADDER.join(","));
+  }
+
   if (mismatches.length > 0) {
     throw new IntegrityError(
       "The protocol and the frozen verdict code disagree, so no number this Factory produces " +
@@ -529,7 +551,7 @@ function register(config: ControlConfig): void {
   if (decided !== null) {
     factory = applyOutcome(factory, summaryOf(decided), factory.generation, at);
     if (decided.outcome === "PROMOTE") {
-      writeChampion(root, decided, factory, hash, at);
+      writeChampion(root, decided, factory, hash, at, protocol.rehearsalOnly);
     }
     // Applying is written before allocating, so a crash between the two cannot
     // apply the same decision twice — which would advance the generation twice.
@@ -556,6 +578,11 @@ function register(config: ControlConfig): void {
     parentChampionId: factory.championId,
     protocolHash: hash,
     at,
+    // The sizes come from the protocol, not from a constant beside it. A
+    // rehearsal declares a 25-deal block inside a 400-deal retired range, and a
+    // constant that disagreed with the document would put its pools on top of
+    // somebody else's.
+    spec: attemptLayoutSpecOf(protocol, kind),
     ...ledger,
   });
   const pools: Record<string, ControlPool> = {};
@@ -593,6 +620,38 @@ function register(config: ControlConfig): void {
   emit({ created: true, attempt, lockPath, stop: null });
 }
 
+/**
+ * The attempt layout the protocol declares.
+ *
+ * One conversion, in one place, so the ledger's ranges and the document's sizes
+ * cannot drift: `attemptLayout` is handed exactly what the protocol says, and a
+ * disagreement between the two is impossible rather than merely unlikely.
+ */
+function attemptLayoutSpecOf(
+  protocol: FactoryProtocol,
+  kind: AttemptKind,
+): AttemptLayoutSpec {
+  const attempt = protocol.attempt;
+  return Object.freeze({
+    blockDeals: attempt.blockDeals,
+    entries: Object.freeze(kind === "base"
+      ? [
+        Object.freeze({ purpose: "train", deals: attempt.trainDeals }),
+        Object.freeze({ purpose: "calibration", deals: attempt.calibrationDeals }),
+        Object.freeze({ purpose: "offline", deals: attempt.offlineDeals }),
+        Object.freeze({ purpose: "stage1", deals: attempt.stage1Deals }),
+        Object.freeze({ purpose: "formal", deals: attempt.formalReserveDeals }),
+      ]
+      : [
+        Object.freeze({ purpose: "train-fresh", deals: attempt.retryTrainFreshDeals }),
+        Object.freeze({ purpose: "calibration", deals: attempt.retryCalibrationDeals }),
+        Object.freeze({ purpose: "offline", deals: attempt.retryOfflineDeals }),
+        Object.freeze({ purpose: "stage1", deals: attempt.stage1Deals }),
+        Object.freeze({ purpose: "formal", deals: attempt.formalReserveDeals }),
+      ]),
+  });
+}
+
 /** The same name `attemptLayout` gives, computed without needing the ledger. */
 function attemptIdFor(attemptNumber: number): string {
   return `attempt-${String(attemptNumber).padStart(3, "0")}`;
@@ -627,6 +686,7 @@ function writeChampion(
   factory: FactoryState,
   protocolHash: string,
   at: string,
+  rehearsalOnly = false,
 ): void {
   const model = attempt.model;
   const threshold = attempt.threshold;
@@ -688,7 +748,17 @@ function writeChampion(
     cumulativeModelBytes: cumulativeModelBytes(chain),
     createdAt: at,
   });
-  const path = writeChampionArchive(archive);
+  // A rehearsal's champion goes to a directory beside the attempt it came from,
+  // never to `research/farmer-pi/champions`. That directory is what the next
+  // generation's loader reads, and a rehearsal that could write into it would
+  // be a rehearsal that changed the experiment — which is the one thing the
+  // rehearsal exists to rule out.
+  const path = rehearsalOnly
+    ? writeChampionArchive(
+        Object.freeze({ ...archive, researchOnly: true }),
+        join(root, "champions-rehearsal"),
+      )
+    : writeChampionArchive(archive);
   // The formal verdict is the archive's evidence, so it is copied beside the
   // archive: a champion read a year from now should not have to find a live
   // attempt directory to see what promoted it. The protocol hash is recorded

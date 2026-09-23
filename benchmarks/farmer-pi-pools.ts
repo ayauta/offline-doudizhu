@@ -289,6 +289,44 @@ export function assertWithinNamespace(
 export const FACTORY_ATTEMPT_BLOCK = 25_000;
 
 /**
+ * The sizes an allocation is laid out from.
+ *
+ * Passed in rather than read from the constants above, because the protocol
+ * *also* declares them — `attempt.blockDeals`, `attempt.trainDeals` and the
+ * rest — and two sources of truth for a pool's size is how a rehearsal ends up
+ * asking for 25,000 deals inside a 400-deal retired range, or a real attempt
+ * ends up sized by whatever constant nobody re-read. The constants below stay
+ * as the default so the pool guards can drive the real layout without a
+ * protocol document.
+ */
+export type AttemptLayoutSpec = Readonly<{
+  blockDeals: number;
+  entries: readonly Readonly<{ purpose: string; deals: number }>[];
+}>;
+
+export const FACTORY_BASE_LAYOUT: AttemptLayoutSpec = Object.freeze({
+  blockDeals: FACTORY_ATTEMPT_BLOCK,
+  entries: Object.freeze([
+    Object.freeze({ purpose: "train", deals: 6_000 }),
+    Object.freeze({ purpose: "calibration", deals: 2_000 }),
+    Object.freeze({ purpose: "offline", deals: 2_000 }),
+    Object.freeze({ purpose: "stage1", deals: 200 }),
+    Object.freeze({ purpose: "formal", deals: 4_800 }),
+  ]),
+});
+
+export const FACTORY_RETRY_LAYOUT: AttemptLayoutSpec = Object.freeze({
+  blockDeals: FACTORY_ATTEMPT_BLOCK,
+  entries: Object.freeze([
+    Object.freeze({ purpose: "train-fresh", deals: 6_000 }),
+    Object.freeze({ purpose: "calibration", deals: 4_000 }),
+    Object.freeze({ purpose: "offline", deals: 4_000 }),
+    Object.freeze({ purpose: "stage1", deals: 200 }),
+    Object.freeze({ purpose: "formal", deals: 4_800 }),
+  ]),
+});
+
+/**
  * The sub-ranges of one attempt block.
  *
  * `base` is the default attempt: 6,000 / 2,000 / 2,000 for the dataset, then
@@ -334,12 +372,19 @@ export type AttemptAllocation = Readonly<{
   slack: Range | null;
 }>;
 
-export function attemptBlock(attemptNumber: number, namespaceStart: number): Range {
+export function attemptBlock(
+  attemptNumber: number,
+  namespaceStart: number,
+  blockDeals: number = FACTORY_ATTEMPT_BLOCK,
+): Range {
   if (!Number.isSafeInteger(attemptNumber) || attemptNumber < 1) {
     throw new LedgerError(`Attempt numbers start at 1; received ${attemptNumber}.`);
   }
-  const start = namespaceStart + (attemptNumber - 1) * FACTORY_ATTEMPT_BLOCK;
-  return Object.freeze({ start, end: start + FACTORY_ATTEMPT_BLOCK - 1 });
+  if (!Number.isSafeInteger(blockDeals) || blockDeals < 1) {
+    throw new LedgerError(`An attempt block must be a positive whole number of deals.`);
+  }
+  const start = namespaceStart + (attemptNumber - 1) * blockDeals;
+  return Object.freeze({ start, end: start + blockDeals - 1 });
 }
 
 /**
@@ -351,13 +396,15 @@ export function attemptLayout(
   attemptNumber: number,
   kind: AttemptKind,
   namespaceStart: number,
+  spec?: AttemptLayoutSpec,
 ): AttemptAllocation {
-  const block = attemptBlock(attemptNumber, namespaceStart);
-  const layout = ATTEMPT_LAYOUT[kind];
+  const resolved = spec ?? (kind === "base" ? FACTORY_BASE_LAYOUT : FACTORY_RETRY_LAYOUT);
+  const block = attemptBlock(attemptNumber, namespaceStart, resolved.blockDeals);
+  const layout = spec === undefined ? ATTEMPT_LAYOUT[kind] : resolved.entries;
   const claimed = layout.reduce((total, entry) => total + entry.deals, 0);
-  if (claimed > FACTORY_ATTEMPT_BLOCK) {
+  if (claimed > resolved.blockDeals) {
     throw new LedgerError(
-      `The ${kind} layout claims ${claimed} deals of a ${FACTORY_ATTEMPT_BLOCK}-deal block.`,
+      `The ${kind} layout claims ${claimed} deals of a ${resolved.blockDeals}-deal block.`,
     );
   }
   const attemptId = `attempt-${String(attemptNumber).padStart(3, "0")}`;
@@ -448,6 +495,7 @@ export function allocateAttempt(options: Readonly<{
   parentChampionId: string;
   protocolHash: string;
   at: string;
+  spec?: AttemptLayoutSpec;
   path?: string;
 }>): AttemptAllocation {
   const path = options.path ?? FACTORY_LEDGER_PATH;
@@ -456,7 +504,8 @@ export function allocateAttempt(options: Readonly<{
   if (namespace === undefined || namespace.start === null) {
     throw new LedgerError("The ledger has no factory-v1 namespace reservation.");
   }
-  const allocation = attemptLayout(options.attemptNumber, options.kind, namespace.start);
+  const allocation = attemptLayout(
+    options.attemptNumber, options.kind, namespace.start, options.spec);
 
   const seen = new Set(pools.map((pool) => pool.poolId));
   for (const entry of allocation.pools) {

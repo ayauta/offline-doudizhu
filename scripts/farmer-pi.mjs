@@ -414,17 +414,31 @@ function errorLines(text) {
     .join("\n");
 }
 
+/**
+ * The answers a control invocation gave, in the order it gave them.
+ *
+ * Two shapes, both legitimate. Most modes `emit` a JSON object. A few report a
+ * sentence about the files they wrote — `rows` says which row files it produced
+ * and how many rows are in each — and that is an answer too. The failure worth
+ * distinguishing is *no* answer at all, because a mode that exited 0 having said
+ * nothing is the one case that is not a success.
+ *
+ * A prose answer is returned as `{ text }` rather than dropped. Treating it as
+ * silence cost this runner two spurious retries on its first real training step,
+ * and a retry that re-runs a step that already succeeded is exactly the kind of
+ * thing that looks like robustness and behaves like a duplicate.
+ */
 function parseAnswers(output) {
   const answers = [];
   for (const line of output.split("\n")) {
     if (!line.startsWith("[fpi control] ")) {
       continue;
     }
+    const payload = line.slice("[fpi control] ".length);
     try {
-      answers.push(JSON.parse(line.slice("[fpi control] ".length)));
+      answers.push(JSON.parse(payload));
     } catch {
-      // A truncated line is not an answer. The caller reports an empty answer set
-      // together with the log path, which is the actionable thing either way.
+      answers.push(Object.freeze({ text: payload }));
     }
   }
   return answers;
@@ -538,6 +552,13 @@ function releaseLock() {
 /** Every child that is still running, so a stop can reach all of them. */
 const ACTIVE = new Set();
 
+/** The protocol document this run is under: the scope's, or the repository's. */
+function protocolPathOf(ctx) {
+  const fromScope = ctx.scope === undefined ? null : ctx.scope.protocolPath;
+  const path = fromScope ?? ctx.protocolPath ?? null;
+  return path === "" ? null : path;
+}
+
 function workerEnv(ctx) {
   return {
     ...process.env,
@@ -549,6 +570,10 @@ function workerEnv(ctx) {
     AI_FPI_POLICY_COMMIT: ctx.runnerCommit,
     AI_FPI_ATTEMPT_ID: ctx.attemptId,
     AI_FPI_CHAMPION_ID: ctx.championId,
+    // The document, not just its digest: a worker re-derives the hash from the
+    // file it is pointed at, and a rehearsal runs under its own protocol. The
+    // path lives on the scope every control call already carries.
+    ...(protocolPathOf(ctx) === null ? {} : { AI_FPI_PROTOCOL_PATH: protocolPathOf(ctx) }),
   };
 }
 
@@ -810,6 +835,22 @@ function recordStageDir(ctx, stage) {
   return join(attemptDir(ctx), "verdicts", stage);
 }
 
+/**
+ * The pool a *stage directory* was generated from.
+ *
+ * Read from the stage's own manifest rather than looked up in the current
+ * attempt's pools, because a retry inherits its parent's training corpus: the
+ * `train` source of an attempt-002 belongs to attempt-001, and asking the
+ * current record for it is how a correct retry reads as "no such pool".
+ */
+function poolIdOfStage(dir) {
+  const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
+  if (typeof manifest.poolId !== "string" || manifest.poolId === "") {
+    throw new RunnerStop(`The stage at ${dir} records no pool.`);
+  }
+  return manifest.poolId;
+}
+
 function poolOf(ctx, purpose) {
   const pool = ctx.pools[purpose];
   if (pool === undefined) {
@@ -1003,7 +1044,7 @@ function stepTrain(step, ctx) {
   for (const source of sources) {
     movePool(
       ctx.scope,
-      poolOf(ctx, source.purpose).poolId,
+      poolIdOfStage(source.dir),
       "REVEALED",
       `${ctx.attemptId} rows exported from ${source.purpose}`,
     );

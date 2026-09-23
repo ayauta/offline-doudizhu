@@ -370,7 +370,14 @@ export function corpusConfigHash(options: Readonly<{
  * about its own checkpoints rather than one it takes on the runner's word.
  */
 export function assertRegisteredProtocol(registered: string): string {
-  const { hash } = loadProtocol();
+  // The runner names the protocol file it registered the attempt under, so a
+  // rehearsal running under `protocol-rehearsal.yaml` is checked against that
+  // document rather than against the Factory's. Falling back to the default path
+  // is what a bare invocation gets, and the hash comparison below is what makes
+  // the choice safe either way: a worker pointed at the wrong document refuses
+  // rather than generating a corpus under it.
+  const path = process.env.AI_FPI_PROTOCOL_PATH;
+  const { hash } = loadProtocol(path === undefined || path === "" ? undefined : path);
   assertProtocolHash(registered, hash);
   return hash;
 }

@@ -1,0 +1,198 @@
+# Factory v1 — the rehearsal protocol. NOT the Factory's protocol.
+#
+# This document exists so that the whole state machine can be walked end to end
+# on **retired** deals, in minutes rather than days, before a single fresh pool
+# is allocated. It is deliberately a separate file from `protocol-v1.yaml`: a
+# rehearsal that edited the real protocol would be a rehearsal that changed the
+# experiment, and the two documents are allowed to differ in exactly the places
+# marked below.
+#
+# `REHEARSAL_ONLY`. Nothing produced under this protocol is strength evidence,
+# no verdict it reaches may be registered as a research champion, and the deals
+# it runs on are retired — `discovery-v1` (301-700, exposed twice, retired
+# 2026-09-19) via a *copied* ledger whose namespace points there. The real
+# `pool-ledger.jsonl` is never touched by a rehearsal.
+#
+# What differs from protocol-v1.yaml, and why:
+#
+#   * pool sizes are miniature (a handful of deals per pool) so the pipeline
+#     finishes in minutes;
+#   * the support floors are lowered to the smallest values that can be met at
+#     all at this scale — a floor of 200 override deals cannot be cleared by a
+#     4-deal offline pool, and a rehearsal that always stops at the first screen
+#     would never exercise the stages after it;
+#   * the formal ladder has one rung, of the size the reserve actually holds.
+#
+# What does NOT differ: the model, the seed, the threshold grid, the alpha, the
+# promotion floor, the RNG, the feature schema, the identities and the chain
+# semantics. Those are the things being rehearsed.
+
+version: 1
+frozenAt: "2026-09-23T12:30:00Z"
+rehearsalOnly: true
+
+startChampion: ai-v1
+attemptCap: 10
+retryPerChampion: 1
+
+model:
+  objective: regression
+  iterations: 256
+  maxDepth: 6
+  numLeaves: 31
+  learningRate: 0.05
+  minDataInLeaf: 100
+  lambdaL1: 0
+  lambdaL2: 5
+  featureFraction: 1
+  baggingFraction: 1
+  baggingFreq: 0
+  maxBin: 63
+  threads: 1
+  deterministic: true
+  forceColWise: true
+  seed: 20260920
+  lightgbmVersion: 4.6.0
+
+calibration:
+  thresholds:
+    - 0
+    - 0.01
+    - 0.02
+    - 0.04
+    - 0.08
+    - 0.16
+  families: 6
+  alpha: 0.05
+  minOverrideDeals: 1
+  minSelectedNonzeroDeals: 1
+
+offline:
+  groups: 4
+  minOverrideDeals: 1
+  minSelectedNonzeroDeals: 1
+
+stage1:
+  deals: 3
+
+formal:
+  alpha: 0.005
+  promotionFloor: 0.01
+  designDelta: 0.02
+  ladder:
+    - 6
+
+attempt:
+  blockDeals: 25
+  trainDeals: 6
+  calibrationDeals: 6
+  offlineDeals: 4
+  stage1Deals: 3
+  formalReserveDeals: 6
+  retryTrainFreshDeals: 6
+  retryCalibrationDeals: 6
+  retryOfflineDeals: 4
+
+corpus:
+  datasetVersion: 5
+  snapshotSalt: farmer-pi-rehearsal-snapshot
+  groupSnapshotCap: 3
+  seedBase: 0
+
+referenceBoard:
+  poolId: discovery-v1
+  start: 301
+  end: 700
+
+stop:
+  onDoubleReject: STOP_AND_WAIT_FOR_REVIEW
+  onAttemptLimit: STOP_AND_WAIT_FOR_REVIEW
+  onIntegrity: STOP_AND_WAIT_FOR_REVIEW
+  onResource: STOP_AND_WAIT_FOR_REVIEW
+  onManual: STOP_AND_WAIT_FOR_REVIEW
+
+# The same four identities the real protocol cites. A rehearsal that ran under
+# different policies would rehearse a different Factory.
+identities:
+  teammate:
+    role: teammate (tau)
+    entry: src/core/ai/index.ts
+    hash: 2a39386007949cf1c37010c1d97f61e8468a3d41b44df50cebf70c9cc46b7297
+    files: 15
+  landlord:
+    role: landlord (lambda)
+    entry: src/core/ai/index.ts
+    hash: 2a39386007949cf1c37010c1d97f61e8468a3d41b44df50cebf70c9cc46b7297
+    files: 15
+  strongSeat:
+    role: strong seat (master)
+    entry: src/app/ai/decision-handler.ts
+    hash: a6ae8a6aebd31e88172a12a64845284f799b1487abc07a49d934188a0cee89e3
+    files: 19
+  top3:
+    role: ordered top three
+    entry: src/app/ai/cf-selector.ts
+    hash: e63d084ecd2d7e262886e682bbaad87490fccf340081092ae42200505b922df2
+    files: 22
+  schema:
+    version: 2
+    hash: 0ec9d20f4abde4b7c5d72751b488de2180723863d3a6248593404c8bee7d85f0
+    columns: 86
+
+chain:
+  masterRunsPerDecision: 1
+  proposalsPerDecision: 1
+  candidateLimit: 3
+  referenceAction: previous-layer-action
+  declineFallsBackTo: previous-layer-action
+  tieBreak: frozen-production-candidate-order
+  override: strict-greater-than
+  landlordRoots: untouched
+  warmStart: forbidden
+  layersPerPromotion: 1
+
+rng:
+  kind: keyed-counter
+  deckSeed: dealIndex
+  gameSeed: dealSeed * 100 + strongSeatIndex * 10 + landlordIndex
+  decisionSeed: gameSeed + 1 + seatIndex + decisionIndex * 7919
+  samplingKeyFields: salt, groupId, variantId, seatDecisionIndex
+  samplingKeyBlindTo: label, fork-outcome, expert-gap, candidate-score, winner
+  globalSequentialRng: forbidden
+
+continuation:
+  testedFarmer: full-champion-chain
+  teammate: frozen-tau
+  landlord: frozen-lambda
+  forcedChampionIdentityTest: required
+
+checkpoint:
+  unit: initial-deal
+  atomicWrite: temp-fsync-rename-fsync-directory
+  hashed: payload-only
+  rerunWithDifferentHash: INTEGRITY_STOP
+  resumeSkips: verified-complete-deals
+
+noPeek:
+  kind: protocol-enforced-output-boundary
+  secrecy: not-hostile-user-secrecy
+  checkpointContents: private
+  allowedStatusKeys: stage, attemptId, arms, elapsedMs, throughputPerHour, etaMs, workers, checkpoints, errorCodes, completion
+  revealAfter: stage-sealed-and-integrity-checked
+  verdictWrites: once
+
+deadline:
+  kind: absolute-utc
+  clock: wall
+  onDeadline: checkpoint-current-deal-then-PAUSED_DEADLINE
+  onResume: same-attempt
+  retiresPool: false
+  newWorkAfterDeadline: none
+  hostAwakeRequest: SetThreadExecutionState-ES_CONTINUOUS-ES_SYSTEM_REQUIRED
+  hostAwakeIsAdvisory: true
+
+runner:
+  semanticChangesRequireNewProtocol: true
+  nonsemanticFixesAllowed: true
+  recordRunnerCommit: true
+  verifierInterpretsResults: false

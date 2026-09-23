@@ -291,6 +291,14 @@ export function parseProtocolYaml(text: string): YamlValue {
 export type FactoryProtocol = Readonly<{
   version: number;
   frozenAt: string;
+  /**
+   * True for a document that exists to exercise the pipeline on retired deals
+   * and is never the Factory's protocol. It relaxes the *sizes* — a miniature
+   * has to be small — and it changes where a promotion is archived, so a
+   * rehearsal can walk the whole state machine without being able to produce
+   * anything a real attempt could mistake for its own.
+   */
+  rehearsalOnly: boolean;
   /** The champion every attempt starts from. */
   startChampion: string;
   /** §41: candidate-training attempts, base and retry together. */
@@ -512,6 +520,9 @@ export function parseProtocol(text: string): FactoryProtocol {
   const protocol: FactoryProtocol = Object.freeze({
     version: requireInt(raw, "version", "protocol"),
     frozenAt: requireString(raw, "frozenAt", "protocol"),
+    rehearsalOnly: raw.rehearsalOnly === undefined
+      ? false
+      : requireBool(raw, "rehearsalOnly", "protocol"),
     startChampion: requireString(raw, "startChampion", "protocol"),
     attemptCap: requireInt(raw, "attemptCap", "protocol"),
     retryPerChampion: requireInt(raw, "retryPerChampion", "protocol"),
