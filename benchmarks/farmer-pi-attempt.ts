@@ -212,6 +212,27 @@ export function nextAttemptStep(
   }
 }
 
+/**
+ * Refuses to run an attempt under a protocol other than the one it registered.
+ *
+ * Checked at every transition, not just at registration: the file can be edited
+ * between two stages of a run that has been paused for a day, and an attempt
+ * whose corpus was drawn under one protocol and whose formal test ran under
+ * another is not an experiment with a result.
+ */
+export function assertAttemptProtocol(
+  attempt: AttemptRecord,
+  actualProtocolHash: string,
+): void {
+  if (attempt.protocolHash !== actualProtocolHash) {
+    throw new Error(
+      `${attempt.attemptId} registered under protocol ${attempt.protocolHash}; the file now ` +
+      `hashes to ${actualProtocolHash}. A protocol is changed by stopping the Factory and ` +
+      "opening a new one, never by editing the file under a running attempt.",
+    );
+  }
+}
+
 /** The phase an attempt moves to after finishing `step`. */
 export function phaseAfter(step: AttemptStep): AttemptPhase {
   switch (step.kind) {

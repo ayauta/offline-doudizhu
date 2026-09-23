@@ -7,7 +7,8 @@
  *   generate  AI_FPI_CORPUS_GENERATE=<dir> AI_FPI_POOL_ID=... AI_FPI_POOL_START=... \
  *             AI_FPI_POOL_END=... AI_FPI_PURPOSE=train AI_FPI_CHAMPION_ID=ai-v1 \
  *             AI_FPI_DEAL_START=200001 AI_FPI_DEALS=6000 \
- *             AI_FPI_POLICY_COMMIT=<sha> AI_FPI_ATTEMPT_ID=attempt-001
+ *             AI_FPI_PROTOCOL_HASH=<sha256> AI_FPI_POLICY_COMMIT=<runner sha> \
+ *             AI_FPI_ATTEMPT_ID=attempt-001
  *   rows      AI_FPI_CORPUS_ROWS=<dir> AI_FPI_PURPOSE=train
  *
  * The runner (`scripts/farmer-pi.mjs`, under the absolute-deadline host) decides
@@ -57,6 +58,7 @@ import {
   writeFileAtomic,
 } from "./farmer-pi-stage.js";
 import {
+  assertRegisteredProtocol,
   championChainById,
   corpusConfigHash,
   dealCheckpointed,
@@ -105,6 +107,13 @@ describe.runIf(ENABLED)("Farmer Policy Iteration Factory v1 corpus", () => {
 function generate(dir: string): void {
   const pool = factoryPoolRefFromEnv();
   const championId = requiredText("AI_FPI_CHAMPION_ID");
+  // §2 — two different identities, deliberately not merged. `protocolHash` is
+  // the sha256 of `protocol-v1.yaml`'s own bytes and is the one the checkpoints
+  // and the archive cite; the runner passes the hash it registered and this
+  // worker re-derives it from the file, so an attempt cannot be generated under
+  // a protocol its manifest does not name. `policyCommit` is the runner's git
+  // commit, recorded as provenance and never used as the protocol's identity.
+  const protocolHash = assertRegisteredProtocol(requiredText("AI_FPI_PROTOCOL_HASH"));
   const policyCommit = requiredText("AI_FPI_POLICY_COMMIT");
   const attemptId = requiredText("AI_FPI_ATTEMPT_ID");
   const dealStart = requiredInt("AI_FPI_DEAL_START");
@@ -121,7 +130,7 @@ function generate(dir: string): void {
   }
 
   const chain = championChainById(championId);
-  const configHash = corpusConfigHash({ pool, chain, policyCommit, attemptId });
+  const configHash = corpusConfigHash({ pool, chain, protocolHash, attemptId });
   const chainLayers = chain.layers.map((layer) => layer.modelSha256);
   const started = Date.now();
   let written = 0;
@@ -132,7 +141,8 @@ function generate(dir: string): void {
     `[fpi corpus] pool ${pool.poolId} purpose ${pool.purpose} range ` +
     `${pool.range.start}..${pool.range.end} window ${dealStart}..${lastDeal} ` +
     `champion ${chain.championId} layers ${chain.layers.length} ` +
-    `policy ${policyCommit} attempt ${attemptId} config ${configHash.slice(0, 16)}`,
+    `runner ${policyCommit} protocol ${protocolHash.slice(0, 16)} attempt ${attemptId} ` +
+    `config ${configHash.slice(0, 16)}`,
   );
   progress(`[fpi corpus] chain ${JSON.stringify(chainLayers)}`);
 

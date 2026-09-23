@@ -33,6 +33,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { sha256 } from "./farmer-pi-stage.js";
+import { verifyIdentities, type IdentityDigest } from "./farmer-pi-identity.js";
+import { CF_FEATURE_SCHEMA_VERSION } from "./cf-dataset.js";
+import { CF_FEATURE_NAMES } from "../src/core/ai/cf-features.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const PROTOCOL_PATH = join(ROOT, "research", "farmer-pi", "protocol-v1.yaml");
@@ -73,7 +76,12 @@ function scalar(text: string, lineNumber: number): YamlScalar {
     return false;
   }
   if (/^-?\d+$/.test(value)) {
-    return Number.parseInt(value, 10);
+    const parsed = Number.parseInt(value, 10);
+    // A digit run too long to survive as a double stays a string rather than
+    // becoming a silently imprecise number. A hex digest that happens to be all
+    // digits is the case this is for, and it is rare enough that losing it to a
+    // rounding error would be the kind of thing nobody notices.
+    return Number.isSafeInteger(parsed) ? parsed : value;
   }
   if (/^-?\d*\.\d+([eE][-+]?\d+)?$/.test(value)) {
     return Number.parseFloat(value);
@@ -345,6 +353,27 @@ export type FactoryProtocol = Readonly<{
     seedBase: number;
   }>;
   referenceBoard: Readonly<{ poolId: string; start: number; end: number }>;
+  /**
+   * The four role identities and the feature schema, by hash. This is what
+   * makes "the teammate is frozen" a statement about bytes rather than about a
+   * commit message; `assertIdentitiesCurrent` re-derives them from the working
+   * tree.
+   */
+  identities: Readonly<{
+    teammate: IdentityDigest;
+    landlord: IdentityDigest;
+    strongSeat: IdentityDigest;
+    top3: IdentityDigest;
+    schema: Readonly<{ version: number; hash: string; columns: number }>;
+  }>;
+  /**
+   * Blocks whose *content* is the contract. They are typed only as "present
+   * and a map" because their job is to be read and hashed: a protocol document
+   * that inlined them as loose constants would stop being the document of
+   * record. §11 requires each of them to be covered, so their absence is an
+   * error rather than a default.
+   */
+  blocks: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
   stop: Readonly<{
     onDoubleReject: string;
     onAttemptLimit: string;
@@ -402,6 +431,70 @@ function requireNumbers(record: YamlMap, key: string, path: string): readonly nu
     throw new ProtocolError(`${path}.${key} must be a non-empty list of finite numbers.`);
   }
   return Object.freeze(value as readonly number[]);
+}
+
+/**
+ * The blocks §11 requires the protocol to cover. Each is a map whose contents
+ * are the contract; the Factory checks that it is *there*, and hashes the whole
+ * document so that what it says is fixed either way.
+ */
+export const REQUIRED_BLOCKS: readonly string[] = Object.freeze([
+  "chain", "rng", "continuation", "checkpoint", "noPeek", "deadline", "runner",
+]);
+
+function parseDigest(record: YamlMap, path: string): IdentityDigest {
+  const hash = requireString(record, "hash", path);
+  if (!/^[0-9a-f]{64}$/.test(hash)) {
+    throw new ProtocolError(`${path}.hash is not a SHA-256 digest.`);
+  }
+  return Object.freeze({
+    role: requireString(record, "role", path),
+    entry: requireString(record, "entry", path),
+    hash,
+    files: requireInt(record, "files", path),
+  });
+}
+
+function parseIdentities(
+  raw: YamlMap,
+): FactoryProtocol["identities"] {
+  const schema = requireRecord(raw.schema, "protocol.identities.schema");
+  return Object.freeze({
+    teammate: parseDigest(requireRecord(raw.teammate, "protocol.identities.teammate"),
+      "protocol.identities.teammate"),
+    landlord: parseDigest(requireRecord(raw.landlord, "protocol.identities.landlord"),
+      "protocol.identities.landlord"),
+    strongSeat: parseDigest(requireRecord(raw.strongSeat, "protocol.identities.strongSeat"),
+      "protocol.identities.strongSeat"),
+    top3: parseDigest(requireRecord(raw.top3, "protocol.identities.top3"),
+      "protocol.identities.top3"),
+    schema: Object.freeze({
+      version: requireInt(schema, "version", "protocol.identities.schema"),
+      hash: requireString(schema, "hash", "protocol.identities.schema"),
+      columns: requireInt(schema, "columns", "protocol.identities.schema"),
+    }),
+  });
+}
+
+/**
+ * Re-derives every identity from the working tree and compares it with what the
+ * protocol froze.
+ *
+ * Called before the first deal of an attempt. A policy that moved under a
+ * running Factory invalidates every number it has produced, including the ones
+ * already archived, so this is an `INTEGRITY_STOP` and not a warning.
+ */
+export function assertIdentitiesCurrent(protocol: FactoryProtocol): void {
+  const schema = protocol.identities.schema;
+  if (schema.version !== CF_FEATURE_SCHEMA_VERSION ||
+    schema.columns !== CF_FEATURE_NAMES.length) {
+    throw new ProtocolError(
+      `The protocol froze schema ${schema.version} with ${schema.columns} columns; the tree has ` +
+      `${CF_FEATURE_SCHEMA_VERSION} with ${CF_FEATURE_NAMES.length}.`,
+    );
+  }
+  verifyIdentities([protocol.identities.teammate, protocol.identities.landlord,
+    protocol.identities.strongSeat, protocol.identities.top3]);
 }
 
 export function parseProtocol(text: string): FactoryProtocol {
@@ -484,6 +577,13 @@ export function parseProtocol(text: string): FactoryProtocol {
       start: requireInt(board, "start", "protocol.referenceBoard"),
       end: requireInt(board, "end", "protocol.referenceBoard"),
     }),
+    identities: parseIdentities(requireRecord(raw.identities, "protocol.identities")),
+    blocks: Object.freeze(Object.fromEntries(
+      REQUIRED_BLOCKS.map((name) => [
+        name,
+        Object.freeze(requireRecord(raw[name], `protocol.${name}`) as Record<string, unknown>),
+      ]),
+    )),
     stop: Object.freeze({
       onDoubleReject: requireString(stop, "onDoubleReject", "protocol.stop"),
       onAttemptLimit: requireString(stop, "onAttemptLimit", "protocol.stop"),

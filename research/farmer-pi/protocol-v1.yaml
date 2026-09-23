@@ -133,3 +133,116 @@ stop:
   onIntegrity: STOP_AND_WAIT_FOR_REVIEW
   onResource: STOP_AND_WAIT_FOR_REVIEW
   onManual: STOP_AND_WAIT_FOR_REVIEW
+
+# The immutable identities this Factory is defined against. Each hash is the
+# SHA-256 of a manifest over the *runtime import closure* of an entry point:
+# "path\0sha256(bytes)\n" for every module in the closure, sorted by path.
+# Computed by benchmarks/farmer-pi-identity.ts from the working tree, and
+# re-verified before the first deal of every attempt.
+#
+# tau and lambda are the same tier and therefore the same hash today. They are
+# recorded separately anyway, under their own roles, because the protocol has
+# to be readable as "who plays the partner seat" and "who plays the landlord
+# seat" — two questions that happen to share an answer, not one question.
+identities:
+  teammate:
+    role: teammate (tau)
+    entry: src/core/ai/index.ts
+    hash: 2a39386007949cf1c37010c1d97f61e8468a3d41b44df50cebf70c9cc46b7297
+    files: 15
+  landlord:
+    role: landlord (lambda)
+    entry: src/core/ai/index.ts
+    hash: 2a39386007949cf1c37010c1d97f61e8468a3d41b44df50cebf70c9cc46b7297
+    files: 15
+  strongSeat:
+    role: strong seat (master)
+    entry: src/app/ai/decision-handler.ts
+    hash: a6ae8a6aebd31e88172a12a64845284f799b1487abc07a49d934188a0cee89e3
+    files: 19
+  top3:
+    role: ordered top three
+    entry: src/app/ai/cf-selector.ts
+    hash: e63d084ecd2d7e262886e682bbaad87490fccf340081092ae42200505b922df2
+    files: 22
+  schema:
+    version: 2
+    hash: 0ec9d20f4abde4b7c5d72751b488de2180723863d3a6248593404c8bee7d85f0
+    columns: 86
+
+# The champion chain. A champion is a chain of layers over one shared proposal,
+# never a model. This block is the semantic contract; the runtime that
+# implements it is benchmarks/farmer-pi-chain.ts.
+chain:
+  masterRunsPerDecision: 1
+  proposalsPerDecision: 1
+  candidateLimit: 3
+  referenceAction: previous-layer-action
+  # A layer that declines leaves the action it was handed standing. Falling
+  # back to b0 would discard every earlier generation's work.
+  declineFallsBackTo: previous-layer-action
+  tieBreak: frozen-production-candidate-order
+  override: strict-greater-than
+  landlordRoots: untouched
+  warmStart: forbidden
+  layersPerPromotion: 1
+
+# The random protocol. No global sequential RNG anywhere: every random value is
+# a pure function of a key, so a fork resumes the same policy the full game
+# would have kept playing.
+rng:
+  kind: keyed-counter
+  deckSeed: dealIndex
+  gameSeed: dealSeed * 100 + strongSeatIndex * 10 + landlordIndex
+  decisionSeed: gameSeed + 1 + seatIndex + decisionIndex * 7919
+  samplingKeyFields: salt, groupId, variantId, seatDecisionIndex
+  samplingKeyBlindTo: label, fork-outcome, expert-gap, candidate-score, winner
+  globalSequentialRng: forbidden
+
+# The continuation policy. After the forced first action the tested farmer
+# resumes the FULL champion chain; the teammate and the landlord never change.
+continuation:
+  testedFarmer: full-champion-chain
+  teammate: frozen-tau
+  landlord: frozen-lambda
+  forcedChampionIdentityTest: required
+
+# Checkpoint semantics (section 27). The deal is the transaction.
+checkpoint:
+  unit: initial-deal
+  atomicWrite: temp-fsync-rename-fsync-directory
+  hashed: payload-only
+  rerunWithDifferentHash: INTEGRITY_STOP
+  resumeSkips: verified-complete-deals
+
+# The information-release boundary (section 29). Private checkpoints may hold
+# outcomes; nothing an operator can read while a stage runs may.
+noPeek:
+  kind: protocol-enforced-output-boundary
+  secrecy: not-hostile-user-secrecy
+  checkpointContents: private
+  allowedStatusKeys: stage, attemptId, arms, elapsedMs, throughputPerHour, etaMs, workers, checkpoints, errorCodes, completion
+  revealAfter: stage-sealed-and-integrity-checked
+  verdictWrites: once
+
+# The deadline (section 30, section 47). An absolute UTC instant checked
+# against the wall clock, never an elapsed duration: a monotonic timer inside a
+# suspended machine measures the wrong thing.
+deadline:
+  kind: absolute-utc
+  clock: wall
+  onDeadline: checkpoint-current-deal-then-PAUSED_DEADLINE
+  onResume: same-attempt
+  retiresPool: false
+  newWorkAfterDeadline: none
+  hostAwakeRequest: SetThreadExecutionState-ES_CONTINUOUS-ES_SYSTEM_REQUIRED
+  hostAwakeIsAdvisory: true
+
+# Runner identity. Separate from protocolHash on purpose: a runner fix that
+# changes no scientific semantic is a runnerCommit change, and one that does is
+# a protocol version change.
+runner:
+  semanticChangesRequireNewProtocol: true
+  nonsemanticFixesAllowed: true
+  recordRunnerCommit: true
+  verifierInterpretsResults: false

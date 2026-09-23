@@ -35,6 +35,7 @@ import {
 import {
   PROTOCOL_PATH,
   ProtocolError,
+  assertIdentitiesCurrent,
   assertProtocolConsistency,
   assertProtocolHash,
   loadProtocol,
@@ -42,6 +43,7 @@ import {
   parseProtocolYaml,
   protocolHashOf,
 } from "../../benchmarks/farmer-pi-protocol.js";
+import { assertAttemptProtocol } from "../../benchmarks/farmer-pi-attempt.js";
 import {
   FACTORY_ALPHA,
   FACTORY_FORMAL_LADDER,
@@ -348,6 +350,45 @@ describe("the frozen protocol", () => {
 
   it("accepts the frozen file's own consistency check", () => {
     expect(() => assertProtocolConsistency(loadProtocol().protocol)).not.toThrow();
+  });
+
+  it("cites role identities the working tree actually produces", () => {
+    const { protocol } = loadProtocol();
+    // Re-derives every closure from disk and compares. A policy that moved
+    // under a running Factory invalidates everything it has produced.
+    expect(() => assertIdentitiesCurrent(protocol)).not.toThrow();
+    expect(protocol.identities.schema.columns).toBe(86);
+    expect(protocol.identities.teammate.hash).toBe(protocol.identities.landlord.hash);
+  });
+
+  it("refuses a protocol whose identity hash the tree does not produce", () => {
+    const text = readFileSync(PROTOCOL_PATH, "utf8");
+    const swapped = text.replace(
+      "hash: 2a39386007949cf1c37010c1d97f61e8468a3d41b44df50cebf70c9cc46b7297",
+      `hash: ${"f".repeat(63)}0`,
+    );
+    expect(swapped).not.toBe(text);
+    expect(() => assertIdentitiesCurrent(parseProtocol(swapped))).toThrow(/invalidates every number/);
+  });
+
+  it("rejects a one-byte protocol change under a registered attempt", () => {
+    const registered = loadProtocol().hash;
+    // The smallest edit that is still an edit: the hash is over the bytes, so
+    // appending a single character is enough to be a different protocol.
+    const edited = protocolHashOf(`${readFileSync(PROTOCOL_PATH, "utf8")}\n`);
+    expect(edited).not.toBe(registered);
+    expect(() => assertProtocolHash(registered, edited)).toThrow(/never by editing/);
+
+    const attempt = {
+      attemptId: "attempt-001", attemptNumber: 1, kind: "base" as const,
+      parentChampionId: "ai-v1", protocolHash: registered, pools: {},
+      phase: "PLANNED" as const, corpusDone: [], threshold: null, stage1: null,
+      formalPlan: null, formalN: null, stopReason: null, outcome: null,
+      startedAt: "2026-09-23T00:00:00.000Z", updatedAt: "2026-09-23T00:00:00.000Z",
+    };
+    expect(() => assertAttemptProtocol(attempt, registered)).not.toThrow();
+    expect(() => assertAttemptProtocol(attempt, edited))
+      .toThrow(/registered under protocol/);
   });
 });
 

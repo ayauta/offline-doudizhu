@@ -6,7 +6,8 @@
  *
  *   AI_FPI_ARM_RUN=<dir> AI_FPI_ARM=champion|candidate AI_FPI_CHAMPION_ID=ai-v1 \
  *   AI_FPI_STAGE=stage1 AI_FPI_POOL_START=200001 AI_FPI_DEALS=200 \
- *   AI_FPI_POLICY_COMMIT=<sha> AI_FPI_ATTEMPT_ID=attempt-001
+ *   AI_FPI_PROTOCOL_HASH=<sha256> AI_FPI_POLICY_COMMIT=<runner sha> \
+ *                   AI_FPI_ATTEMPT_ID=attempt-001
  *
  *   candidate only: AI_FPI_CANDIDATE_LAYER=<model.json> AI_FPI_CANDIDATE_SHA=<sha> \
  *                   AI_FPI_CANDIDATE_THRESHOLD=<t> AI_FPI_CANDIDATE_BYTES=<n>
@@ -50,6 +51,7 @@ import { chainDepth, type ChainLayer, type ChampionChain } from "./farmer-pi-cha
 import { assertFactorySeedBase } from "./farmer-pi-corpus.js";
 import { makeDealRecord, writeDealRecord } from "./farmer-pi-stage.js";
 import {
+  assertRegisteredProtocol,
   candidateChain,
   candidateLayer,
   championChainById,
@@ -119,7 +121,13 @@ function runArm(dir: string): void {
   const arm = armFromEnv();
   const stage = requiredText("AI_FPI_STAGE");
   const championId = requiredText("AI_FPI_CHAMPION_ID");
-  const policyCommit = requiredText("AI_FPI_POLICY_COMMIT");
+  // §2 — the protocol's identity is the sha256 of `protocol-v1.yaml`'s own
+  // bytes, never the runner's commit. The two are recorded side by side and
+  // never substituted for one another: a runner fix that changes no scientific
+  // semantic moves `runnerCommit` and must *not* move `protocolHash`, and a
+  // protocol edit moves `protocolHash` and stops every registered attempt.
+  const protocolHash = assertRegisteredProtocol(requiredText("AI_FPI_PROTOCOL_HASH"));
+  const runnerCommit = requiredText("AI_FPI_POLICY_COMMIT");
   const attemptId = requiredText("AI_FPI_ATTEMPT_ID");
   const dealStart = requiredInt("AI_FPI_POOL_START");
   const deals = requiredInt("AI_FPI_DEALS");
@@ -137,12 +145,7 @@ function runArm(dir: string): void {
   const chain: ChampionChain = arm === "candidate"
     ? candidateChain(base, candidateLayerFromEnv())
     : base;
-  // The protocol identity is the pipeline commit the runner launched from.
-  // `armConfigHash` wants a `protocolHash`; if the Factory's frozen protocol
-  // file ever becomes the cited authority — it can be read with `loadProtocol`,
-  // whose hash is that file's own sha256 — this one argument is where it enters,
-  // and every checkpoint's config hash moves with it.
-  const configHash = armConfigHash({ chain, arm, protocolHash: policyCommit });
+  const configHash = armConfigHash({ chain, arm, protocolHash });
   const started = Date.now();
   let written = 0;
   let resumed = 0;
@@ -151,7 +154,8 @@ function runArm(dir: string): void {
   progress(
     `[fpi arm] stage ${stage} arm ${arm} champion ${chain.championId} ` +
     `layers ${chain.layers.length} window ${dealStart}..${dealStart + deals - 1} ` +
-    `policy ${policyCommit} attempt ${attemptId} config ${configHash.slice(0, 16)}`,
+    `runner ${runnerCommit} protocol ${protocolHash.slice(0, 16)} attempt ${attemptId} ` +
+    `config ${configHash.slice(0, 16)}`,
   );
 
   for (let offset = 0; offset < deals; offset += 1) {

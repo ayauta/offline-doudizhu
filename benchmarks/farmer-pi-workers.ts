@@ -72,6 +72,7 @@ import {
   stableHash,
   type PiDealRecord,
 } from "./farmer-pi-stage.js";
+import { assertProtocolHash, loadProtocol } from "./farmer-pi-protocol.js";
 
 // ---------------------------------------------------------------------------
 // Progress
@@ -336,13 +337,14 @@ export function dealCheckpointed(dir: string, record: PiDealRecord): boolean {
 export function corpusConfigHash(options: Readonly<{
   pool: FactoryPoolRef;
   chain: ChampionChain;
-  policyCommit: string;
+  /** The sha256 of `protocol-v1.yaml`'s bytes, never the runner's commit. */
+  protocolHash: string;
   attemptId: string;
 }>): string {
   return stableHash({
     kind: "farmer-pi-corpus",
     attemptId: options.attemptId,
-    policyCommit: options.policyCommit,
+    protocolHash: options.protocolHash,
     pool: {
       poolId: options.pool.poolId,
       purpose: options.pool.purpose,
@@ -357,6 +359,20 @@ export function corpusConfigHash(options: Readonly<{
     snapshotCap: FACTORY_GROUP_SNAPSHOT_CAP,
     seedBase: FACTORY_SEED_BASE,
   });
+}
+
+/**
+ * The protocol the runner registered, re-derived from the file and compared.
+ *
+ * The worker is handed a hash and does not trust it: it reads the protocol
+ * itself, hashes the bytes, and refuses when the two disagree. That is what
+ * makes "this attempt ran under protocol X" a statement the worker can make
+ * about its own checkpoints rather than one it takes on the runner's word.
+ */
+export function assertRegisteredProtocol(registered: string): string {
+  const { hash } = loadProtocol();
+  assertProtocolHash(registered, hash);
+  return hash;
 }
 
 // ---------------------------------------------------------------------------
