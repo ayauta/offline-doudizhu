@@ -292,6 +292,72 @@ describe("both arms of a strength stage really run and seal", () => {
   }, 900_000);
 });
 
+describe("both arms of the formal stage really run and seal", () => {
+  it("plays the formal stage on retired deals and derives a real formal verdict", () => {
+    rehearsalLedger();
+    const layer = writeCandidateLayerFixture();
+    const protocolHash = rehearsalProtocolHash();
+    const pool = {
+      poolId: "wiring/formal-run", purpose: "formal",
+      start: WIRING_START + 100, end: WIRING_START + 100 + WIRING_DEALS - 1,
+    };
+    const base = {
+      attemptId: "wiring-formal", championId: "ai-v1", at: new Date().toISOString(), pool,
+      protocolPath: REHEARSAL_PROTOCOL, ledgerPath: join(WIRING_ROOT, "ledger.jsonl"),
+    };
+    const record = control("open-stage", { ...base, stage: "formal", role: "record" });
+    const dirs: Record<string, string> = {};
+    for (const arm of ["champion", "candidate"]) {
+      const opened = control("open-stage", {
+        ...base, stage: "formal", role: "arm", arm,
+        ...(arm === "candidate" ? { layer } : {}),
+      });
+      dirs[arm] = String(opened.dir);
+    }
+    expect(dirs.champion).not.toBe(dirs.candidate);
+
+    for (const arm of ["champion", "candidate"]) {
+      const armDir = dirs[arm] ?? "";
+      expect(armDir).not.toBe("");
+      runStageWorker({
+        AI_FPI_ARM_RUN: armDir, AI_FPI_ARM: arm, AI_FPI_STAGE: "formal",
+        AI_FPI_CHAMPION_ID: "ai-v1", AI_FPI_POOL_START: String(pool.start),
+        AI_FPI_DEALS: String(WIRING_DEALS),
+        AI_FPI_PROTOCOL_HASH: protocolHash, AI_FPI_PROTOCOL_PATH: REHEARSAL_PROTOCOL,
+        AI_FPI_POLICY_COMMIT: "wiring-harness", AI_FPI_ATTEMPT_ID: "wiring-formal",
+        ...(arm === "candidate" ? {
+          AI_FPI_CANDIDATE_LAYER: layer.artifactPath,
+          AI_FPI_CANDIDATE_SHA: layer.modelSha256,
+          AI_FPI_CANDIDATE_THRESHOLD: String(layer.threshold),
+          AI_FPI_CANDIDATE_BYTES: String(layer.modelBytes),
+        } : {}),
+      });
+    }
+    for (const arm of ["champion", "candidate"]) {
+      const sealed = control("seal-stage", { dir: dirs[arm] ?? "", at: new Date().toISOString() });
+      expect(sealed.completion).toBe("SEALED");
+      expect(sealed.deals).toBe(WIRING_DEALS);
+    }
+    control("seal-stage", { dir: String(record.dir), at: new Date().toISOString() });
+
+    const verdict = control("strength-verdict", {
+      ...base, stage: "formal", dirs, recordDir: String(record.dir),
+    });
+    // The formal rule's own shape: a paired test over the deals, one-sided at
+    // alpha, with the preregistered floor deciding the promotion. Nothing here
+    // asserts *which* verdict — the harness is not picking seeds for an answer.
+    expect(verdict.n).toBe(WIRING_DEALS);
+    expect(typeof verdict.mean).toBe("number");
+    expect(typeof verdict.lower).toBe("number");
+    expect(verdict.alpha).toBe(0.005);
+    expect(["PROMOTE", "REJECT"]).toContain(verdict.decision);
+    // Deliberately asserted on the fields the formal emit carries and no more:
+    // the claim under test is that the canonical worker, seal and aggregation
+    // produce a formal verdict at all, not that one particular candidate wins.
+    expect(Object.keys(verdict).length).toBeGreaterThan(0);
+  }, 900_000);
+});
+
 // ---------------------------------------------------------------------------
 // The transitions the miniature could not reach
 // ---------------------------------------------------------------------------
