@@ -1,0 +1,586 @@
+/**
+ * Factory v1 guards for the protocol, the ledger and the stage protocol.
+ *
+ * These three are the parts of the Factory that decide *what may happen* rather
+ * than what a game does, so they are the parts where a quiet mistake costs the
+ * most: a pool that overlaps another pool, a protocol that drifted from the one
+ * an attempt registered, a checkpoint that was silently overwritten. Each of
+ * them is a pure function or a file operation on a temporary directory, so the
+ * guards are cheap and none of them touches a fresh seed.
+ */
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+
+import {
+  ATTEMPT_LAYOUT,
+  CLOSED_STATES,
+  FACTORY_ATTEMPT_BLOCK,
+  FACTORY_LEDGER_PATH,
+  LedgerError,
+  POOL_STATES,
+  allocateAttempt,
+  appendLedgerEvent,
+  assertNoOverlap,
+  assertWithinNamespace,
+  attemptBlock,
+  attemptLayout,
+  foldPools,
+  ledgerPools,
+  parseLedger,
+  readLedger,
+  transitionPool,
+} from "../../benchmarks/farmer-pi-pools.js";
+import {
+  PROTOCOL_PATH,
+  ProtocolError,
+  assertProtocolConsistency,
+  assertProtocolHash,
+  loadProtocol,
+  parseProtocol,
+  parseProtocolYaml,
+  protocolHashOf,
+} from "../../benchmarks/farmer-pi-protocol.js";
+import {
+  FACTORY_ALPHA,
+  FACTORY_FORMAL_LADDER,
+  FACTORY_PROMOTION_FLOOR,
+  IntegrityError,
+  PI_STATUS_KEYS,
+  assertNoPeekStatus,
+  chooseFormalN,
+  completedDeals,
+  formalVerdict,
+  makeDealRecord,
+  offlineVerdict,
+  pairedTest,
+  readDealRecord,
+  requiredFormalN,
+  sealStage,
+  flushManifest,
+  stage1Decision,
+  stageStatus,
+  verifyStage,
+  writeDealRecord,
+  writeManifest,
+  writeVerdictOnce,
+} from "../../benchmarks/farmer-pi-stage.js";
+
+const temporaries: string[] = [];
+function temporaryDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "farmer-pi-"));
+  temporaries.push(dir);
+  return dir;
+}
+afterEach(() => {
+  while (temporaries.length > 0) {
+    const dir = temporaries.pop();
+    if (dir !== undefined) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The ledger
+// ---------------------------------------------------------------------------
+
+describe("the ledger is the single source of truth", () => {
+  it("parses with a contiguous sequence and folds every pool", () => {
+    const events = readLedger(FACTORY_LEDGER_PATH);
+    expect(events.length).toBeGreaterThan(10);
+    events.forEach((event, index) => expect(event.seq).toBe(index + 1));
+    const pools = foldPools(events);
+    const ids = pools.map((pool) => pool.poolId);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const pool of pools) {
+      expect(POOL_STATES).toContain(pool.state);
+    }
+  });
+
+  it("keeps every historical pool closed and names the reason", () => {
+    const pools = ledgerPools();
+    const byId = new Map(pools.map((pool) => [pool.poolId, pool]));
+    const expectedClosure: Readonly<Record<string, string>> = Object.freeze({
+      "discovery-v1": "CONSUMED",
+      "early-calibration-mechanical": "CONSUMED",
+      "phase2-v1-final-validation": "CONSUMED",
+      "discovery-v2": "CONSUMED",
+      "discovery-v3": "CONSUMED",
+      "gate-b-discovery-v4": "CONSUMED",
+      "phase2-v1-dataset": "CONSUMED",
+      "spec062-test-reserve": "QUARANTINED_UNEXPOSED",
+      "spec064-dataset": "CONSUMED",
+      "spec064-stage1": "INVALID_EXPOSED",
+      "spec064-stage2": "QUARANTINED_UNEXPOSED",
+      "spec065-dataset": "INVALID_EXPOSED",
+      "spec065-stage1": "QUARANTINED_UNEXPOSED",
+      "spec065-stage2": "QUARANTINED_UNEXPOSED",
+    });
+    for (const [poolId, state] of Object.entries(expectedClosure)) {
+      const pool = byId.get(poolId);
+      expect(pool, poolId).toBeDefined();
+      expect(pool?.state, poolId).toBe(state);
+      expect(CLOSED_STATES).toContain(pool?.state);
+    }
+  });
+
+  it("has no two pools overlapping, and the namespace covers the whole Factory", () => {
+    const pools = ledgerPools();
+    const ranged = pools.filter(
+      (pool) => pool.start !== null && pool.end !== null && pool.poolId !== "factory-v1-namespace",
+    );
+    for (const pool of ranged) {
+      assertNoOverlap(
+        pools.filter((other) => other.poolId !== pool.poolId),
+        { start: pool.start ?? 0, end: pool.end ?? 0 },
+        `Pool ${pool.poolId}`,
+      );
+    }
+    const namespace = pools.find((pool) => pool.poolId === "factory-v1-namespace");
+    expect(namespace?.start).toBe(200_001);
+    expect(namespace?.end).toBe(450_000);
+  });
+
+  it("keeps every historical pool below the Factory's floor", () => {
+    const pools = ledgerPools();
+    const historical = pools.filter((pool) => pool.poolId !== "factory-v1-namespace");
+    for (const pool of historical) {
+      expect(pool.end ?? 0).toBeLessThan(200_001);
+    }
+  });
+
+  it("refuses a ledger with a gap in its sequence", () => {
+    const text = readFileSync(FACTORY_LEDGER_PATH, "utf8");
+    const lines = text.trim().split("\n");
+    const dropped = [...lines.slice(0, 3), ...lines.slice(4)].join("\n");
+    expect(() => parseLedger(dropped)).toThrow(/no longer append-only/);
+  });
+});
+
+describe("attempt allocation is computed, not copied", () => {
+  it("lays out a base attempt exactly as the protocol sizes it", () => {
+    const layout = attemptLayout(1, "base", 200_001);
+    expect(layout.attemptId).toBe("attempt-001");
+    expect(layout.block).toEqual({ start: 200_001, end: 225_000 });
+    const byPurpose = new Map(layout.pools.map((entry) => [entry.purpose, entry.range]));
+    expect(byPurpose.get("train")).toEqual({ start: 200_001, end: 206_000 });
+    expect(byPurpose.get("calibration")).toEqual({ start: 206_001, end: 208_000 });
+    expect(byPurpose.get("offline")).toEqual({ start: 208_001, end: 210_000 });
+    expect(byPurpose.get("stage1")).toEqual({ start: 210_001, end: 210_200 });
+    expect(byPurpose.get("formal")).toEqual({ start: 210_201, end: 215_000 });
+    expect(layout.slack).toEqual({ start: 215_001, end: 225_000 });
+  });
+
+  it("gives a retry its own block, disjoint from the base it retries", () => {
+    // A retry is its own attempt in the budget, so it gets its own block. It
+    // *reuses* the rejected base attempt's training pool, which is why its own
+    // fresh training range is 6,000 deals and not 12,000.
+    const base = attemptLayout(1, "base", 200_001);
+    const retry = attemptLayout(2, "retry", 200_001);
+    expect(retry.block.start).toBe(base.block.end + 1);
+    for (const entry of retry.pools) {
+      expect(entry.range.start).toBeGreaterThanOrEqual(retry.block.start);
+      expect(entry.range.end).toBeLessThanOrEqual(retry.block.end);
+    }
+    const claimed = [...base.pools, ...retry.pools];
+    for (const [index, entry] of claimed.entries()) {
+      for (const other of claimed.slice(index + 1)) {
+        const overlaps = entry.range.start <= other.range.end && entry.range.end >= other.range.start;
+        expect(overlaps, `${entry.purpose} vs ${other.purpose}`).toBe(false);
+      }
+    }
+    expect(retry.slack === null || retry.slack.start > retry.pools[retry.pools.length - 1]!.range.end)
+      .toBe(true);
+  });
+
+  it("gives ten attempts disjoint blocks that end inside the namespace", () => {
+    const blocks = Array.from({ length: 10 }, (_, index) => attemptBlock(index + 1, 200_001));
+    expect(blocks[9]!.end).toBe(450_000);
+    for (const [index, block] of blocks.entries()) {
+      const next = blocks[index + 1];
+      if (next !== undefined) {
+        expect(next.start).toBe(block.end + 1);
+      }
+    }
+    expect(FACTORY_ATTEMPT_BLOCK * 10).toBe(250_000);
+  });
+
+  it("refuses a claim outside the namespace, on top of a pool, or below the floor", () => {
+    const pools = ledgerPools();
+    expect(() => assertWithinNamespace(pools, { start: 199_000, end: 199_100 }, "guard"))
+      .toThrow(LedgerError);
+    expect(() => assertWithinNamespace(pools, { start: 460_000, end: 460_100 }, "guard"))
+      .toThrow(LedgerError);
+    expect(() => assertNoOverlap(pools, { start: 300, end: 800 }, "guard")).toThrow(/overlaps/);
+    expect(() => assertNoOverlap(pools, { start: 700, end: 700 }, "guard")).toThrow(/overlaps/);
+    expect(() => assertNoOverlap(pools, { start: 701, end: 799 }, "guard")).not.toThrow();
+  });
+
+  it("allocates atomically and refuses the same attempt twice", () => {
+    const dir = temporaryDir();
+    const path = join(dir, "ledger.jsonl");
+    writeFileSync(path, readFileSync(FACTORY_LEDGER_PATH, "utf8"));
+    const allocation = allocateAttempt({
+      attemptNumber: 1,
+      kind: "base",
+      attemptId: "attempt-001",
+      parentChampionId: "ai-v1",
+      protocolHash: "guard-hash",
+      at: "2026-09-23T00:00:00.000Z",
+      path,
+    });
+    expect(allocation.pools).toHaveLength(5);
+    const pools = ledgerPools(path);
+    const allocated = pools.filter((pool) => pool.poolId.startsWith("factory-v1/attempt-001/"));
+    expect(allocated).toHaveLength(5);
+    for (const pool of allocated) {
+      expect(pool.state).toBe("RESERVED");
+      expect(pool.attemptId).toBe("attempt-001");
+      expect(pool.parentChampionId).toBe("ai-v1");
+      expect(pool.protocolHash).toBe("guard-hash");
+      expect(pool.start).toBeGreaterThanOrEqual(200_001);
+      expect(pool.end).toBeLessThanOrEqual(450_000);
+    }
+    expect(allocated.find((pool) => pool.purpose === "formal")?.maxFormalN).toBe(4_800);
+    expect(() => allocateAttempt({
+      attemptNumber: 1, kind: "base", attemptId: "attempt-001",
+      parentChampionId: "ai-v1", protocolHash: "guard-hash",
+      at: "2026-09-23T00:00:00.000Z", path,
+    })).toThrow(/already in the ledger/);
+  });
+
+  it("refuses to reopen a closed pool", () => {
+    const dir = temporaryDir();
+    const path = join(dir, "ledger.jsonl");
+    writeFileSync(path, readFileSync(FACTORY_LEDGER_PATH, "utf8"));
+    expect(() => transitionPool({
+      poolId: "spec065-dataset", to: "RUNNING", at: "2026-09-23T00:00:00.000Z", path,
+    })).toThrow(/A closed pool is closed/);
+    expect(() => transitionPool({
+      poolId: "discovery-v1", to: "RESERVED", at: "2026-09-23T00:00:00.000Z", path,
+    })).toThrow(/closed/);
+  });
+
+  it("refuses to append under a lock somebody already holds", () => {
+    const dir = temporaryDir();
+    const path = join(dir, "ledger.jsonl");
+    writeFileSync(path, readFileSync(FACTORY_LEDGER_PATH, "utf8"));
+    writeFileSync(`${path}.lock`, "99999\n");
+    expect(() => appendLedgerEvent({
+      event: "TRANSITION", at: "2026-09-23T00:00:00.000Z", poolId: "discovery-v1",
+    }, path)).toThrow(/already exists/);
+    unlinkSync(`${path}.lock`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The protocol
+// ---------------------------------------------------------------------------
+
+describe("the frozen protocol", () => {
+  it("parses, and hashes to the same value twice", () => {
+    const first = loadProtocol();
+    const second = loadProtocol();
+    expect(first.protocol.version).toBe(1);
+    expect(first.protocol.startChampion).toBe("ai-v1");
+    expect(first.protocol.attemptCap).toBe(10);
+    expect(first.hash).toBe(second.hash);
+    expect(first.hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(protocolHashOf(readFileSync(PROTOCOL_PATH, "utf8"))).toBe(first.hash);
+  });
+
+  it("matches the constants the code froze independently of it", () => {
+    const { protocol } = loadProtocol();
+    expect(protocol.formal.alpha).toBe(FACTORY_ALPHA);
+    expect(protocol.formal.promotionFloor).toBe(FACTORY_PROMOTION_FLOOR);
+    expect(protocol.formal.ladder).toEqual(FACTORY_FORMAL_LADDER);
+    expect(protocol.attempt.blockDeals).toBe(FACTORY_ATTEMPT_BLOCK);
+    expect(protocol.attempt.trainDeals).toBe(ATTEMPT_LAYOUT.base[0]!.deals);
+    expect(protocol.attempt.formalReserveDeals).toBe(ATTEMPT_LAYOUT.base[4]!.deals);
+    expect(protocol.corpus.seedBase).toBe(0);
+  });
+
+  it("parses the subset it claims to, and refuses the rest", () => {
+    expect(parseProtocolYaml("a: 1\nb:\n  - x\n  - y\n")).toEqual({ a: 1, b: ["x", "y"] });
+    expect(parseProtocolYaml("a:\n  b: true\n  c: null\n")).toEqual({ a: { b: true, c: null } });
+    expect(parseProtocolYaml("- k: 1\n  j: 2\n- k: 3\n")).toEqual([{ k: 1, j: 2 }, { k: 3 }]);
+    expect(() => parseProtocolYaml("a: &anchor 1\n")).toThrow(ProtocolError);
+    expect(() => parseProtocolYaml("a: [1, 2]\n")).toThrow(ProtocolError);
+    expect(() => parseProtocolYaml("a: |\n  block\n")).toThrow(ProtocolError);
+    expect(() => parseProtocolYaml("a: 1\n---\nb: 2\n")).toThrow(ProtocolError);
+    expect(() => parseProtocolYaml("\ta: 1\n")).toThrow(/tabs/);
+    expect(() => parseProtocolYaml("a: 1\na: 2\n")).toThrow(/duplicate key/);
+  });
+
+  it("refuses a protocol whose parts disagree with each other", () => {
+    const text = readFileSync(PROTOCOL_PATH, "utf8");
+    const swap = (from: string, to: string): string => {
+      expect(text).toContain(from);
+      return text.replace(from, to);
+    };
+    // A family count that no longer equals the number of thresholds would apply
+    // the wrong Bonferroni divisor.
+    expect(() => parseProtocol(swap("families: 6", "families: 5")))
+      .toThrow(/Bonferroni/);
+    // A formal reserve smaller than the largest ladder rung cannot serve a run.
+    expect(() => parseProtocol(swap("formalReserveDeals: 4800", "formalReserveDeals: 2400")))
+      .toThrow(/largest ladder rung/);
+    // A non-zero seed base puts the corpus and the tournament on different decks.
+    expect(() => parseProtocol(swap("seedBase: 0", "seedBase: 301"))).toThrow(/seed base/);
+    // An offline pool that is not the size of the offline screen.
+    expect(() => parseProtocol(swap("offlineDeals: 2000", "offlineDeals: 1500")))
+      .toThrow(/offline pool holds/);
+    // A dataset version that is not this round's.
+    expect(() => parseProtocol(swap("datasetVersion: 5", "datasetVersion: 4")))
+      .toThrow(/dataset version/);
+    // A reference board that is not the 400 retired deals it claims to be.
+    expect(() => parseProtocol(swap("end: 700", "end: 900"))).toThrow(/400 retired deals/);
+  });
+
+  it("refuses a protocol hash that is not the registered one", () => {
+    const { hash } = loadProtocol();
+    expect(() => assertProtocolHash(hash, hash)).not.toThrow();
+    expect(() => assertProtocolHash(hash, `${hash.slice(0, -1)}0`))
+      .toThrow(/never\s+by editing the file|editing the file/);
+  });
+
+  it("accepts the frozen file's own consistency check", () => {
+    expect(() => assertProtocolConsistency(loadProtocol().protocol)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The stage protocol
+// ---------------------------------------------------------------------------
+
+function manifestFor(dir: string, deals: number, arms: readonly (string | null)[]): void {
+  writeManifest(dir, {
+    stage: "formal",
+    attemptId: "attempt-001",
+    arms,
+    configHash: "config-guard",
+    config: {},
+    poolId: "factory-v1/attempt-001/formal",
+    start: 210_201,
+    deals,
+    completion: "RUNNING",
+    hashes: {},
+    updatedAt: "2026-09-23T00:00:00.000Z",
+    sealedAt: null,
+  });
+}
+
+function writeDeals(dir: string, arms: readonly (string | null)[], count: number): void {
+  for (const arm of arms) {
+    for (let offset = 0; offset < count; offset += 1) {
+      const dealIndex = 210_201 + offset;
+      writeDealRecord(dir, makeDealRecord({
+        dealIndex,
+        stage: "formal",
+        arm,
+        configHash: "config-guard",
+        payload: { dealIndex, winsB: offset % 4, winsA: 1 },
+        cost: { elapsedMs: offset },
+        at: "2026-09-23T00:00:00.000Z",
+      }));
+    }
+  }
+}
+
+describe("deal-level checkpoints", () => {
+  it("is idempotent for an identical re-run and fatal for a different one", () => {
+    const dir = temporaryDir();
+    const record = makeDealRecord({
+      dealIndex: 1, stage: "formal", arm: "champion", configHash: "c",
+      payload: { winsB: 2 }, at: "2026-09-23T00:00:00.000Z",
+    });
+    expect(writeDealRecord(dir, record)).toBe("written");
+    expect(writeDealRecord(dir, record)).toBe("duplicate");
+    const different = makeDealRecord({
+      dealIndex: 1, stage: "formal", arm: "champion", configHash: "c",
+      payload: { winsB: 3 }, at: "2026-09-23T00:00:00.000Z",
+    });
+    expect(() => writeDealRecord(dir, different)).toThrow(IntegrityError);
+    const otherConfig = makeDealRecord({
+      dealIndex: 1, stage: "formal", arm: "champion", configHash: "c2",
+      payload: { winsB: 2 }, at: "2026-09-23T00:00:00.000Z",
+    });
+    expect(() => writeDealRecord(dir, otherConfig)).toThrow(/two configurations/);
+  });
+
+  it("does not let the timestamp or the cost enter the artifact hash", () => {
+    const first = makeDealRecord({
+      dealIndex: 7, stage: "s", arm: null, configHash: "c", payload: { winsB: 1 },
+      cost: { elapsedMs: 5 }, at: "2026-09-23T00:00:00.000Z",
+    });
+    const second = makeDealRecord({
+      dealIndex: 7, stage: "s", arm: null, configHash: "c", payload: { winsB: 1 },
+      cost: { elapsedMs: 9_999 }, at: "2026-09-24T00:00:00.000Z",
+    });
+    expect(second.artifactHash).toBe(first.artifactHash);
+  });
+
+  it("resumes by skipping completed deals and only re-running the rest", () => {
+    const dir = temporaryDir();
+    manifestFor(dir, 5, [null]);
+    writeDeals(dir, [null], 3);
+    expect(completedDeals(dir, null)).toEqual([210_201, 210_202, 210_203]);
+    const { missing, unflushed } = verifyStageWithHashes(dir);
+    expect(missing).toBe(2);
+    expect(unflushed).toBe(0);
+  });
+
+  it("detects a checkpoint file that was removed or edited", () => {
+    const dir = temporaryDir();
+    manifestFor(dir, 3, ["champion"]);
+    writeDeals(dir, ["champion"], 3);
+    recordHashes(dir);
+    expect(() => verifyStage(dir)).not.toThrow();
+
+    unlinkSync(join(dir, "deals", "champion", "210202.json"));
+    expect(() => verifyStage(dir)).toThrow(/checkpoint is gone/);
+
+    writeDeals(dir, ["champion"], 3);
+    recordHashes(dir);
+    const record = readDealRecord(dir, "champion", 210_203);
+    writeFileSync(
+      join(dir, "deals", "champion", "210203.json"),
+      JSON.stringify({ ...record, artifactHash: "0".repeat(64) }),
+    );
+    expect(() => verifyStage(dir)).toThrow(/hashes to|in the manifest/);
+  });
+
+  it("refuses to seal an incomplete stage, and writes the verdict exactly once", () => {
+    const dir = temporaryDir();
+    manifestFor(dir, 2, ["champion", "candidate"]);
+    writeDeals(dir, ["champion"], 2);
+    expect(() => sealStage(dir, "2026-09-23T00:00:00.000Z")).toThrow(/cannot be sealed/);
+    writeDeals(dir, ["candidate"], 1);
+    recordHashes(dir);
+    expect(() => sealStage(dir, "2026-09-23T00:00:00.000Z")).toThrow(/1 of 2 deals are missing/);
+    writeDeals(dir, ["candidate"], 2);
+    const sealed = sealStage(dir, "2026-09-23T00:00:00.000Z");
+    expect(sealed.completion).toBe("SEALED");
+    expect(sealed.sealedAt).toBe("2026-09-23T00:00:00.000Z");
+    // A stage decides once.
+    expect(() => sealStage(dir, "2026-09-23T00:01:00.000Z")).toThrow(/already sealed/);
+    const verdictPath = writeVerdictOnce(dir, { decision: "PROMOTE" });
+    expect(readFileSync(verdictPath, "utf8")).toContain("PROMOTE");
+    expect(() => writeVerdictOnce(dir, { decision: "REJECT" })).toThrow(/already has a verdict/);
+  });
+});
+
+/** The runner's own flush, used here so the guards exercise the real path. */
+function recordHashes(dir: string): void {
+  flushManifest(dir, "2026-09-23T00:00:00.000Z");
+}
+
+function verifyStageWithHashes(dir: string): ReturnType<typeof verifyStage> {
+  recordHashes(dir);
+  return verifyStage(dir);
+}
+
+describe("the no-peek status protocol", () => {
+  it("exposes exactly the allowed keys, and refuses anything else", () => {
+    const dir = temporaryDir();
+    manifestFor(dir, 4, ["champion", "candidate"]);
+    writeDeals(dir, ["champion"], 2);
+    const status = stageStatus({ dir, elapsedMs: 1_000, workers: 4 });
+    expect(Object.keys(status).sort()).toEqual([...PI_STATUS_KEYS].sort());
+    expect(status.arms).toEqual([
+      { arm: "champion", completed: 2, total: 4 },
+      { arm: "candidate", completed: 0, total: 4 },
+    ]);
+    expect(status.throughputPerHour).toBeGreaterThan(0);
+    expect(() => assertNoPeekStatus({ ...status, meanDelta: 0.03 })).toThrow(IntegrityError);
+    expect(() => assertNoPeekStatus({ ...status })).not.toThrow();
+  });
+
+  it("has nowhere to put a win, a loss or a delta", () => {
+    const forbidden = ["win", "wins", "loss", "losses", "delta", "mean", "score",
+      "perDeal", "winsA", "winsB", "outcome", "label", "verdict"];
+    for (const key of forbidden) {
+      expect(PI_STATUS_KEYS).not.toContain(key);
+    }
+  });
+});
+
+describe("the statistics", () => {
+  it("computes the paired test's bounds from the deals alone", () => {
+    const differences = [0.1, -0.2, 0.3, 0.05, 0.0, 0.15];
+    const test = pairedTest(differences, FACTORY_ALPHA);
+    const n = differences.length;
+    const mean = differences.reduce((total, value) => total + value, 0) / n;
+    const variance = differences.reduce((total, value) => total + (value - mean) ** 2, 0) / (n - 1);
+    expect(test.mean).toBeCloseTo(mean, 12);
+    expect(test.variance).toBeCloseTo(variance, 12);
+    expect(test.se).toBeCloseTo(Math.sqrt(variance / n), 12);
+    expect(test.lower).toBeLessThan(test.mean);
+    expect(test.upper).toBeGreaterThan(test.mean);
+    expect(test.n).toBe(n);
+  });
+
+  it("promotes only when the floor and the lower bound both hold", () => {
+    const strong = Array.from({ length: 400 }, (_, index) => 0.02 + (index % 3) * 0.01);
+    expect(formalVerdict(strong, true).decision).toBe("PROMOTE");
+    expect(formalVerdict(strong, false).decision).toBe("REJECT");
+    // A mean above the floor whose interval still touches zero must not promote.
+    const noisy = Array.from({ length: 40 }, (_, index) => (index % 2 === 0 ? 0.5 : -0.4));
+    const noisyVerdict = formalVerdict(noisy, true);
+    expect(noisyVerdict.mean).toBeGreaterThan(FACTORY_PROMOTION_FLOOR);
+    expect(noisyVerdict.lower).toBeLessThan(0);
+    expect(noisyVerdict.decision).toBe("REJECT");
+    // A tight interval below the floor must not promote either.
+    const small = Array.from({ length: 400 }, (_, index) => 0.005 + (index % 2) * 0.0001);
+    expect(formalVerdict(small, true).decision).toBe("REJECT");
+  });
+
+  it("sizes the formal sample from the screen's variance, before any formal outcome", () => {
+    const differences = Array.from({ length: 200 }, (_, index) => (index % 5) * 0.02);
+    const screen = stage1Decision(differences);
+    expect(screen.deals).toBe(200);
+    expect(screen.proceed).toBe(true);
+    const required = requiredFormalN(screen.variance);
+    expect(required).toBe(Math.ceil(((2.576 + 0.842) ** 2 * screen.variance) / 0.02 ** 2));
+    const plan = chooseFormalN(required);
+    expect(FACTORY_FORMAL_LADDER).toContain(plan.n);
+    expect(plan.n).toBeGreaterThanOrEqual(required);
+    // A requirement beyond the ladder is capped and flagged, never extended.
+    const capped = chooseFormalN(999_999);
+    expect(capped.n).toBe(4_800);
+    expect(capped.powerCapped).toBe(true);
+  });
+
+  it("rejects a screen that is not strictly positive", () => {
+    expect(stage1Decision([0, 0, 0]).proceed).toBe(false);
+    expect(stage1Decision([-0.1, 0.05]).proceed).toBe(false);
+    expect(stage1Decision([0.1, 0.05]).proceed).toBe(true);
+  });
+
+  it("screens offline on the deal-equal mean and the two support floors", () => {
+    const perGroup = [0.5, ...Array.from({ length: 1_999 }, () => 0)];
+    expect(offlineVerdict({
+      perGroup, overrideDeals: 100, selectedNonzeroDeals: 20, integrityValid: true,
+    }).decision).toBe("PASS");
+    expect(offlineVerdict({
+      perGroup, overrideDeals: 99, selectedNonzeroDeals: 20, integrityValid: true,
+    }).decision).toBe("SCREEN_REJECT");
+    expect(offlineVerdict({
+      perGroup, overrideDeals: 100, selectedNonzeroDeals: 19, integrityValid: true,
+    }).decision).toBe("SCREEN_REJECT");
+    expect(offlineVerdict({
+      perGroup: perGroup.map(() => 0), overrideDeals: 500, selectedNonzeroDeals: 200,
+      integrityValid: true,
+    }).decision).toBe("SCREEN_REJECT");
+    expect(offlineVerdict({
+      perGroup, overrideDeals: 100, selectedNonzeroDeals: 20, integrityValid: false,
+    }).decision).toBe("SCREEN_REJECT");
+  });
+
+  it("refuses a paired test on fewer than two deals", () => {
+    expect(() => pairedTest([0.1], FACTORY_ALPHA)).toThrow(IntegrityError);
+    expect(() => pairedTest([], FACTORY_ALPHA)).toThrow(IntegrityError);
+  });
+});

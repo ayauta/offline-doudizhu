@@ -1,0 +1,135 @@
+# Farmer Policy Iteration Factory v1 — frozen protocol.
+#
+# Everything the Factory is allowed to do, in one document, so that the whole
+# configuration can be hashed and cited. The SHA-256 of this file's bytes is
+# the `protocolHash` recorded in every attempt, every checkpoint and every
+# champion archive.
+#
+# While an attempt is registered under a hash, editing this file makes the
+# runner stop before it deals anything. Changing the Factory is done by
+# stopping it and opening a new protocol, never by editing this one in place.
+#
+# This file is parsed by `benchmarks/farmer-pi-protocol.ts`, which accepts a
+# strict subset of YAML: block maps, block lists and scalars. Flow collections,
+# anchors, block scalars and multiple documents are refused with a message
+# rather than misread.
+
+version: 1
+frozenAt: "2026-09-23T11:25:26Z"
+
+# The champion every attempt starts from. `ai-v1` is production and is never
+# modified by this Factory; later generations are `ai-vN-research`.
+startChampion: ai-v1
+
+# The attempt budget: base attempts and retries together, across the whole
+# Factory. Reaching it stops the Factory regardless of the last result.
+attemptCap: 10
+
+# One 20k-scale retry per rejected champion, and no more.
+retryPerChampion: 1
+
+# The layer model. From zero every time: no warm start, no trees carried over
+# from the previous generation, no hyperparameter search. These literals are
+# the Gate A frozen set, restated here rather than imported, because the
+# protocol has to be readable as a whole.
+model:
+  objective: regression
+  iterations: 256
+  maxDepth: 6
+  numLeaves: 31
+  learningRate: 0.05
+  minDataInLeaf: 100
+  lambdaL1: 0
+  lambdaL2: 5
+  featureFraction: 1
+  baggingFraction: 1
+  baggingFreq: 0
+  maxBin: 63
+  threads: 1
+  deterministic: true
+  forceColWise: true
+  seed: 20260920
+  lightgbmVersion: 4.6.0
+
+# The threshold grid, re-calibrated mechanically for every new layer. The
+# family count is the number of thresholds, because the Bonferroni correction
+# divides alpha by the number of tests actually performed.
+calibration:
+  thresholds:
+    - 0
+    - 0.01
+    - 0.02
+    - 0.04
+    - 0.08
+    - 0.16
+  families: 6
+  alpha: 0.05
+  minOverrideDeals: 200
+  minSelectedNonzeroDeals: 50
+
+# The offline screen. A cheap filter, never promotion evidence: it runs on a
+# pool the attempt may not train on, and passing it only buys the formal stage.
+offline:
+  groups: 2000
+  minOverrideDeals: 100
+  minSelectedNonzeroDeals: 20
+
+# The screen. Cannot promote, is never merged with the formal pool, and exists
+# to stop a hopeless attempt early and to size the formal sample.
+stage1:
+  deals: 200
+
+# The formal test. alpha is one-sided; the reported lower bound is
+# mean - t(1 - alpha, N - 1) * SE. The design delta is what the sample size is
+# computed against, and the ladder is fixed: the first rung at or above the
+# requirement is used, and a requirement beyond the last rung is capped there
+# and marked POWER_CAPPED.
+formal:
+  alpha: 0.005
+  promotionFloor: 0.01
+  designDelta: 0.02
+  ladder:
+    - 1200
+    - 2400
+    - 4800
+
+# The layout of one attempt block. Ranges are allocated by the program from
+# these numbers, never copied by hand. Deals an attempt does not use are frozen
+# rather than recycled.
+attempt:
+  blockDeals: 25000
+  trainDeals: 6000
+  calibrationDeals: 2000
+  offlineDeals: 2000
+  stage1Deals: 200
+  formalReserveDeals: 4800
+  retryTrainFreshDeals: 6000
+  retryCalibrationDeals: 4000
+  retryOfflineDeals: 4000
+
+# Corpus provenance. The seed base must be zero: the tournament derives a
+# deal's deck from seedBase + dealIndex, and a non-zero base would put the
+# corpus and the strength run on different decks while every other number still
+# looked right.
+corpus:
+  datasetVersion: 5
+  snapshotSalt: farmer-pi-v1-snapshot
+  groupSnapshotCap: 3
+  seedBase: 0
+
+# The descriptive reference board: retired deals, permanently exposed, used
+# only to draw a relative-strength curve. It is never promotion evidence, never
+# trains anything, and is not an independent validation.
+referenceBoard:
+  poolId: discovery-v1
+  start: 301
+  end: 700
+
+# The five ways this Factory stops. Every one of them ends in a human review
+# rather than in an automatic change of direction.
+stop:
+  onDoubleReject: STOP_AND_WAIT_FOR_REVIEW
+  onAttemptLimit: STOP_AND_WAIT_FOR_REVIEW
+  onIntegrity: STOP_AND_WAIT_FOR_REVIEW
+  onResource: STOP_AND_WAIT_FOR_REVIEW
+  onManual: STOP_AND_WAIT_FOR_REVIEW
