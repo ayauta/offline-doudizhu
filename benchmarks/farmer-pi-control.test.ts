@@ -204,6 +204,13 @@ export type RecordFields = Readonly<{
   formalPlan?: Readonly<{ required: number; n: number; powerCapped: boolean }>;
   formalN?: number;
   stopReason?: StopReason;
+  /**
+   * The packaged candidate layer the arms will play, as `cf-export-model.py`
+   * measured it. Written once, by the `train` step, and required by
+   * `writeChampion`: a promotion whose archive cannot name the artifact it
+   * promotes is a champion nobody can rebuild or re-measure.
+   */
+  model?: Readonly<{ path: string; modelSha256: string; modelBytes: number }>;
 }>;
 
 export type ControlConfig = Readonly<{
@@ -744,9 +751,9 @@ function nextStep(config: ControlConfig): void {
 /**
  * Records one finished step.
  *
- * The decision fields are write-once: a threshold, a screen result, a formal N
- * or a stop is what a verdict was computed from, and a runner that could quietly
- * replace one could quietly re-decide an attempt.
+ * The decision fields are write-once: a threshold, a screen result, a formal N,
+ * the packaged model or a stop is what a verdict was computed from, and a runner
+ * that could quietly replace one could quietly re-decide an attempt.
  *
  * A stop is the exception to `phaseAfter`: its phase is left where the attempt
  * was, because a deadline pause is *cleared* rather than obeyed and clearing it
@@ -761,7 +768,10 @@ function recordStep(config: ControlConfig): void {
   const attemptId = field(config.attemptId, "attemptId");
   const at = field(config.at, "at");
   const step = field(config.step, "step");
-  const attempt = readAttempt(root, attemptId);
+  // `StoredAttempt`, not `AttemptRecord`: the model the runner packaged is part
+  // of the record this mode writes, and it is not part of the state machine's
+  // own type (§13 keeps provenance beside the machine rather than inside it).
+  const attempt = readStoredAttempt(root, attemptId);
   assertAttemptProtocol(attempt, hash);
   const fields: RecordFields = config.fields ?? {};
   const patch: Record<string, unknown> = { updatedAt: at };
@@ -791,6 +801,7 @@ function recordStep(config: ControlConfig): void {
     ["stage1", attempt.stage1, fields.stage1],
     ["formalPlan", attempt.formalPlan, fields.formalPlan],
     ["formalN", attempt.formalN, fields.formalN],
+    ["model", attempt.model, fields.model],
     ["stopReason", attempt.stopReason, fields.stopReason],
   ] as const) {
     if (next === undefined) {
@@ -819,7 +830,12 @@ function resume(config: ControlConfig): void {
   const { hash } = protocolOf(config);
   const root = field(config.root, "root");
   const attemptId = field(config.attemptId, "attemptId");
-  const attempt = readAttempt(root, attemptId);
+  // `StoredAttempt`, for the reason `recordStep` reads one: the answer that
+  // carries an attempt carries the whole record, provenance included. A runner
+  // resuming an attempt in the middle of its training keeps the model it
+  // packaged two steps earlier, and the model is not part of the state machine's
+  // own type.
+  const attempt = readStoredAttempt(root, attemptId);
   assertAttemptProtocol(attempt, hash);
   if (attempt.stopReason !== "PAUSED_DEADLINE") {
     throw new IntegrityError(
@@ -1474,6 +1490,7 @@ function offlineScreen(config: ControlConfig): void {
   assertProtocolMatchesFrozen(protocol);
   const dir = field(config.dir, "dir");
   const threshold = field(config.threshold, "threshold");
+  const recordDir = field(config.recordDir, "recordDir");
   const groups = sealedGroups(dir);
   const audit = cfAuditStructure(groups, "heldout", splitResolver(field(config.pools, "pools")));
   const model = layerModel(config);
@@ -1491,12 +1508,36 @@ function offlineScreen(config: ControlConfig): void {
     selectedNonzeroDeals: outcome.selectedNonzeroDeals,
     integrityValid: auditFlag(audit),
   });
-  writeVerdictOnce(field(config.recordDir, "recordDir"), Object.freeze({
+  const recorded = Object.freeze({
     ...verdict,
     threshold,
     modelSha256: model.modelSha256,
     audit,
-  }));
+  });
+  // A resume can land between the write below and the phase record that follows
+  // it, which would re-enter this mode with a verdict already on disk. The file
+  // is the decision, so it is not written twice — but a resume that changed the
+  // threshold, the model or the corpus would otherwise inherit a screen it did
+  // not run, so the recorded decision is checked against the one this
+  // configuration derives before it is honoured.
+  const existing = existingVerdict(recordDir);
+  if (existing !== null) {
+    assertVerdictAgrees(recordDir, existing, recorded, [
+      "decision", "groups", "overrideDeals", "selectedNonzeroDeals",
+      "threshold", "modelSha256", "audit",
+    ]);
+    answer(`offline ${verdict.decision} (recorded) groups ${verdict.groups}`);
+    emit({
+      decision: verdict.decision,
+      groups: verdict.groups,
+      overrideDeals: verdict.overrideDeals,
+      selectedNonzeroDeals: verdict.selectedNonzeroDeals,
+      reasons: verdict.reasons,
+      recorded: true,
+    });
+    return;
+  }
+  writeVerdictOnce(recordDir, recorded);
   answer(
     `offline ${verdict.decision} groups ${verdict.groups} overrides ${outcome.overrides} ` +
     `overrideDeals ${verdict.overrideDeals} selectedNonzero ${verdict.selectedNonzeroDeals}`,
@@ -1507,7 +1548,45 @@ function offlineScreen(config: ControlConfig): void {
     overrideDeals: verdict.overrideDeals,
     selectedNonzeroDeals: verdict.selectedNonzeroDeals,
     reasons: verdict.reasons,
+    recorded: false,
   });
+}
+
+/**
+ * The verdict a stage has already written, or `null` when it has none.
+ *
+ * Reading it is not a look at an unsealed payload: `writeVerdictOnce` refuses to
+ * write before the seal, so a file at this path exists only for a stage that is
+ * sealed and already decided.
+ */
+function existingVerdict(dir: string): Readonly<Record<string, unknown>> | null {
+  const path = join(dir, "verdict.json");
+  return existsSync(path) ? readJson(path) as Readonly<Record<string, unknown>> : null;
+}
+
+/**
+ * Refuses a recorded verdict that disagrees with the one just derived.
+ *
+ * The second derivation is the point. §6 says a stage decides once; this is what
+ * makes "once" mean "and never differently", which is the property a reader of
+ * the archive actually depends on. Comparison is by canonical hash so a
+ * reordered key or a re-serialised array is not a disagreement.
+ */
+function assertVerdictAgrees(
+  dir: string,
+  recorded: Readonly<Record<string, unknown>>,
+  derived: Readonly<Record<string, unknown>>,
+  keys: readonly string[],
+): void {
+  const mismatches = keys.filter((key) =>
+    stableHash(recorded[key] ?? null) !== stableHash(derived[key] ?? null));
+  if (mismatches.length > 0) {
+    throw new IntegrityError(
+      `The verdict at ${join(dir, "verdict.json")} disagrees with the one this configuration ` +
+      `derives: ${mismatches.join(", ")}. A stage decides once, and a resume is not a second ` +
+      "opinion.",
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1636,9 +1715,14 @@ function strengthVerdict(config: ControlConfig): void {
   const recordDir = field(config.recordDir, "recordDir");
   const differences = pairedFarmerDifferences(champion.result, candidate.result);
   const integrityValid = champion.gamesOk && candidate.gamesOk;
+  // A resume can land between the write below and the phase record that follows
+  // it, which would re-enter this mode with a verdict already on disk. The arms
+  // are sealed and the derivation is a pure function of them, so the verdict is
+  // re-derived either way and the recorded one is *checked* against it rather
+  // than trusted: that check is §6's "a stage decides once" made falsifiable.
   if (stage === "stage1") {
     const screen = stage1Decision(differences);
-    writeVerdictOnce(recordDir, Object.freeze({
+    const written = Object.freeze({
       stage,
       deals: screen.deals,
       mean: screen.mean,
@@ -1647,28 +1731,44 @@ function strengthVerdict(config: ControlConfig): void {
       arms,
       alpha: null,
       integrityValid,
-    }));
-    answer(`stage1 deals ${screen.deals} proceed ${String(screen.proceed)}`);
+    });
+    const recorded = existingVerdict(recordDir);
+    if (recorded === null) {
+      writeVerdictOnce(recordDir, written);
+    } else {
+      assertVerdictAgrees(recordDir, recorded, written, Object.keys(written));
+    }
+    answer(
+      `stage1 deals ${screen.deals} proceed ${String(screen.proceed)}` +
+      `${recorded === null ? "" : " (recorded)"}`,
+    );
     emit({
       deals: screen.deals,
       mean: screen.mean,
       variance: screen.variance,
       proceed: screen.proceed,
       integrityValid,
+      recorded: recorded !== null,
     });
     return;
   }
   const verdict = formalVerdict(differences, integrityValid, protocol.formal.alpha);
-  writeVerdictOnce(recordDir, Object.freeze({
+  const written = Object.freeze({
     ...verdict,
     stage,
     arms,
     designDelta: protocol.formal.designDelta,
     promotionFloor: protocol.formal.promotionFloor,
-  }));
+  });
+  const recorded = existingVerdict(recordDir);
+  if (recorded === null) {
+    writeVerdictOnce(recordDir, written);
+  } else {
+    assertVerdictAgrees(recordDir, recorded, written, Object.keys(written));
+  }
   answer(
     `formal n ${verdict.n} decision ${verdict.decision} reasons ${verdict.reasons.length} ` +
-    `integrity ${String(verdict.integrityValid)}`,
+    `integrity ${String(verdict.integrityValid)}${recorded === null ? "" : " (recorded)"}`,
   );
   emit({
     n: verdict.n,
@@ -1677,6 +1777,7 @@ function strengthVerdict(config: ControlConfig): void {
     alpha: verdict.alpha,
     decision: verdict.decision,
     reasons: verdict.reasons,
+    recorded: recorded !== null,
   });
 }
 
@@ -1703,10 +1804,14 @@ function status(config: ControlConfig): void {
  * the file it is in; the verdict's numbers stay on disk, because the operator who
  * needs them reads the file this section just vouched for.
  *
- * The attempt section follows the same rule one level up: until every stage the
- * attempt touched is sealed, its record is projected down to fields that cannot
- * carry a strength, and it is printed whole only once there is nothing left to
- * leak.
+ * The Factory and attempt sections follow the same rule one level up, and they
+ * are projected *always* rather than only while something is running. There is
+ * no "print it whole now that it is safe" branch: an attempt record spells its
+ * decision `outcome` and keeps a mean and a variance in its `stage1` block, so a
+ * raw record carries forbidden keys whenever it is printed. What is shown
+ * instead is which of the record's write-once fields are frozen — booleans and
+ * names, every one of them a field the state machine reads on its own — and the
+ * decision under its own name.
  */
 function inspect(config: ControlConfig): void {
   const root = field(config.root, "root");
@@ -1741,33 +1846,73 @@ function inspect(config: ControlConfig): void {
     protocolHash: hash,
     protocol,
     schemaHash: cfSchemaHash(),
-    factory: readFactory(root),
+    factory: factoryView(readFactory(root)),
     pools: poolsOf(ledger),
     archives,
     stages,
-    attempts: attempts.map((attempt) => attempt.record.outcome !== null && stages.every(
-      (stage) => stage.sealed === true,
-    )
-      ? attempt.record
-      : Object.freeze({
-        attemptId: attempt.record.attemptId,
-        attemptNumber: attempt.record.attemptNumber,
-        kind: attempt.record.kind,
-        parentChampionId: attempt.record.parentChampionId,
-        protocolHash: attempt.record.protocolHash,
-        phase: attempt.record.phase,
-        corpusDone: attempt.record.corpusDone,
-        pools: attempt.record.pools,
-        formalN: attempt.record.formalN,
-        thresholdFrozen: attempt.record.threshold !== null,
-        screenFrozen: attempt.record.stage1 !== null,
-        planSized: attempt.record.formalPlan !== null,
-        decisionRecorded: attempt.record.outcome !== null,
-        stopRecorded: attempt.record.stopReason,
-        runnerCommit: attempt.record.runnerCommit,
-        runnerDirty: attempt.record.runnerDirty,
-      })),
+    attempts: attempts.map((attempt) => attemptView(attempt.record)),
     artifacts: artifactsOf(attempts),
+  });
+}
+
+/** The Factory's own ledger of attempts, with each decision named as a decision. */
+function factoryView(factory: FactoryState | null): Readonly<Record<string, unknown>> | null {
+  if (factory === null) {
+    return null;
+  }
+  return Object.freeze({
+    championId: factory.championId,
+    generation: factory.generation,
+    startedAt: factory.startedAt,
+    updatedAt: factory.updatedAt,
+    attempts: Object.freeze(factory.attempts.map((attempt) => Object.freeze({
+      attemptId: attempt.attemptId,
+      kind: attempt.kind,
+      parentChampionId: attempt.parentChampionId,
+      // `decision`, not the record's own `outcome`: the guard the runner runs
+      // over this object is a check on key *names*, and the name a decision
+      // travels under is part of that protocol.
+      decision: attempt.outcome,
+      stopReason: attempt.stopReason,
+    }))),
+  });
+}
+
+/**
+ * One attempt's section.
+ *
+ * Every field here is one the state machine reads on its own: the phase, the
+ * pools it holds, and which of the six write-once fields are frozen. The
+ * packaged model's digest is shown because it is an identity rather than a
+ * measurement — it says *which* artifact this attempt trains, not how well it
+ * did — and the flag beside it says whether there is one at all.
+ */
+function attemptView(attempt: StoredAttempt): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    attemptId: attempt.attemptId,
+    attemptNumber: attempt.attemptNumber,
+    kind: attempt.kind,
+    parentChampionId: attempt.parentChampionId,
+    protocolHash: attempt.protocolHash,
+    phase: attempt.phase,
+    // The two timestamps are here for the runner's `status` mode, which computes
+    // a stage's elapsed time from the attempt it belongs to. A clock reading is
+    // provenance, like the runner's commit: it says when a thing happened and
+    // nothing about how it turned out.
+    startedAt: attempt.startedAt,
+    updatedAt: attempt.updatedAt,
+    corpusDone: attempt.corpusDone,
+    pools: attempt.pools,
+    formalN: attempt.formalN,
+    thresholdFrozen: attempt.threshold !== null,
+    screenFrozen: attempt.stage1 !== null,
+    planSized: attempt.formalPlan !== null,
+    modelRecorded: attempt.model !== null,
+    modelSha256: attempt.model === null ? null : attempt.model.modelSha256,
+    decision: attempt.outcome,
+    stopReason: attempt.stopReason,
+    runnerCommit: attempt.runnerCommit,
+    runnerDirty: attempt.runnerDirty,
   });
 }
 
