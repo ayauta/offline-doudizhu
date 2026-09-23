@@ -29,7 +29,7 @@ PASS 之后才允许分配 fresh pool」。下面逐项列出 §33 清单的真�
 | 13 | protocol freeze commit | **未提交** | protocol 文件已在，但 Stage 0 未完成，故未冻结 |
 | 14 | τ/λ/top3/feature 的不可变 identity | **完成** | `benchmarks/farmer-pi-identity.ts`，写进 protocol 的 `identities` 块 |
 | 15 | worker 的 protocolHash 语义 | **完成** | 见 §6（原缺口已修） |
-| 16 | miniature real-pipeline E2E（§7/§8/§9） | **未完成** | runner 已就绪；见 §9.1 已验证的部分与未验证的部分 |
+| 16 | miniature real-pipeline E2E（§7/§8/§9） | **部分完成** | 见 §12：可达路径全部走通，后段三 stage 因数据无信号而不可达 |
 
 **因此：fresh pool 未分配，π1→π2 未开始。** §46 N/O 未执行。
 
@@ -200,3 +200,94 @@ protocol（缩小 pool 规模）和一份**复制的** ledger（namespace 指向
 这条与 Spec 065 的「children write nothing」不同，是**有意**不同：§27 的存在正是因为
 「什么都不写」会让一次挂起吃掉几小时。同样的性质由「无人值守 + 输出协议 + 一次写成」
 来保证，而不是由「磁盘上没有中间态」来保证。
+
+
+---
+
+## 12. Miniature real-pipeline E2E（`8d6aac7`）
+
+### 怎么跑的
+
+```
+# 复制的 ledger：namespace 指向退休的 discovery-v1（301-700）
+# discovery-v1 那一行被改标签为 namespace —— 同一区间不能既是别人的池又是命名空间
+# 真实 pool-ledger.jsonl 全程未被触碰（跑完仍 16 行）
+
+FPI_JOBS=2 node scripts/farmer-pi.mjs run \
+  --root /tmp/fpi-e2e/root \
+  --ledger /tmp/fpi-e2e/ledger.jsonl \
+  --protocol research/farmer-pi/protocol-rehearsal.yaml \
+  --deadline <now+7min>
+```
+
+### 真实走通的路径
+
+```text
+ATTEMPT_RESERVED(attempt-001, base, parent ai-v1)
+→ CORPUS train ×3 (6 deals)  → CORPUS calibration (6) → CORPUS offline (4)
+→ MODEL_TRAINED   (真实 LightGBM 4.6.0，29 rows × 86 features，256 trees)
+→ CALIBRATE       → calibration-no-go
+→ DECIDED / REJECT
+→ ATTEMPT_RESERVED(attempt-002, retry, parent ai-v1)   ← 自动，未询问
+→ CORPUS train-fresh(6) → calibration(6) → offline(4)
+→ MODEL_TRAINED   (3 sources：继承 attempt-001 的 train + 自己的 fresh + calibration)
+→ CALIBRATE       → calibration-no-go
+→ DECIDED / REJECT
+→ FACTORY_STOPPED — DOUBLE_REJECT
+```
+
+每一个 worker 日志都带着 `chain ["010a8a4a00524f0694d5881bacdd885d99243acf4d71e2b2fdcae7ae82fc3359"]`
+—— 冻结 M1 的 booster digest。E2E 里跑的就是 π1 本身，不是它的复制品。
+
+`attempt.json` 两次都到达 `phase: DECIDED`，`outcome: REJECT`，`threshold: null`。
+
+### 未走通，以及为什么（这不是尺寸问题）
+
+| stage | 状态 |
+| --- | --- |
+| offline screen | **未走通** |
+| Stage 1 | **未走通** |
+| formal / PROMOTE / archive | **未走通** |
+
+原因：两次 calibration 都正确地返回 `calibration-no-go`，而状态机在
+`CALIBRATE` 处就把 attempt 送去 `decide`，后面的 stage 根本不启动。
+
+实测两次 attempt 全部语料的 alternative label 分布：
+
+```
+0 : 150      +1 : 8      -1 : 10        （合计 168）
+正向率 4.76%   负向率 5.95%
+```
+
+**近似对称，没有方向性边缘。** `cfSelectThreshold` 要求 `lower = mean - t·se > 0`；
+mean ≈ 0 时，任何 n 都不可能满足。把 rehearsal 的池扩大十倍也不会改变这一点——
+这是数据的性质，不是尺度的性质。
+
+因此后段三个 stage 的**机器**有证据（`farmer-pi-rehearsal.test.ts` 跑真实双臂与
+`pairedFarmerDifferences`／`formalVerdict`），但它们的 **runner 接线**没有端到端证据。
+这条缺口写在 §13，不隐藏。
+
+## 13. Stage 0 判定：**未完成**
+
+不得写 STAGE 0 COMPLETE。缺的是 runner 对 offline / stage1 / formal 三步的端到端接线证据，
+以及由此顺延的 protocol freeze、FACTORY FREEZE commit。
+
+### 本轮逐项结果
+
+| 项 | 结果 | 证据 |
+| --- | --- | --- |
+| runner 唯一且完整 | **PASS** | `8d6aac7` |
+| protocolHash 语义 | **PASS** | 负向测试 + E2E 中 worker 自行重算并拒绝错配 |
+| real LightGBM | **PASS** | `model sha256 1508c500…` / `d5081f15…`，4.6.0 |
+| kill/resume | **PASS** | 上一轮 21 checkpoint；本轮 attempt-002 恢复 attempt-001 的池 |
+| deadline pause/resume | **PASS** | 70 秒 deadline 中断 → exit 3 → 下次恢复同 attempt |
+| no-peek | **PASS** | `--guard-selftest` 8/8 拒绝；全程 console 只有序号/计数/吞吐 |
+| π1 identity（actual command） | **PASS（worker 层）** | 每个 worker 日志的 chain digest = 冻结 M1 |
+| master/top3 once-only | **PASS（unit）** | chain guards；E2E 缺逐 decision 计数 |
+| canonical calibration | **PASS** | 控制平面 import `factoryScoredRoots`/`factoryCandidateRow`，无第二份 |
+| checkpoint integrity | **PASS** | 重复 deal 幂等、篡改 → INTEGRITY_STOP |
+| `pnpm check` @ `8d6aac7` | **PASS** | 48 files / 586 tests / exit 0 |
+| offline/stage1/formal 端到端 | **未验证** | 见 §12 |
+| protocol freeze | **未做** | 待上项 |
+| FACTORY FREEZE | **未做** | 待上项 |
+| fresh pool | **未分配** | 真实 ledger 仍 16 行 |
