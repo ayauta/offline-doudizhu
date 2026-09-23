@@ -29,7 +29,7 @@ PASS 之后才允许分配 fresh pool」。下面逐项列出 §33 清单的真�
 | 13 | protocol freeze commit | **未提交** | protocol 文件已在，但 Stage 0 未完成，故未冻结 |
 | 14 | τ/λ/top3/feature 的不可变 identity | **完成** | `benchmarks/farmer-pi-identity.ts`，写进 protocol 的 `identities` 块 |
 | 15 | worker 的 protocolHash 语义 | **完成** | 见 §6（原缺口已修） |
-| 16 | miniature real-pipeline E2E（§7/§8/§9） | **未完成** | runner 已就绪，E2E 尚未跑 |
+| 16 | miniature real-pipeline E2E（§7/§8/§9） | **未完成** | runner 已就绪；见 §9.1 已验证的部分与未验证的部分 |
 
 **因此：fresh pool 未分配，π1→π2 未开始。** §46 N/O 未执行。
 
@@ -131,6 +131,42 @@ node scripts/farmer-pi.mjs run      [--root <dir>] [--deadline <ISO-8601 带偏�
 退 3；无偏移的 deadline → 拒绝；未知 mode → 拒绝。
 
 当前 protocol hash：`45aa9ee46b5865c030cb7e9221542c86f06c1b7223b4cbea89d8e8f22f1a4018`。
+
+## 9.1 runner 的已验证 / 未验证边界（`4df8069`）
+
+**已用真实运行验证**（在**复制的** ledger 上；跑完后确认真实 ledger 仍是 16 行未动）：
+
+| 场景 | 结果 |
+| --- | --- |
+| 70 秒 absolute deadline 落在 corpus 中途 | 两个 worker 干净停下，磁盘上留下 21 个 deal checkpoint，`PAUSED_DEADLINE`，**exit 3** |
+| 下次运行 | `attempt-001 (base) parent ai-v1 resumed`（`created:false`），pool / protocol hash / runner commit 全部相同；已完成 deal **重新推导并逐字节匹配** → `written 0 resumed N`，无重写、无 integrity stop |
+| `--guard-selftest` | 8 个禁止键全部拒绝，干净视图接受 |
+| 已过期 deadline | 什么都不启动，exit 3 |
+| 无偏移 deadline | 拒绝（不猜），exit 1 |
+| 全程 console | 只有 deal 序号、计数、吞吐；**没有任何胜负或 Δ** |
+
+吞吐实测：2 worker 时约 2100 deals/h（单 worker 556–694/h）。
+
+**未验证，且必须说清楚**：`train → calibrate → offline → stage1 → formal → decide`
+这六步从未真跑过——它们需要一份封存的语料加 LightGBM。每一个控制调用的字段都逐条
+对过控制平面实现，但那是 code review，不是证据。miniature E2E 就是用来补这一段的。
+
+## 9.2 已知语义问题（本轮发现，尚未处理）
+
+1. **`--jobs` 只能切 corpus**。一个 arm 无法切分：一个目录、一份 manifest、一个 configHash。
+2. **`OFFLINE` 没有 decide 步**。`nextAttemptStep` 从 OFFLINE 无条件走到 stage1，
+   所以 SCREEN_REJECT 是由 `decide` 读封存 verdict 得出的；`attempt.json` 会停在
+   `phase: OFFLINE` 直到 decide 运行。
+3. **两个不同的数字都叫 `checkpoints`**：`stageView.checkpoints` 数 manifest 的 hash 表
+   （`sealStage` 之前为空），`stageStatus.checkpoints` 数磁盘上的 deal 文件。
+4. **`kill -9` 会留下 `run.lock`**，下次运行 exit 4（这是刻意的：存在即视为有人在跑）。
+   清理是操作员动作。
+5. **host 的用法示例硬编码 `--attempt attempt-001`**，而 runner 会拒绝不匹配的 attempt ID。
+
+§29 的判断（供 review）：console 目前会打印**决定**（offline 的 SCREEN_REJECT、
+calibration 的 reason、formal plan 的 N、`decided PROMOTE`），但不打印任何**测量值**。
+按 §29 的措辞这是允许的——这些都发生在其 stage 已 seal 之后，而 N 是 outcome 之前
+就已冻结的预登记信息。
 
 ## 10. 下一步：miniature E2E 需要的东西
 
