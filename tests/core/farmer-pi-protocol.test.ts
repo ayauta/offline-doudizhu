@@ -69,6 +69,87 @@ import {
   writeVerdictOnce,
 } from "../../benchmarks/farmer-pi-stage.js";
 
+/**
+ * A self-contained ledger fixture, built from literals and never from disk.
+ *
+ * The run-time ledger (`research/farmer-pi/pool-ledger.jsonl`) is an append-only
+ * record of what actually happened, and it grew when the real Factory ran. A
+ * guard that reads it and then asserts "attempt-001 is not yet allocated" is
+ * asserting a fact about a *moment*, not about the code, so it turns red the
+ * first time a legitimate attempt is recorded. This fixture is that moment,
+ * frozen: the namespace rule, two closed historical pools, and the reservation.
+ *
+ * Everything that depends on *what is in* a ledger uses this. Only the two
+ * artifact checks that hold for any well-formed ledger still read the real file,
+ * and they are named as such where they do.
+ */
+function fixtureLedgerText(): string {
+  const at = "2026-09-23T00:00:00.000Z";
+  const event = (seq: number, body: Record<string, unknown>): string =>
+    JSON.stringify({ seq, at, ...body });
+  return [
+    event(1, {
+      event: "NAMESPACE_RULE",
+      poolId: "factory-v1-namespace",
+      below: 200_001,
+      rule: "Fixture: the Factory allocates no pool below its floor.",
+      source: "tests/core/farmer-pi-protocol.test.ts",
+    }),
+    event(2, {
+      event: "QUARANTINE",
+      poolId: "discovery-v1",
+      attemptId: null,
+      parentChampionId: null,
+      protocolHash: null,
+      purpose: "historical-discovery",
+      start: 301,
+      end: 700,
+      maxFormalN: null,
+      state: "CONSUMED",
+      exposureCount: 2,
+      source: "fixture",
+      note: "Fixture: a closed historical pool.",
+    }),
+    event(3, {
+      event: "QUARANTINE",
+      poolId: "spec065-dataset",
+      attemptId: null,
+      parentChampionId: null,
+      protocolHash: null,
+      purpose: "top5-dataset",
+      start: 140_001,
+      end: 160_000,
+      maxFormalN: null,
+      state: "INVALID_EXPOSED",
+      exposureCount: 1,
+      source: "fixture",
+      note: "Fixture: an invalidated, exposed pool.",
+    }),
+    event(4, {
+      event: "RESERVE_NAMESPACE",
+      poolId: "factory-v1-namespace",
+      attemptId: null,
+      parentChampionId: null,
+      protocolHash: null,
+      purpose: "factory-namespace",
+      start: 200_001,
+      end: 450_000,
+      maxFormalN: null,
+      state: "RESERVED",
+      exposureCount: 0,
+      source: "fixture",
+      note: "Fixture: the reserved block, with no attempt allocated in it yet.",
+    }),
+  ].join("\n");
+}
+
+/** Writes the fixture to a fresh temporary ledger and returns its path. */
+function fixtureLedgerPath(): string {
+  const path = join(temporaryDir(), "ledger.jsonl");
+  writeFileSync(path, `${fixtureLedgerText()}\n`);
+  return path;
+}
+
 const temporaries: string[] = [];
 function temporaryDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "farmer-pi-"));
@@ -145,19 +226,33 @@ describe("the ledger is the single source of truth", () => {
     expect(namespace?.end).toBe(450_000);
   });
 
-  it("keeps every historical pool below the Factory's floor", () => {
+  it("keeps every pool that is not a Factory attempt below the Factory's floor", () => {
+    // Reads the live artifact on purpose — this is a property of the ledger, not
+    // a fixture, and it must hold for the 16-line freeze snapshot and for any
+    // later legitimately appended line. A Factory attempt is named
+    // `factory-v1/<attempt>/<purpose>` and lives inside the reserved block;
+    // everything else is a historical round and must sit strictly below it.
     const pools = ledgerPools();
-    const historical = pools.filter((pool) => pool.poolId !== "factory-v1-namespace");
+    const historical = pools.filter(
+      (pool) =>
+        pool.poolId !== "factory-v1-namespace" && !pool.poolId.startsWith("factory-v1/"),
+    );
+    expect(historical.length).toBeGreaterThan(0);
     for (const pool of historical) {
       expect(pool.end ?? 0).toBeLessThan(200_001);
     }
   });
 
   it("refuses a ledger with a gap in its sequence", () => {
-    const text = readFileSync(FACTORY_LEDGER_PATH, "utf8");
-    const lines = text.trim().split("\n");
-    const dropped = [...lines.slice(0, 3), ...lines.slice(4)].join("\n");
+    const lines = fixtureLedgerText().trim().split("\n");
+    // The fixture is exactly four lines, so the dropped one has to be interior:
+    // removing the last would leave a shorter but still contiguous log, which is
+    // a different (and equally valid) thing to refuse.
+    expect(lines).toHaveLength(4);
+    const dropped = [...lines.slice(0, 1), ...lines.slice(2)].join("\n");
     expect(() => parseLedger(dropped)).toThrow(/no longer append-only/);
+    // And the guard is not vacuous: the undropped fixture parses.
+    expect(parseLedger(fixtureLedgerText())).toHaveLength(4);
   });
 });
 
@@ -220,10 +315,22 @@ describe("attempt allocation is computed, not copied", () => {
     expect(() => assertNoOverlap(pools, { start: 701, end: 799 }, "guard")).not.toThrow();
   });
 
+  it("has a fixture that is self-contained and names no real attempt", () => {
+    const events = parseLedger(fixtureLedgerText());
+    expect(events).toHaveLength(4);
+    expect(events.map((event) => event.event)).toEqual([
+      "NAMESPACE_RULE",
+      "QUARANTINE",
+      "QUARANTINE",
+      "RESERVE_NAMESPACE",
+    ]);
+    // The point of the fixture: nothing in it comes from the run-time ledger.
+    expect(fixtureLedgerText()).not.toContain("factory-v1/attempt-");
+    expect(fixtureLedgerText()).toBe(fixtureLedgerText());
+  });
+
   it("allocates atomically and refuses the same attempt twice", () => {
-    const dir = temporaryDir();
-    const path = join(dir, "ledger.jsonl");
-    writeFileSync(path, readFileSync(FACTORY_LEDGER_PATH, "utf8"));
+    const path = fixtureLedgerPath();
     const allocation = allocateAttempt({
       attemptNumber: 1,
       kind: "base",
@@ -254,9 +361,7 @@ describe("attempt allocation is computed, not copied", () => {
   });
 
   it("refuses to reopen a closed pool", () => {
-    const dir = temporaryDir();
-    const path = join(dir, "ledger.jsonl");
-    writeFileSync(path, readFileSync(FACTORY_LEDGER_PATH, "utf8"));
+    const path = fixtureLedgerPath();
     expect(() => transitionPool({
       poolId: "spec065-dataset", to: "RUNNING", at: "2026-09-23T00:00:00.000Z", path,
     })).toThrow(/A closed pool is closed/);
@@ -266,9 +371,7 @@ describe("attempt allocation is computed, not copied", () => {
   });
 
   it("refuses to append under a lock somebody already holds", () => {
-    const dir = temporaryDir();
-    const path = join(dir, "ledger.jsonl");
-    writeFileSync(path, readFileSync(FACTORY_LEDGER_PATH, "utf8"));
+    const path = fixtureLedgerPath();
     writeFileSync(`${path}.lock`, "99999\n");
     expect(() => appendLedgerEvent({
       event: "TRANSITION", at: "2026-09-23T00:00:00.000Z", poolId: "discovery-v1",
