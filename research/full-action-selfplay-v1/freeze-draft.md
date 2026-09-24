@@ -59,6 +59,11 @@
 从而让"模型只学到状态强度"这个失败模式**无法与本 schema 自身区分开**。
 Task E 的整个判据依赖这一点，所以它们被排除。
 
+**403 列本阶段不做任何裁剪**（2026-09-24 决定）：prototype 每角色约 1 万行，
+`rows / columns` 偏低是一个**风险提示，不是特征选择准则**；完整 batch 每角色约 6.5 万行。
+不做 feature selection sweep，也不因"列多"删列。
+每次报告固定包含：train/dev MSE、state-only 消融、同状态离散度、tree split 覆盖。
+
 ---
 
 ## 4. Reward / 折扣 / 探索
@@ -73,11 +78,38 @@ Task E 的整个判据依赖这一点，所以它们被排除。
 | importance weighting | 第一版**不做** | `[S]` |
 | 训练时探索 | 开；开发/正式评估时 | 关 | `[S]` |
 
-`[D]` on ε：0.10 是研究提案给的候选值，也已按其实现。实测显示它带来 10.15% 的探索决策，
-但**动作族覆盖极不均衡**（见 §9 的覆盖表）——`bomb`、`airplane-with-singles`、
-`four-with-two-cards` 在一个 1310 决策的样本里只出现 1–2 次。
-ε 提高会改善覆盖但会降低行为策略质量；本文件不建议现在改，
-建议在正式 run 之前用**同一个 retired 区间**先测一次覆盖与成本的权衡，再决定。
+`[S]` on ε（2026-09-24 决定）：**ε 保持 0.10，不因覆盖率修改。**
+覆盖不足**记为 limitation**，不作为修改探索分布的理由：调 ε 会同时改变行为策略质量
+与 Q target 的分布，把"覆盖不够"和"目标变了"两件事混在一起，代价大于收益。
+过采样稀有动作同样不做。
+
+### 4.1 动作族覆盖（更新，250-group 实测 / 8533 个 learning decision）
+
+learning seat **实际执行**的动作族：
+
+```
+pass 4254   single 2176   pair 992   triple-with-pair 328   straight 316
+triple-with-single 223   consecutive-pairs 111   rocket 30   four-with-two-pairs 28
+airplane-with-singles 24   bomb 19   airplane-with-pairs 17   four-with-two-cards 12   triple 3
+```
+
+按同一比例外推到 7500-group batch（×30）：
+
+| 族 | 本窗口 | 外推 batch | 评价 |
+| --- | ---: | ---: | --- |
+| pass / single / pair | 4254 / 2176 / 992 | 12.8 万 / 6.5 万 / 3.0 万 | 充足 |
+| 带牌类（triple / airplane / four-with） | 328+223+28+24+17+12 | 约 1.9 万 | 充足 |
+| straight / consecutive-pairs | 316 / 111 | 9.5 千 / 3.3 千 | 充足 |
+| **rocket** | 30 | ~900 | 偏少但可用 |
+| **bomb** | 19 | ~570 | 偏少 |
+| **triple（裸三张）** | 3 | **~90** | **极稀有，记为 limitation** |
+
+`triple` 极稀有是**规则与策略共同造成的**，不是采样缺陷：裸三张几乎总是劣于三带一或三带二，
+所以任何合理策略都很少打它。它保留为 limitation，不因它调整探索。
+
+旧候选集之外的动作：**executed ∉ old C3 = 183/8533 (2.14%)，∉ old C5 = 108/8533 (1.27%)**。
+注意这个窗口里 learning bundle 就是 π1，所以"离开 C3"几乎全部由 ε 探索造成
+（探索率 10.10%，即约 21% 的探索动作落在 C3 之外）。
 
 ---
 
@@ -153,9 +185,13 @@ leading 时 p95 达 75），换来的是"未访问动作也有 target"——但�
 | 输出裁剪 | **不 clamp**；排序用 raw score | `[S]` |
 | 模型库 | LightGBM（`.local/pylibs`，4.6.0），不换 | `[S]` |
 
-`[D]` on `min_data_in_leaf = 100`：这是研究提案给的候选值。它在一个 batch 只有
-~19.6 万行、每角色 ~6.5 万行、特征 403 列的情况下**可能是主要瓶颈**——100 的最小叶样本数
-限制了树能把"同一状态里的少数动作"分开。
+`[S]` on `min_data_in_leaf = 100`（2026-09-24 决定）：**保持 100，不做 sweep。**
+它在一个 batch 只有 ~19.6 万行、每角色 ~6.5 万行、特征 403 列的情况下**可能是主要瓶颈**——
+100 的最小叶样本数限制了树能把"同一状态里的少数动作"分开。
+但当前最大的未解决问题是**诊断功效**，不是模型容量；同时增加一个 tuning 维度，
+会让"powered diagnostic 看不见效应"这件事多出一个无法排除的解释。
+若 powered diagnostic 之后出现**训练集上动作信号强、held-out 动作排序明显失效**，
+再另立一个 representation/capacity 实验——那是另一条实验线，不在这条线里扫参。
 
 **实测的现状**（1200-group rehearsal，每角色约 1 万行 / 403 列，即约 25 行每列）：
 
@@ -178,17 +214,37 @@ full       dev MSE 0.17460 / 0.21206 / 0.22855      state-only dev MSE 0.18740 /
 | --- | --- | --- |
 | 必须报告 | train / dev regression error；同状态分数离散度；**state-only 消融的 dev error 与离散度**；改动作率；chosen ∉ C3 / C5 率；按 role 与 stage 分解；模型大小；feature 生成与打分延迟 | `[S]` |
 | 同状态判别量 | `within-state SD / between-state SD` 比值，**必须与 state-only 消融的同一比值并列报告** | `[S]` |
-| 开发反事实集 | `300` 个 development root state | **`[D]` — 实测欠功率约 20 倍，见下** |
-| 第三个 arm 的预登记规则 | canonical order 的**中位下标**动作（结果盲选） | `[D]` |
-| continuation | 强迫动作之后，三个 seat 全部改用同一个冻结 bundle，探索全关 | `[S]` |
+| development 反事实集 | **6000 个 development deal group，每组恰好一个 root** | `[S]`（2026-09-24 决定） |
+| 统计单位 | **initial deal group**，绝不是 decision root | `[S]` |
+| root 规则 | learning seat 的**第一个合法动作数 ≥ 2 的 decision**；结果无关、确定性、事前固定 | `[S]` |
+| arm A / B | A = π1 在该 root 的动作；B = prototype model 的 argmax | `[S]` |
+| 第三个 arm | 只在**固定前 1000 个 group** 上跑；canonical order 的中位下标，若与 A 或 B 重合则上移 | `[S]` |
+| continuation | 强迫动作之后，三个 seat 全部改用同一个冻结 bundle，**探索全关** | `[S]` |
+| 诊断命名 | **greedy deployment counterfactual diagnostic** | `[S]` |
+| 禁止的解读 | 它不是训练 Q target 的无偏估计（训练用 ε=0.10、另一套对手分布），两者**永不合并** | `[S]` |
 | 禁止 | 用 hidden state 挑"最好"的 alternative；用该诊断给正式候选补票 | `[S]` |
 
 `[D]` on 第三个 arm：中位下标规则简单、结果盲、可复现，但它与 parent 动作常常重合
 （rehearsal 实测 300 root 中只有 78 个三臂互不相同）。
 另一个候选是"canonical order 里第一个不在 C3 的动作"，更能测出 C3 之外的价值，
 但它依赖旧候选集，会把旧 C3 的定义带进新诊断。
-**建议保持中位下标**，并把"三臂互不相同"的 root 数作为该诊断的**有效样本量**报告，
-而不是把 300 当作样本量。
+**保持中位下标**，并在与 A 或 B 重合时上移一位，使第三臂尽量真正是"第三个动作"。
+"三臂互不相同"的 group 数作为该诊断的**有效样本量**报告。
+
+### 9.0 continuation 语义（2026-09-24 明确）
+
+这是两条**不同**的测量，永远不合并：
+
+| 名称 | 定义 | 能回答什么 |
+| --- | --- | --- |
+| **greedy deployment counterfactual diagnostic** | forced action 之后所有 seat 用同一冻结 bundle，**探索关** | "在部署式对局下，单步偏离 incumbent 值多少" |
+| Q-target 近似诊断（**未采用**） | continuation 保留 learning seat 的 ε=0.10 | 更接近训练时收集 Q target 的分布 |
+
+本线采用**前者**。用户问的是"model argmax 在冻结 greedy/deployment continuation 下，
+相对 parent action 是否有可测的 terminal advantage"，正是前者的语义。
+把后者当前者用、或把两者的数字放进同一张表，都是错的。
+
+### 9.1 300 这个数字已经改掉（实测，不是推理）
 
 ### 9.1 300 这个数字必须改（实测，不是推理）
 
@@ -205,20 +261,27 @@ model vs parent   实测分歧 47/300 = 15.7%   ->  分辨 +2pp 需要 n ≈ 6,0
   rank agreement   0.520（49 个有判定分歧的 root）
 ```
 
-planning target 是 `+2pp`。**在一个分辨力约 ±3.5pp 的仪器上判定 +2pp 的目标，
-等于把结论交给噪声。** 三条可选路线，**需要复核者选一条**：
+**决定（2026-09-24）：走 terminal semantics 的路线，把 N 提到 6000 个 deal group。**
 
-* (a) 把 development 反事实集提到 **≥3000 roots**（成本：每次 fork 是一整局，
-  以 rehearsal 池计约 6 s/300 roots，3000 roots 约 1 分钟——**这个成本是可以承受的**，
-  贵的是 root 的选取与统计口径）；
-* (b) 换一个**方差更低**的仪器：把"整局胜负"换成"该步之后本方的局面优势代理"
-  （例如最低手数差 × 剩余牌差）。它改变了测量的语义，必须重新预登记，
-  不能与 (a) 的结果混着读；
-* (c) 明确接受 dev 诊断**只用于看方向**，判定完全交给 formal validation。
-  这条最便宜，但它把"dev ΔJ 决定选哪个 checkpoint"这条规则变成了噪声驱动的选择，
-  **与 §12 的选择规则冲突**，所以选 (c) 就必须同时改 §12。
+明确否决的两条：
 
-**本文不建议 (c)。**
+* **不换局面优势 / heuristic proxy。** 本线的核心价值就是直接学 terminal team reward；
+  换成低方差 proxy 会改变研究问题本身。当前的问题是"300 个 root 太少"，
+  不是"terminal reward 不能用"。
+* **不做"先 3000 再说"。** 若 3000 仍欠功率，那就是把一个已知欠功率的仪器跑了两遍。
+  N 一次定在 6000。
+
+设计要点（全部事前固定）：
+
+* 每个 **initial deal group 只抽一个 root**，所以 deal group 就是 iid 单位，
+  不需要 cluster 修正；**绝不把 root 当独立样本**；
+* root 规则与第三个 arm 的规则在跑之前写死，见 §9 的表；
+* 三角色由 `dealIndex % 3` 决定 scenario，天然约 1/3 均分；
+* 第三个 arm 只在**固定的前 1000 个 group** 上跑，不占主预算。
+
+`300` 这个数字从此作废。6000 是在**实测**分歧率 15.7% 下对 `+2pp` 给出约 ±1.8pp 的
+半宽（`1.96·sqrt(0.157/6000) = 1.0pp`）——**这是投影，不是保证**；
+真实半宽由运行本身给出，并且**运行开始后不得因为看到中间结果而加 N**。
 
 ---
 
@@ -236,16 +299,31 @@ planning target 是 `+2pp`。**在一个分辨力约 ±3.5pp 的仪器上判定 
 | 三个模型 | ~0.6 MB | `[S]` |
 | 训练时间 | 3 个模型 < 1 s（rehearsal 规模） | `[S]` |
 
-`[D]` on 研究运行时 vs 潜在生产运行时：
+`[S]` on 研究运行时（2026-09-24 **实测**，取代此前的 6-group 外推）：
 
-* **研究运行时**：单进程、`num_threads=1`、每 batch 串行采集。用 `P0/PI1` 两个 master bundle 时
-  实测 **4498 ms/group**，7500 groups ≈ **9.4 h/batch**，3 个 batch ≈ **28 h**。
-  这个数字来自 6 个 group 的线性外推，**不是**完整跑完的测量，正式 run 前必须用一个
-  真实的中等窗口（例如 200 groups）重新确认斜率。
-* **潜在生产运行时**：不在本阶段的范围内。但需要记录的是，三个 512-tree 模型合计约 0.6 MB JSON，
-  而当前 shipped worker bundle 的预算约 123 KB gzip
-  （`docs/specs/063-.../final-validation.md`），**相差约一个数量级**。
-  任何把它搬进产品的想法都需要先解决这个预算，而这不是本线的判定条件。
+```
+配置        batch 1 的完整配置：3 scenario/group、learning bundle = π1、mixture 对 P0 50/25/25、
+            ε = 0.10、auditProposal 开、每个 learning decision 建行并写 float32 blob
+窗口        250 个 deal group / 750 局，**单进程、独占机器**
+wall        1196.2 s  ->  4784.8 ms/group  ->  12.54 groups/min   37.62 games/min
+cpu         1197.6 s cpu / 1196.2 s wall = **100.1% of one core**（num_threads=1）
+rss         86 MB -> 356 MB
+plies/game  34.13      decisions/group 34.13      rows/group 34.13
+行存储      55,157 B/group  ->  0.414 GB / 7500-group batch
+投影        7500-group batch **9.97 h**   3 batches **29.9 h**   600-group dev **0.80 h**
+```
+
+与 6-group 外推的 9.4 h 相差 6%，但**现在是测量**。
+
+`[S]` on 潜在生产运行时：**不构成本阶段的判定条件，也不驱动任何 schema 或参数改动。**
+三个 512-tree 模型合计约 3.4 MB JSON，而当前 shipped worker bundle 的预算约 123 KB gzip
+（`docs/specs/063-.../final-validation.md`），**相差约 28 倍**。
+记为重要 deployment risk；压缩 / 蒸馏 / 减树 / 减 depth 一律**不在本阶段做**——
+若研究棋力成功，再单独研究部署并**重新验证压缩后的策略**。
+
+`[S]` on 并行：实测 `100.1% of one core` 说明采集是单线程的，
+多进程切分 deal group 是**纯机械**加速（deal group 本来就是 iid 单位），
+不改变任何科学语义。是否在正式 run 里用它属于调度决定，不影响本草案的任何一条。
 
 ---
 
@@ -285,6 +363,19 @@ planning target 是 `+2pp`。**在一个分辨力约 ±3.5pp 的仪器上判定 
 
 `[S]` 的一条附带约束：本线的 `ΔJ` 与旧的 combined win-rate **不是同一个量**，
 所以它**不允许**用来替换或更新生产 `ai-v1`；那条路需要另一次独立的、单独预登记的验证。
+
+### 12.1 本草案当前的适用性（2026-09-25）
+
+powered diagnostic 已给出结果：prototype model 相对 π1 为
+**−1.167pp，95% CI [−2.124, −0.209]**（详见 `powered-diagnostic.md`）。
+本草案里 §12 的 batch 结构、§7 的 row 粒度、§9 的判据**都还没有被任何正式运行检验过**，
+因为**没有启动正式 run**。
+
+若将来要以"正确环境里重新训练"为假设再走一次，需要注意：
+本草案的 §6 `[D]`（P0 的取法）、§7 的 row 粒度、§8 的 `min_data_in_leaf`
+都是**在 prototype 上定的**，而 prototype 与正式 batch 的差异（廉价环境 vs π1 环境）
+正是本次结果最大的混淆。换句话说：**这份草案的每一项都还需要在 π1 环境的
+一次小规模训练上重新确认一次**，不能直接当作已被验证的配置。
 
 ---
 

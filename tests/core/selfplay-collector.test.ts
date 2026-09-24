@@ -163,12 +163,41 @@ describe("the three-role collector", () => {
         // left untouched, must reproduce the episode's own winner. If the walk
         // diverged anywhere before the fork point, this is where it shows.
         const forked = collectEpisode(config, dealIndex, episode.scenario, {
-          ply: record.ply,
-          actionIndex: record.executedIndex,
+          seatDecisionIndex: record.seatDecisionIndex,
+          choose: () => record.executedIndex,
           continuationBundleId: null,
+          explorationAfterFork: "inherit",
         });
         expect(forked.winner, `deal ${dealIndex} ${episode.scenario}`).toBe(episode.winner);
         expect(forked.learningTeamWon).toBe(episode.learningTeamWon);
+      }
+    }
+  });
+
+  it("replays the pre-fork plies exactly even when the post-fork play is greedy", () => {
+    // `explorationAfterFork: "off"` must not reach back before the fork point.
+    // It did once: the exploration coin was skipped for every ply, the replay
+    // diverged, and the fork silently measured a state the corpus never visited.
+    const config = configWith();
+    for (let dealIndex = 5001; dealIndex < 5009; dealIndex += 1) {
+      for (const episode of groupOf(config, dealIndex)) {
+        const record = episode.records.find((entry) => entry.legalActionCount >= 2);
+        if (record === undefined) {
+          continue;
+        }
+        let legalAtFork = -1;
+        collectEpisode(config, dealIndex, episode.scenario, {
+          seatDecisionIndex: record.seatDecisionIndex,
+          choose: (_view, legalActions) => {
+            legalAtFork = legalActions.length;
+            return record.executedIndex;
+          },
+          continuationBundleId: null,
+          explorationAfterFork: "off",
+        });
+        expect(legalAtFork, `deal ${dealIndex} ${episode.scenario}`).toBe(
+          record.legalActionCount,
+        );
       }
     }
   });
@@ -185,9 +214,10 @@ describe("the three-role collector", () => {
         }
         const other = (record.executedIndex + 1) % record.legalActionCount;
         const forked = collectEpisode(config, dealIndex, episode.scenario, {
-          ply: record.ply,
-          actionIndex: other,
+          seatDecisionIndex: record.seatDecisionIndex,
+          choose: () => other,
           continuationBundleId: "A",
+          explorationAfterFork: "off",
         });
         attempts += 1;
         if (forked.learningTeamWon !== episode.learningTeamWon) {
@@ -210,9 +240,10 @@ describe("the three-role collector", () => {
     }
     expect(() =>
       collectEpisode(config, 5001, "L", {
-        ply: record.ply,
-        actionIndex: 9999,
+        seatDecisionIndex: record.seatDecisionIndex,
+        choose: () => 9999,
         continuationBundleId: null,
+        explorationAfterFork: "inherit",
       }),
     ).toThrow(/legal/);
   });

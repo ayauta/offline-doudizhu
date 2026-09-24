@@ -324,9 +324,10 @@ describe.skipIf(!ENABLED)("full-action self-play feasibility rehearsal", () => {
 
       const outcomes = [parentIndex, modelIndex, medianIndex].map((actionIndex) =>
         collectEpisode(config, row.provenance.dealIndex, row.provenance.scenario as ScenarioSpecName, {
-          ply: row.provenance.ply,
-          actionIndex,
+          seatDecisionIndex: row.provenance.seatDecisionIndex,
+          choose: () => actionIndex,
           continuationBundleId: config.learningBundleId,
+          explorationAfterFork: "off",
         }).learningTeamWon,
       );
       const [parentWon, modelWon, medianWon] = outcomes as [boolean, boolean, boolean];

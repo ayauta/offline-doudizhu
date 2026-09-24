@@ -60,10 +60,17 @@ tests/core/farmer-pi-protocol.test.ts   2 条失败
 `terminal-v1.md` 是新增文件，不改任何既有内容。
 
 这只影响 `pnpm check` 的绿灯，不影响本报告的任何数字。
-修法有两条（**都需要你决定，我没有动**）：
-(a) 把工作区 ledger 提交进来，同时把这两条测试的 fixture 改成自建的
-"namespace 已保留、尚无 attempt" 的最小 ledger；
-(b) 保持现状，仅在正式 run 之前处理。
+
+**已按 (a) 修复（2026-09-24，commit A `23b31ce`）**：
+真实 ledger 作为历史事实提交；`tests/core/farmer-pi-protocol.test.ts` 中
+依赖 ledger *内容* 的四条 guard 改为读一份**自建的四行最小 ledger fixture**
+（namespace rule + 两个已关闭的历史 pool + reserve，全部是字面量，不读磁盘）。
+仍读真实 artifact 的只剩一条 `readLedger`/`foldPools` 解析检查，
+它断言的性质对任何长度的合法 ledger 都成立。
+
+已验证：把 `allocateAttempt` 的 duplicate 守卫改坏后，该 guard **确实变红**；
+恢复后 `pnpm check` **全绿**（52 files / 672 tests / 9 步全过）。
+旧 FPI 的协议、模型、判定、`stage0-status.md` 里记录的 freeze 时刻 ledger SHA **一律未改**。
 
 **两个旧工程事项的现状**（复核后确认）：
 
@@ -341,13 +348,29 @@ fork            parent 50.0% / model 51.0% / median 47.0%（两次相同）
 
 ### 6.2 采集（研究运行时）
 
+**已由 2026-09-24 的 250-group 独占实测取代**（`benchmarks/selfplay-runtime.test.ts`，
+batch-1 完整配置：3 scenario/group、learning bundle = π1、mixture 对 P0 50/25/25、
+ε = 0.10、auditProposal 开、写 float32 blob）：
+
 | 环境 | ms/group | 7500-group batch | 3 batches |
 | --- | --- | --- | --- |
 | rehearsal 池（`casual` 学习 / `default` 历史，auditProposal 开） | 393 | 0.82 h | 2.5 h |
-| **P0 / π1 池（两个 bundle 都是 master）** | **4498** | **9.4 h** | **28.1 h** |
+| **batch-1 配置（π1 学习 / P0+π1 mixture），250 groups 实测** | **4784.8** | **9.97 h** | **29.9 h** |
 
-⚠️ **P0/PI1 的 9.4 h 是 6 个 group 的线性外推**，不是跑完的测量。
-正式 run 前必须用一个真实的中等窗口（≥200 groups）重新确认斜率。
+实测的完整指标：
+
+```
+wall 1196.2 s / 250 groups / 750 games      12.54 groups/min   37.62 games/min
+cpu 1197.6 s over 1196.2 s wall = 100.1% of one core
+rss 86 MB -> 356 MB                         plies/game 34.13
+decisions/group 34.13   rows/group 34.13    rows/batch 255,990
+行存储 55,157 B/group -> 0.414 GB / batch    600-group dev 0.80 h
+positive rate 56.77%    explored 10.10%
+```
+
+与 6-group 外推的 9.4 h 相差 6%——但**现在是测量，不是外推**。
+另外测得采集是 **100.1% of one core**（单线程），所以多进程切分 deal group 是纯机械加速，
+不改变任何科学语义。
 
 ### 6.3 训练与存储
 

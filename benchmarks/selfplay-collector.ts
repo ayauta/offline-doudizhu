@@ -230,9 +230,33 @@ function attachmentsOf(action: ValidatedPlayAction): string {
  * action that was forced.
  */
 export interface ForkRequest {
-  readonly ply: number;
-  readonly actionIndex: number;
+  /**
+   * Fork at the learning seat's `seatDecisionIndex`-th decision. A decision
+   * index is stable across the runs being compared and needs no survey pass,
+   * which is what keeps a two-arm comparison to two games per root instead of
+   * three.
+   */
+  readonly seatDecisionIndex: number;
+  /**
+   * The forced action, chosen from the legal observation at that decision.
+   *
+   * Taking a callback rather than a precomputed index is not a convenience: it
+   * is the type-level guarantee that an arm cannot be picked by looking at the
+   * hidden hands or at how the game turns out. The callback sees a
+   * `PlayingPlayerView` and the legal action list, and nothing else exists in
+   * its scope.
+   */
+  readonly choose: (view: PlayingPlayerView, legalActions: readonly ValidatedPlayAction[]) => number;
+  /** The frozen bundle every seat plays once the fork has been taken. */
   readonly continuationBundleId: BundleId | null;
+  /**
+   * What the learning seat does about exploration *after* the fork.
+   * `"inherit"` keeps the episode's own epsilon; `"off"` plays greedily from the
+   * fork onwards. A diagnostic that calls itself a deployment diagnostic must
+   * say `"off"`; one that claims to approximate the training target says
+   * `"inherit"`. The two are never the same measurement.
+   */
+  readonly explorationAfterFork: "inherit" | "off";
 }
 
 /**
@@ -298,15 +322,21 @@ export function collectEpisode(
     if (view === null || view.phase === "bidding") {
       throw new Error(`Episode ${episodeId} could not build a playing view for ${seat}.`);
     }
+    if (
+      fork !== null &&
+      fork.continuationBundleId !== null &&
+      decisionCounters[spec.learningSeat] > fork.seatDecisionIndex
+    ) {
+      for (const other of SEAT_ORDER) {
+        resolved.set(other, requireBundle(config, fork.continuationBundleId));
+      }
+    }
     const legalActions = generateLegalActions({ hand: view.hand, currentPlay: view.currentPlay });
     if (legalActions.length === 0) {
       throw new Error(`Episode ${episodeId} found no legal action for ${seat}.`);
     }
     const role = roleOfSeat(seat, spec.landlord);
-    const bundle =
-      fork !== null && fork.continuationBundleId !== null && ply > fork.ply
-        ? requireBundle(config, fork.continuationBundleId)
-        : resolved.get(seat)!;
+    const bundle = resolved.get(seat)!;
     const decisionIndex = decisionCounters[seat];
     const input: DecisionInput = Object.freeze({
       context: Object.freeze({ kind: "play", view, legalActions }),
@@ -324,16 +354,31 @@ export function collectEpisode(
     let explored = false;
     let behaviorProbability = 1;
 
-    if (fork !== null && ply === fork.ply) {
-      if (fork.actionIndex < 0 || fork.actionIndex >= legalActions.length) {
+    const isForkPoint =
+      fork !== null && isLearning && decisionIndex === fork.seatDecisionIndex;
+
+    if (isForkPoint) {
+      const chosen = fork.choose(view, legalActions);
+      if (!Number.isInteger(chosen) || chosen < 0 || chosen >= legalActions.length) {
         throw new Error(
-          `Fork asked for action ${fork.actionIndex} at ply ${ply}, where only ` +
-            `${legalActions.length} are legal.`,
+          `Fork chose action ${chosen} at the learning seat's decision ` +
+            `${decisionIndex}, where only ${legalActions.length} are legal.`,
         );
       }
-      executedIndex = fork.actionIndex;
+      executedIndex = chosen;
       behaviorProbability = Number.NaN;
-    } else if (isLearning) {
+      if (fork.continuationBundleId !== null) {
+        resolved.set(spec.learningSeat, requireBundle(config, fork.continuationBundleId));
+      }
+    } else if (
+      isLearning &&
+      (fork === null ||
+        // Before the fork point the episode must replay exactly as it was
+        // recorded, exploration draws included. `explorationAfterFork` says what
+        // happens *after* the forced action, not before it.
+        decisionIndex < fork.seatDecisionIndex ||
+        fork.explorationAfterFork === "inherit")
+    ) {
       // Exploration stays on for every ply *before* a fork point. A fork has to
       // replay the exact trajectory the corpus recorded, and that trajectory
       // includes the exploration draws; turning exploration off earlier would
