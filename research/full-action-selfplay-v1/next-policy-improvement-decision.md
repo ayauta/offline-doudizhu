@@ -276,3 +276,22 @@ new training before the CHEAP result、farmer retraining、third landlord traini
 hyperparameter sweep、LightGBM replacement、feature changes、epsilon changes、
 history-length changes、reward shaping、C3/C5 attribution、model compression、
 production modification。**Node 2 只是 memo。**
+
+## 20. 追加：CHEAP 确认结果对本 memo 的影响
+
+本 memo 起草于 CHEAP 揭盲**之前**，正文里的 CHEAP 数字全部来自开发池。
+揭盲后（见 [`landlord-robust-confirmation-report.md`](landlord-robust-confirmation-report.md)）
+需要补两处，不动上面任何已写结论：
+
+* **新增证据 A11**：CHEAP 是本线**第一个在 fresh pool 上独立确认的地主候选**
+  ——env A `+9.400pp [+8.038, +10.762]`、env B `+3.450pp [+2.059, +4.841]`，
+  6000 groups，0 exclusion，`JOINT RESEARCH PASS`。
+  这坐实了 A3 那一类结果**可以被独立复现**，不再只是单个候选的孤例。
+* **§14 Route 2 里的非传递对**：换用确认后的数字表述更稳——
+  TARGET 与 CHEAP 在 env B 上的差距**在开发池上**是 CHEAP−TARGET `+4.750pp`（CI 不含 0），
+  而 CHEAP 现在有了自己的 fresh 确认；TARGET 的 env A 优势（+9.875pp）来自**另一个池**，
+  **两者不可相减**。非传递的结论不变，但不能用两个池的数字直接对比来"证明"它。
+
+§13 的瓶颈排序、§15 的 LightGBM 结论、§16 的机制分析**都不受影响**：
+确认的是"CHEAP 这个候选成立"，而 A4/A5/A7 指出的是"**换对手分布就换一个解**"，
+后者是机制问题，一个候选通过确认并不回答它。
