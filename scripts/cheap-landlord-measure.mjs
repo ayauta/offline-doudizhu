@@ -4,10 +4,11 @@
  *
  *     node scripts/cheap-landlord-measure.mjs
  *
- * Builds the default product, measures it, builds the prototype, measures that,
- * and leaves `dist/` holding the default build again. Both builds are the real
- * `vite build` the release path runs — nothing is simulated, and no size is
- * inferred from a model file's own bytes.
+ * Builds the glue-only baseline, measures it, builds the release candidate,
+ * measures that, and leaves `dist/` holding the release build again. Both are
+ * the real `vite build` the release path runs, with the **production** config:
+ * nothing is simulated, no size is inferred from a model file's own bytes, and
+ * no local override is involved. `--stub` is used only to take the baseline.
  *
  * The calibers are the ones frozen in §10 of
  * `research/full-action-selfplay-v1/cheap-integration-protocol.md`, and S2 is
@@ -30,8 +31,14 @@ const OUT = join(ROOT, ".local", "cheap-integration");
 /** §10 S5: the historical reviewed budget for the enhanced AI worker asset. */
 const HISTORICAL_WORKER_BUDGET_GZIP = 123_575;
 
-/** The prototype's build needs a raised Workbox limit; see the file's header. */
-const PROTOTYPE_CONFIG = ".local/vite.prototype.config.ts";
+/*
+ * Both builds use the **production** config. While the Workbox limit was still
+ * 2 MiB the release build could not be emitted at all, and a `.local/` config
+ * differing by that one number was the only way to get bytes to measure. The
+ * limit is now part of the product config, so the bypass is gone: what this
+ * script measures is what `pnpm build` produces.
+ */
+const PROTOTYPE_CONFIG = undefined;
 
 function walk(directory) {
   const files = [];
@@ -120,22 +127,6 @@ console.log("[clm] building the glue-only baseline (model stubbed)…");
 build(true);
 const baseline = measure("baseline");
 
-/*
- * The measurement config differs from the production one by a single number, so
- * the baseline is built with it too and the two must agree byte for byte. If
- * they ever do not, the prototype numbers below are not about this product.
- */
-console.log("[clm] checking the measurement config produces the same baseline…");
-build(true, PROTOTYPE_CONFIG);
-const baselineViaMeasurementConfig = measure("baseline-measurement-config");
-if (baselineViaMeasurementConfig.workerRawBytes !== baseline.workerRawBytes) {
-  throw new Error(
-    "The measurement config produced a different baseline " +
-      `(${baselineViaMeasurementConfig.workerRawBytes} vs ${baseline.workerRawBytes} bytes); ` +
-      "refusing to report prototype numbers from it.",
-  );
-}
-
 console.log("[clm] building the release candidate…");
 build(false, PROTOTYPE_CONFIG);
 const prototype = measure("prototype");
@@ -180,8 +171,7 @@ const report = {
     restored.workerRawBytes === baseline.workerRawBytes &&
     restored.distRawBytes === baseline.distRawBytes,
   restoredWorkerGzipBytes: restored.workerGzipBytes,
-  measurementConfigBaselineIdentical:
-    baselineViaMeasurementConfig.workerRawBytes === baseline.workerRawBytes,
+  usedProductionConfigForBothBuilds: PROTOTYPE_CONFIG === undefined,
   preIntegrationRecorded: {
     note:
       "Measured on this tree with the src/ integration changes stashed, so the " +
