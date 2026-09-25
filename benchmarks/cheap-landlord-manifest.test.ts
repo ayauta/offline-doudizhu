@@ -20,8 +20,8 @@
  */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 
@@ -40,6 +40,20 @@ const ENABLED = process.env.AI_CHEAP_MANIFEST === "1";
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const DIST = join(ROOT, "dist");
 const OUT = join(ROOT, "research/full-action-selfplay-v1/ai-v2-release-candidate-manifest.json");
+/**
+ * The immutable champion record.
+ *
+ * The release-candidate manifest is what a reviewer reads while deciding; this
+ * is what the repository keeps afterwards. Same computed values, richer
+ * framing: it names the generation, its parent, and the evidence that promoted
+ * it, so a reader arriving in a year does not have to reconstruct why `ai-v2`
+ * is production from a commit log.
+ *
+ * `ai-v1`'s record is not touched. There is no `ai-v1.json` here to overwrite —
+ * that champion is defined by `src/app/ai/cf-model-data.ts` and its protocol —
+ * and nothing in this file writes anywhere near it.
+ */
+const CHAMPION_OUT = join(ROOT, "research/champions/ai-v2.json");
 
 /** The values the Farmer PI protocol froze, kept beside the current ones. */
 const FROZEN = Object.freeze({
@@ -53,6 +67,12 @@ const FROZEN = Object.freeze({
 const sha256 = (bytes: Buffer | string) =>
   createHash("sha256").update(typeof bytes === "string" ? Buffer.from(bytes, "utf8") : bytes).digest("hex");
 const fileSha = (path: string) => sha256(readFileSync(path));
+
+/** `package.json`'s version, so the record cannot drift from the release. */
+function packageVersion(): string {
+  const parsed = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { version: string };
+  return parsed.version;
+}
 
 function git(...args: string[]): string {
   return execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();
@@ -226,6 +246,87 @@ describe.skipIf(!ENABLED)("release-candidate manifest", () => {
     expect(manifest.schema.columns).toBe(403);
 
     writeFileSync(OUT, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+    /*
+     * The champion record. Every field is the same computed value the
+     * release-candidate manifest carries -- one run, one set of digests, two
+     * framings -- so the two files cannot disagree about what shipped.
+     */
+    const champion = {
+      generation: "ai-v2",
+      champion: true,
+      parentChampion: "ai-v1",
+      promotedAt: new Date().toISOString(),
+      /*
+       * The stable pointer. Commit hashes move when history is tidied and this
+       * file cannot name the commit that contains it; a tag can do both jobs.
+       * `build.commit` below records the tree the digests were taken from.
+       */
+      releaseTag: "ai-v2",
+      productVersion: packageVersion(),
+      summary:
+        "Landlord upgraded to the full-action CHEAP policy; farmers continue on " +
+        "the pi1 counterfactual selector. Active on the master tier.",
+      policy: {
+        landlord: {
+          name: "CHEAP (full-action LightGBM, 403-column state-action schema)",
+          modelSha256: CHEAP_LANDLORD_MODEL_SHA256,
+          packagedFile: manifest.models.cheapLandlord.packagedFile,
+          packagedFileBytes: manifest.models.cheapLandlord.packagedFileBytes,
+          numTrees: manifest.models.cheapLandlord.numTrees,
+          numFeatures: manifest.models.cheapLandlord.numFeatures,
+        },
+        farmers: {
+          name: "pi1 (frozen counterfactual selector)",
+          modelSha256: CF_MODEL_SHA256,
+          threshold: CF_SELECTOR_THRESHOLD,
+        },
+      },
+      schema: manifest.schema,
+      identities: manifest.identities,
+      deadline: manifest.deadline,
+      bundle: {
+        worker: manifest.build.worker,
+        workerGzipBudgetBytes: manifest.build.workerGzipBudgetBytes,
+        workboxMaximumFileSizeToCacheInBytes: manifest.build.workboxMaximumFileSizeToCacheInBytes,
+      },
+      platformQualification: {
+        desktopChromium: "measured (in-process and real Worker)",
+        android: manifest.build.android,
+      },
+      evidence: {
+        strength: {
+          // The numbers the promotion rests on, kept with their pools. They are
+          // quoted, never re-derived here: re-running a strength experiment is
+          // not this file's job and would spend a pool.
+          landlordIndependentConfirmation: {
+            pool: "952401-958400 (retired)",
+            groups: 6000,
+            vsPi1Farmers: { deltaPp: 9.4, ci95: [8.038, 10.762] },
+            vsDefaultFarmers: { deltaPp: 3.45, ci95: [2.059, 4.841] },
+            verdict: "JOINT RESEARCH PASS",
+            report: "research/full-action-selfplay-v1/landlord-robust-confirmation-report.md",
+            protocolSha256: "81fbd4f647ac3e404892fddc603889f7538daa586112e960c32e0cf6a10ae7b7",
+          },
+          farmerPi1: {
+            note: "Spec 063 final validation; farmer +10.583pp, combined +5.292pp",
+          },
+        },
+        releaseEquivalence: {
+          note:
+            "Implementation regression only, not strength evidence. Research reference vs " +
+            "the final production Worker, on retired development deals.",
+          report: "research/full-action-selfplay-v1/cheap-release-candidate-report.md",
+        },
+      },
+      build: {
+        commit: manifest.build.commit,
+        branch: manifest.build.branch,
+      },
+    };
+    mkdirSync(dirname(CHAMPION_OUT), { recursive: true });
+    writeFileSync(CHAMPION_OUT, `${JSON.stringify(champion, null, 2)}\n`, "utf8");
+    console.log(`[clm-mf] champion ${CHAMPION_OUT}`);
     console.log(`[clm-mf] wrote ${OUT}`);
     console.log(
       `[clm-mf] cheap ${CHEAP_LANDLORD_MODEL_SHA256.slice(0, 16)}… pi1 ${CF_MODEL_SHA256.slice(0, 16)}… ` +

@@ -1,22 +1,24 @@
 {
-  "kind": "release-candidate-manifest",
-  "champion": false,
-  "note": "Not a champion archive and not a promotion. The ai-v1 model recorded here is the shipped production model and is unchanged by this work.",
-  "generatedAt": "2026-09-25T14:02:49.736Z",
-  "models": {
-    "cheapLandlord": {
-      "confirmedSha256": "070f5b0b728176a8fb11d6a79e585b1315b847e053a23821830e17394faac26b",
-      "declaredSha256": "070f5b0b728176a8fb11d6a79e585b1315b847e053a23821830e17394faac26b",
+  "generation": "ai-v2",
+  "champion": true,
+  "parentChampion": "ai-v1",
+  "promotedAt": "2026-09-25T14:02:49.943Z",
+  "releaseTag": "ai-v2",
+  "productVersion": "0.5.0",
+  "summary": "Landlord upgraded to the full-action CHEAP policy; farmers continue on the pi1 counterfactual selector. Active on the master tier.",
+  "policy": {
+    "landlord": {
+      "name": "CHEAP (full-action LightGBM, 403-column state-action schema)",
+      "modelSha256": "070f5b0b728176a8fb11d6a79e585b1315b847e053a23821830e17394faac26b",
       "packagedFile": "src/app/ai/cheap-landlord-model.ts",
       "packagedFileBytes": 2028939,
-      "packagedFileSha256": "583678bb8ac89793e5453484e0a7a13597648f930b78a56363a40b28c6b4dd15",
       "numTrees": 512,
       "numFeatures": 403
     },
-    "pi1Farmers": {
-      "source": "src/app/ai/cf-model-data.ts",
-      "sha256": "010a8a4a00524f0694d5881bacdd885d99243acf4d71e2b2fdcae7ae82fc3359",
-      "selectorThreshold": 0.01
+    "farmers": {
+      "name": "pi1 (frozen counterfactual selector)",
+      "modelSha256": "010a8a4a00524f0694d5881bacdd885d99243acf4d71e2b2fdcae7ae82fc3359",
+      "threshold": 0.01
     }
   },
   "schema": {
@@ -61,13 +63,6 @@
       "changedBecause": null
     }
   },
-  "policy": {
-    "version": "fa-landlord-v1",
-    "scope": "master tier, landlord seat only",
-    "canonicalOrder": "generateLegalActions order",
-    "tieBreak": "highest score; ties to the earliest position; never resolves to pass",
-    "candidateSet": "context.legalActions, the full legal set; no shortlist, no topK"
-  },
   "deadline": {
     "responseWindowMs": 480,
     "masterBudgetMs": 120,
@@ -75,16 +70,17 @@
     "landlordPolicyReadsMasterBudget": false,
     "fallback": "decline -> production path (model unavailable, empty legal set, schema mismatch, scoring failure); otherwise the client's response budget expires and the turn falls back to the casual strategy"
   },
-  "build": {
-    "commit": "f6f5b7e66f161611b8de09848e37b311806cfaac",
-    "branch": "research/full-action-selfplay-v1",
+  "bundle": {
     "worker": {
       "asset": "assets/ai-worker-k7BbEMss.js",
       "rawBytes": 2569883,
       "gzipBytes": 575787
     },
     "workerGzipBudgetBytes": 650000,
-    "workboxMaximumFileSizeToCacheInBytes": 3145728,
+    "workboxMaximumFileSizeToCacheInBytes": 3145728
+  },
+  "platformQualification": {
+    "desktopChromium": "measured (in-process and real Worker)",
     "android": {
       "package": "io.github.ayauta.offlinedoudizhu.debug",
       "variant": "debug (assembleDebug, AGP 9.4.0 / Gradle 9.6.0 / JDK 17)",
@@ -99,5 +95,41 @@
       },
       "measuredThrough": "the shipped Worker (appassets.androidplatform.net/assets/assets/ai-worker-*.js)"
     }
+  },
+  "evidence": {
+    "strength": {
+      "landlordIndependentConfirmation": {
+        "pool": "952401-958400 (retired)",
+        "groups": 6000,
+        "vsPi1Farmers": {
+          "deltaPp": 9.4,
+          "ci95": [
+            8.038,
+            10.762
+          ]
+        },
+        "vsDefaultFarmers": {
+          "deltaPp": 3.45,
+          "ci95": [
+            2.059,
+            4.841
+          ]
+        },
+        "verdict": "JOINT RESEARCH PASS",
+        "report": "research/full-action-selfplay-v1/landlord-robust-confirmation-report.md",
+        "protocolSha256": "81fbd4f647ac3e404892fddc603889f7538daa586112e960c32e0cf6a10ae7b7"
+      },
+      "farmerPi1": {
+        "note": "Spec 063 final validation; farmer +10.583pp, combined +5.292pp"
+      }
+    },
+    "releaseEquivalence": {
+      "note": "Implementation regression only, not strength evidence. Research reference vs the final production Worker, on retired development deals.",
+      "report": "research/full-action-selfplay-v1/cheap-release-candidate-report.md"
+    }
+  },
+  "build": {
+    "commit": "f6f5b7e66f161611b8de09848e37b311806cfaac",
+    "branch": "research/full-action-selfplay-v1"
   }
 }

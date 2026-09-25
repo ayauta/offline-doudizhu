@@ -30,10 +30,10 @@ describe("public preview release delivery", () => {
     // package.json, the Android versionName and versionCode, the README, and
     // this test together. `versionCode` must increase, or Android rejects the
     // new APK as a downgrade over an installed older release.
-    expect(packageConfig.version).toBe("0.4.0");
-    expect(androidBuild).toContain('versionName = "0.4.0"');
-    expect(androidBuild).toContain("versionCode = 4");
-    expect(readme).toContain("v0.4.0");
+    expect(packageConfig.version).toBe("0.5.0");
+    expect(androidBuild).toContain('versionName = "0.5.0"');
+    expect(androidBuild).toContain("versionCode = 5");
+    expect(readme).toContain("v0.5.0");
   });
 
   it("keeps apk inspection from closing the pipe it is still reading", async () => {
