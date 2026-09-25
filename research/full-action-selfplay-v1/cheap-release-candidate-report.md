@@ -288,3 +288,80 @@ manifest 记录的 `build.commit` 是 `eb8e9ed`——即它描述的那棵树；
 冻结模型）。`src/app/ai/decision-handler.ts`、`src/platform/web/ai-worker.ts`、
 `src/core/ai/fa-features.ts`、`src/app/ai/cheap-landlord.ts` **本轮未再改动**——
 策略自确认以来字节未变。
+
+---
+
+# ADDENDUM — ANDROID RUNTIME CLOSURE
+
+前一轮的 §A 把真机一列标为"WebView 主线程 probe、非真实 Worker"。本轮补上了这一项。
+
+## APK 身份（先确认，再测量）
+
+```
+build        ./gradlew assembleDebug  （AGP 9.4.0 / Gradle 9.6.0 / JDK 17）
+             JDK 不存在 -> 本轮装入 .local/toolchains/jdk-17.0.20.1+1（仓库 toolchain 惯例）
+             android/local.properties 指向 .local/android/sdk（gitignored）
+APK          android/app/build/outputs/apk/debug/app-debug.apk
+             sha256 9745ac9bdfaa38a2210754cbdfe4581feffb886a2f9c16615706e8eee796a543
+包内 worker  assets/assets/ai-worker-k7BbEMss.js
+             sha256 57a0b30b8cf41004a2128d6e0f41de0d2222fe8d0bac098f314c7b22be3e7361
+dist worker  同一 sha256  —— **逐字节相同**
+manifest     assets/ai-worker-k7BbEMss.js, 2,569,883 raw / 575,787 gzip  —— 相同
+CHEAP SHA    070f5b0b728176a8fb11d6a79e585b1315b847e053a23821830e17394faac26b
+π1 SHA       010a8a4a00524f0694d5881bacdd885d99243acf4d71e2b2fdcae7ae82fc3359
+```
+
+装到 `f28c4fbd`（Xiaomi 10S / Android 11 / SDK 30），走**真实产品 Worker**：
+instrumentation 只包一层 `window.Worker`，不加任何 `src/` 钩子。
+运行中记录的 worker URL 就是 APK 里的那份：
+
+```
+https://appassets.androidplatform.net/assets/assets/ai-worker-k7BbEMss.js
+```
+
+## 测量（真实 deadline 480 ms，未放宽）
+
+```
+deals 12      requests 309     injected 309     malformed 0     errors 0
+landlord decisions 152（全部带 context）        farmer decisions 141
+
+landlord end-to-end round trip
+  p50 13.6   p90 31.3   p95 43.2   p99 92.2   max 95.3 ms     全部 < 480 ms
+farmer round trip（master）
+  p50 177.0  p90 255.8  p95 263.5  p99 305.3  max 320.7 ms
+
+implementation mismatch（research reference vs 设备上真实 Worker 执行的动作）
+  152 个地主决策，**0 mismatch**
+deadline fallback 0      other fallback 0      policy retention **100.000%**（门槛 ≥ 99%）
+
+cold
+  worker 创建 -> 首个请求发出      0.3 ms（惰性创建，就在请求那一刻）
+  首个请求 round trip（bid，含 module load + π1 parse）  277.5 ms   < 480 ms
+  首个地主决策 round trip                                 58.5 ms
+```
+
+`_analysis_` 用的参考实现与 desktop 大样本那份完全相同（`scoreLegalActions` +
+`argmaxAction`），比较量是**最终执行的 action identity**。
+
+## 与上一轮 §A 的关系（不要混用）
+
+上一轮那 68 个地主决策是 **WebView 主线程**口径（probe 自带模型字节），
+本轮 152 个是 **真实 Worker** 口径。两批数字**不可相加、不可比较**，
+本轮取代上一轮作为 Android closure。
+
+## 一处仍未取得
+
+**真机内存仍 unavailable**：`performance.memory` 在 WebView 中被量化（arm 前后均为
+10,000,000 B），本轮同样无法取得可靠增量。不做替代推断。
+
+## 判定
+
+```
+ANDROID RUNTIME PASS
+  candidate/build identity correct        APK worker == dist worker == manifest worker
+  implementation mismatch = 0             152 个地主决策
+  unexpected farmer regression = 0        141 个 farmer 决策，0 fallback，全 ok
+  policy retention >= 99%                 100.000%
+  no material operational fallback        0 deadline + 0 other
+  p99 < 480 ms                            92.2 ms
+```

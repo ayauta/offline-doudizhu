@@ -2,7 +2,7 @@
   "kind": "release-candidate-manifest",
   "champion": false,
   "note": "Not a champion archive and not a promotion. The ai-v1 model recorded here is the shipped production model and is unchanged by this work.",
-  "generatedAt": "2026-09-25T08:37:58.309Z",
+  "generatedAt": "2026-09-25T10:27:39.951Z",
   "models": {
     "cheapLandlord": {
       "confirmedSha256": "070f5b0b728176a8fb11d6a79e585b1315b847e053a23821830e17394faac26b",
@@ -76,7 +76,7 @@
     "fallback": "decline -> production path (model unavailable, empty legal set, schema mismatch, scoring failure); otherwise the client's response budget expires and the turn falls back to the casual strategy"
   },
   "build": {
-    "commit": "eb8e9edc30c87741089398efb35e21436df30dac",
+    "commit": "4df26c5dbcfe30afabdc9ad45fb354a4164eda95",
     "branch": "research/full-action-selfplay-v1",
     "worker": {
       "asset": "assets/ai-worker-k7BbEMss.js",
@@ -86,8 +86,18 @@
     "workerGzipBudgetBytes": 650000,
     "workboxMaximumFileSizeToCacheInBytes": 3145728,
     "android": {
-      "note": "The device probe was injected over CDP into the installed .debug WebView; the APK's own worker bundle is not what it measured. See the report.",
-      "installedPackage": "io.github.ayauta.offlinedoudizhu.debug"
+      "package": "io.github.ayauta.offlinedoudizhu.debug",
+      "variant": "debug (assembleDebug, AGP 9.4.0 / Gradle 9.6.0 / JDK 17)",
+      "apkSha256": "9745ac9bdfaa38a2210754cbdfe4581feffb886a2f9c16615706e8eee796a543",
+      "packagedWorkerPath": "assets/assets/ai-worker-k7BbEMss.js",
+      "packagedWorkerSha256": "57a0b30b8cf41004a2128d6e0f41de0d2222fe8d0bac098f314c7b22be3e7361",
+      "packagedWorkerMatchesDist": true,
+      "device": {
+        "model": "Xiaomi 10S (M2102J2SC)",
+        "androidRelease": "11",
+        "sdk": 30
+      },
+      "measuredThrough": "the shipped Worker (appassets.androidplatform.net/assets/assets/ai-worker-*.js)"
     }
   }
 }

@@ -196,10 +196,24 @@ describe.skipIf(!ENABLED)("release-candidate manifest", () => {
           return match === null ? null : Number(match[1]) * Number(match[2]) * Number(match[3]);
         })(),
         android: {
-          note:
-            "The device probe was injected over CDP into the installed .debug WebView; the " +
-            "APK's own worker bundle is not what it measured. See the report.",
-          installedPackage: "io.github.ayauta.offlinedoudizhu.debug",
+          package: "io.github.ayauta.offlinedoudizhu.debug",
+          variant: "debug (assembleDebug, AGP 9.4.0 / Gradle 9.6.0 / JDK 17)",
+          apkSha256: "9745ac9bdfaa38a2210754cbdfe4581feffb886a2f9c16615706e8eee796a543",
+          /*
+           * The link between the APK and this manifest. The Worker inside the
+           * built APK is hashed and compared with `dist/`, and `dist/`'s Worker
+           * is what `worker.asset` above names. Equal hashes are what make
+           * "the phone ran this release candidate" a statement about bytes.
+           */
+          packagedWorkerPath: "assets/assets/ai-worker-k7BbEMss.js",
+          packagedWorkerSha256: "57a0b30b8cf41004a2128d6e0f41de0d2222fe8d0bac098f314c7b22be3e7361",
+          packagedWorkerMatchesDist: true,
+          device: {
+            model: "Xiaomi 10S (M2102J2SC)",
+            androidRelease: "11",
+            sdk: 30,
+          },
+          measuredThrough: "the shipped Worker (appassets.androidplatform.net/assets/assets/ai-worker-*.js)",
         },
       },
     };
