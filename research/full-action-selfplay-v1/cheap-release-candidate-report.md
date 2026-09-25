@@ -130,7 +130,9 @@ pnpm check    EXIT=0
 
 ## F. FINAL RELEASE EQUIVALENCE
 
-`implementation regression only, not new strength evidence`。
+`Implementation regression only, not new strength evidence`。
+整轮 **5 个 test 全绿**（`Tests 5 passed (5)`，EXIT=0）；下面的 latency 数字取自这次
+全绿运行，不是上一次因 harness timeout 被标红、但数据已经产出的那次。
 数据来自 **development pool `915001–915300`**（300 deals），**不是**新的 strength 证据。
 
 ```
@@ -140,6 +142,15 @@ landlord decisions         3,532       research CHEAP vs final production Worker
                                        declines 0
 farmer decisions           6,579       被收集；回归抽样 1,000
 legal actions              min 1 / p50 2 / p95 58 / p99 121 / max 245
+
+in-process latency（3,532 个地主决策，含拆解）
+  total      p50 0.10  p90 1.37  p95 3.07  p99 6.32  max 12.64 ms
+    feature  p50 0.02  p90 0.29  p95 0.64  p99 1.36  max  2.99
+    inference p50 0.07 p90 1.07  p95 2.40  p99 4.92  max  9.68
+    select   p50 0.01  p90 0.01  p95 0.02  p99 0.03  max  0.17
+  leading     n 1013  p50 0.71  p99 7.58  max 12.64
+  responding  n 2519  p50 0.06  p99 0.47  max  1.39
+  wide sets（≥20）n 429  p50 2.77  p99 8.67  max 12.64
 ```
 
 覆盖（逐类计数，全部实测非零）：
@@ -182,7 +193,7 @@ deadline fallbacks                  0             0               0
 other fallbacks（decline）           0             0               0
 policy retention              100.000%        100.0%          100.0%
 冻结门槛 R1 ≥ 99.00%             满足            满足             满足
-R2 p99 ≤ 480 ms                6.84 ms         14.3 ms         164.69 ms
+R2 p99 ≤ 480 ms                6.32 ms         14.3 ms         164.69 ms
 R3 max（只报告）              12.64 ms         14.3 ms         179.50 ms
 ```
 
