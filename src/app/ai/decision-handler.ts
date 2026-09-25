@@ -9,6 +9,11 @@ import type {
   AiStrategy,
 } from "../../core/ai/index.js";
 import type { GameCommand } from "../../core/game/index.js";
+import type { TreeModel } from "../../core/ai/cf-model.js";
+import {
+  cheapLandlordDecision,
+  type CheapLandlordDecision,
+} from "./cheap-landlord.js";
 import type {
   AiDecisionOutcome,
   EnhancedAiType,
@@ -53,6 +58,12 @@ export type EnhancedAiWorkerRequest = Readonly<{
    * selector as a post-decision overlay. Absent means production behaviour.
    */
   counterfactualFarmer?: boolean;
+  /**
+   * Experimental. Asks the worker to hand the landlord seat to the frozen
+   * full-action policy instead of running master's rollout. Absent means
+   * production behaviour.
+   */
+  cheapLandlord?: boolean;
 }>;
 
 export type EnhancedAiWorkerResponse = Readonly<{
@@ -78,11 +89,26 @@ export type PlayDecisionOverlay = (
   productionCommand: GameCommand,
 ) => GameCommand;
 
+/**
+ * The landlord policy, as the runtime sees it.
+ *
+ * `observe` is a measurement seam, not a decision input: it is called with the
+ * decision that was already made, and the policy never reads anything back. A
+ * shipped Worker passes none, so the seam costs one undefined check.
+ */
+export type CheapLandlordRuntime = Readonly<{
+  model: TreeModel;
+  modelSha256: string;
+  observe?: (context: Extract<AiDecisionContext, { readonly kind: "play" }>, decision: CheapLandlordDecision) => void;
+}>;
+
 export type AiDecisionRuntime = Readonly<{
   deadline: number;
   now: () => number;
   /** Absent in production. Present only when an experiment installs one. */
   overlay?: PlayDecisionOverlay;
+  /** Absent in production. Present only when the landlord policy is installed. */
+  landlord?: CheapLandlordRuntime;
 }>;
 
 function actionCommand(
@@ -156,6 +182,34 @@ export function decideEnhancedAi(
         ? SCORING_CASUAL_AI_STRATEGY
         : EXPERT_AI_STRATEGY;
       return Object.freeze({ ok: true, command: strategyCommand(context, strategy) });
+    }
+
+    /*
+     * The landlord branch runs *before* master's rollout, not after it. An
+     * overlay would have to let master spend its whole budget and then throw the
+     * answer away, which measures a product that does not exist. When the
+     * policy is installed the rollout is never started, so `rankMasterPlayActions`
+     * is not merely ignored — it is not called.
+     *
+     * Master only: `casual` is a deliberately weaker product tier and the
+     * confirmation's baseline was the master tier. Widening this to casual would
+     * be a product decision about that tier's difficulty, not an integration.
+     *
+     * A refusal falls through to the production path, so a landlord whose model
+     * failed to load plays master's move rather than losing its turn. The
+     * refusal is reported through `observe`, so it is counted rather than
+     * inferred from a command that happens to look reasonable.
+     */
+    if (request.aiType === "master" && runtime.landlord !== undefined) {
+      const landlord = runtime.landlord;
+      const decision = cheapLandlordDecision(context, {
+        model: landlord.model,
+        modelSha256: landlord.modelSha256,
+      });
+      landlord.observe?.(context, decision);
+      if (decision.kind === "cheap") {
+        return Object.freeze({ ok: true, command: decision.command });
+      }
     }
 
     if (request.aiType === "casual") {

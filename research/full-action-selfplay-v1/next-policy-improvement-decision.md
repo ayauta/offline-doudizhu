@@ -59,8 +59,11 @@
 | #8 | **raw compute** | 实测 | **不是瓶颈**：46.7 groups/min @8 workers；7500-group batch ≈ 2.7 h。 |
 
 **#1 的表述**（避免过度声称）：
-> 现有证据指向"**跨对手分布的策略泛化**"是首要瓶颈，而不是回归器容量、表征或算力；
-> 但 representation / objective 的因果贡献**尚未被排除**。
+> `current evidence most strongly implicates policy-update/generalization as the next`
+> `research focus, while representation/objective/capacity contributions remain unresolved.`
+>
+> 即：现有证据**最强地指向** policy-update / generalization 作为下一个研究焦点；
+> 这**不是**说回归器容量、表征或目标的贡献已经被排除 —— 它们只是没有被证据推到前面。
 
 ---
 
@@ -118,7 +121,8 @@
   ——TARGET 在 π1 farmers 上更强（+9.667 vs +7.000），CHEAP 在 default farmers 上更强
   （+2.667 vs −2.083），直接 paired 在 env B 上 CHEAP−TARGET = **+4.750pp（CI 不含 0）**。
   两个候选各赢一个环境。因此每一轮晋级都必须包含**显式的非传递检测**：
-  在池上两两配对，若出现环则判该轮 **NO-GO**，而不是挑一个方向宣布进步。
+  在池上两两配对。**已观察到的是明显的 opponent-dependent performance，尚不足以证明完整 non-transitive cycle**；
+  若未来观察到 cycle，应进入 **population-level evaluation**，而不是机械 NO-GO。
 
 ---
 
@@ -127,9 +131,11 @@
 选：**search-assisted target construction（搜索构造更好的 label），运行时仍用可蒸馏的小模型。**
 
 **它具体解决我们已经观测到的哪个失败模式？**
-解决 **#3 与 A4 的共同根源**：现有 label 是"在当前 continuation 下采样一次的终局胜负"，
+**这是一个值得测试的 candidate mechanism，不是已证明的修复。** 它针对的是 #3 与 A4 的共同来源：现有 label 是"在当前 continuation 下采样一次的终局胜负"，
 它 ① 方差极大（paired sd ≈ 53–55pp），② **条件于当前对手分布**——
-这正是 A4 里同一个网络在两种 farmer 环境下差 12.8pp 的机制来源。
+这正是 A4 里同一个网络在两种 farmer 环境下差 12.8pp 的**一个**可能机制来源。
+它仍然依赖 hidden-state sampling、opponent assumptions、continuation policy 与
+search budget，**尚未被证明能解决 cross-opponent generalization**。
 
 做法：把 label 从"采样一条 continuation"换成"**对对手手牌做有界 determinization 聚合**"，
 并让 continuation 本身也由 incumbent 策略给出（而不是由当前对手分布给出）。
@@ -156,13 +162,15 @@
 
 ## 15. LightGBM 专门结论
 
-**是否已有证据应该弃用 LightGBM？——没有。默认继续把它当作 cheap deployable function approximator。**
+**是否已有证据应该弃用 LightGBM？——当前没有直接证据要求弃用；默认继续把它当作
+cheap deployable function approximator。** 但这是一个**成本收益判断，不是排除性结论**：
+低训练误差**不能**排除 capacity / representation limitation。
 
 逐项区分：
 
 | 维度 | 本项目证据 | 判断 |
 | --- | --- | --- |
-| **regressor capacity** | 三个 role 的 train L2 = 0.076 / 0.105 / 0.108，常数基线 0.198 / 0.214 / 0.212；state-only 消融更差 | **无欠拟合迹象**，capacity 不是 ceiling 的证据 |
+| **regressor capacity** | 三个 role 的 train L2 = 0.076 / 0.105 / 0.108，常数基线 0.198 / 0.214 / 0.212；state-only 消融更差 | **无欠拟合迹象**；但低训练误差不能排除 capacity limitation，它只是没有指向它 |
 | **feature representation** | 动作列带来 1.8–8.6% dev MSE 下降；离散度比值 0.117–0.201，state-only 恰 0.000 | 表征**有用**，是否**不足**从未被隔离测量 |
 | **label semantics** | 单次采样的终局胜负，paired sd ≈ 53–55pp，且条件于当前对手分布 | **最可疑的一项**，但这是**目标**的问题，不是回归器的问题 |
 | **exploration** | 实测 10.09%，稀有动作族偏薄 | 未证明是瓶颈 |
@@ -212,7 +220,8 @@
 * (a) 一个**冻结且可识别**的对手 population（内容身份，不是"最新版"）；
 * (b) 一个**约束型**晋级规则（每环境分别判定），不是池上平均值；
 * (c) 一个**不塌缩到池分布**的目标估计——否则 candidate 的值只在那一个混合下成立；
-* (d) **显式的非传递检测**（池上两两配对，出现环即 NO-GO）；
+* (d) **显式的非传递检测**（池上两两配对；若观察到 cycle，进入 population-level
+  evaluation，而不是机械 NO-GO）；
 * (e) 每一步之后**重测旧环境**，且旧环境不能从池里移除。
 
 **不写** `self-play naturally converges`，也**不**把 AlphaZero 类系统简化成
@@ -283,7 +292,8 @@ production modification。**Node 2 只是 memo。**
 揭盲后（见 [`landlord-robust-confirmation-report.md`](landlord-robust-confirmation-report.md)）
 需要补两处，不动上面任何已写结论：
 
-* **新增证据 A11**：CHEAP 是本线**第一个在 fresh pool 上独立确认的地主候选**
+* **新增证据 A11**：CHEAP 是本线**第一个在预注册的两个关键 farmer environments 上联合 independent PASS 的地主候选**
+  （TARGET 已先独立验证过**单一 primary environment**，两者不是同一件事）
   ——env A `+9.400pp [+8.038, +10.762]`、env B `+3.450pp [+2.059, +4.841]`，
   6000 groups，0 exclusion，`JOINT RESEARCH PASS`。
   这坐实了 A3 那一类结果**可以被独立复现**，不再只是单个候选的孤例。

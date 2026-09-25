@@ -11,6 +11,11 @@ import {
   type TreeModel,
 } from "../../app/ai/cf-selector.js";
 import { CF_MODEL_JSON, CF_SELECTOR_THRESHOLD } from "../../app/ai/cf-model-data.js";
+import {
+  CHEAP_LANDLORD_MODEL_JSON,
+  CHEAP_LANDLORD_MODEL_SHA256,
+} from "../../app/ai/cheap-landlord-model.js";
+import type { CheapLandlordRuntime } from "../../app/ai/decision-handler.js";
 
 type WorkerScope = {
   onmessage: ((event: MessageEvent<EnhancedAiWorkerRequest>) => void) | null;
@@ -61,14 +66,56 @@ function overlayFor(request: EnhancedAiWorkerRequest): PlayDecisionOverlay | und
     cfSelectFarmerAction(context, productionCommand, options);
 }
 
+/**
+ * The landlord policy, parsed once on first use.
+ *
+ * Same discipline as `loadModel`: a build with no table, a malformed table or a
+ * schema that does not match resolves to `null`, and a null model means the
+ * landlord branch is never installed and master plays its own move. A policy
+ * that cannot load must not be able to block or corrupt a legal move.
+ *
+ * `undefined` means "not tried yet" and `null` means "tried, unavailable" —
+ * the distinction matters because a failed parse must not be retried per
+ * decision, and because the two are reported differently.
+ */
+let cachedLandlordModel: TreeModel | null | undefined;
+
+function loadLandlordModel(): TreeModel | null {
+  if (cachedLandlordModel === undefined) {
+    try {
+      if (CHEAP_LANDLORD_MODEL_JSON === null) {
+        cachedLandlordModel = null;
+      } else {
+        cachedLandlordModel = parseTreeModel(JSON.parse(CHEAP_LANDLORD_MODEL_JSON));
+      }
+    } catch {
+      cachedLandlordModel = null;
+    }
+  }
+  return cachedLandlordModel;
+}
+
+function landlordRuntimeFor(request: EnhancedAiWorkerRequest): CheapLandlordRuntime | undefined {
+  if (request.cheapLandlord !== true || request.aiType !== "master") {
+    return undefined;
+  }
+  const model = loadLandlordModel();
+  if (model === null) {
+    return undefined;
+  }
+  return Object.freeze({ model, modelSha256: CHEAP_LANDLORD_MODEL_SHA256 });
+}
+
 workerScope.onmessage = (event) => {
   const started = performance.now();
   const request = event.data;
   const overlay = overlayFor(request);
+  const landlord = landlordRuntimeFor(request);
   const outcome = decideEnhancedAi(request, {
     deadline: started + ENHANCED_AI_BUDGET_MS[request.aiType],
     now: () => performance.now(),
     ...(overlay === undefined ? {} : { overlay }),
+    ...(landlord === undefined ? {} : { landlord }),
   });
   workerScope.postMessage(Object.freeze({
     requestId: request.requestId,
