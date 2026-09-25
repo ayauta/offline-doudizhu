@@ -49,8 +49,9 @@ import { selfplayRowFromState, stateFeaturesOf } from "./selfplay-features.js";
 
 const ENABLED = process.env.AI_SELFPLAY_LANDLORD_STANDALONE === "1";
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
-const REH = join(ROOT, ".local", "selfplay-reh", "TARGET");
-const OUT = join(ROOT, ".local", "landlord-validation");
+const BRANCH = (process.env.AI_SELFPLAY_STANDALONE_BRANCH ?? "TARGET") as "CHEAP" | "TARGET";
+const REH = join(ROOT, ".local", "selfplay-reh", BRANCH);
+const OUT = join(ROOT, ".local", "landlord-validation", BRANCH === "TARGET" ? "." : "cheap");
 
 const ROLES: readonly SelfPlayRole[] = ["landlord", "farmer-next", "farmer-previous"];
 const DEV_SEEDS = [5001, 5010, 5020, 5030, 5040, 5060, 5080, 5100];
@@ -141,7 +142,7 @@ describe.skipIf(!ENABLED)("standalone landlord: equivalence and cost", () => {
   it("reaches the same executed command as the full bundle, on every covered category", () => {
     mkdirSync(OUT, { recursive: true });
     const models = loadRoleModels();
-    const bundle = createQBundle(models, "SP-TARGET");
+    const bundle = createQBundle(models, `SP-${BRANCH}`);
     const standalone = createQModelPolicy(models.landlord.model, models.landlord.sha256);
 
     const coverage = {
@@ -221,6 +222,7 @@ describe.skipIf(!ENABLED)("standalone landlord: equivalence and cost", () => {
       join(OUT, "standalone-equivalence.json"),
       JSON.stringify(
         {
+          branch: BRANCH,
           candidateSha256: models.landlord.sha256,
           states: states.length,
           mismatches,
@@ -274,11 +276,18 @@ describe.skipIf(!ENABLED)("standalone landlord: equivalence and cost", () => {
     // recorded, or the run must not start.
     const digestOfBytes = createHash("sha256").update(readFileSync(path)).digest("hex");
     expect(digestOfBytes).toMatch(/^[0-9a-f]{64}$/);
-    const manifestPath = join(OUT, "candidate-manifest.json");
+    // The identity is content: whatever the manifest beside this candidate says
+    // its digest is, the bytes must hash to it or the run must not start.
+    const manifestPath =
+      BRANCH === "TARGET"
+        ? join(ROOT, ".local/landlord-validation/candidate-manifest.json")
+        : join(ROOT, ".local/landlord-audit/cheap-landlord-manifest.json");
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
-      candidate: { modelSha256: string };
+      candidate?: { modelSha256: string };
+      modelSha256?: string;
     };
-    expect(manifest.candidate.modelSha256).toBe(digestOfBytes);
+    const recorded = manifest.candidate?.modelSha256 ?? manifest.modelSha256;
+    expect(recorded).toBe(digestOfBytes);
     // A selector handed an empty legal set must throw, never invent an action.
     const policy = createQModelPolicy(model, String(raw.modelSha256));
     expect(() =>
