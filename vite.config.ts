@@ -69,6 +69,21 @@ export default defineConfig({
         globPatterns: ["**/*.{css,html,js,svg,webmanifest}"],
         runtimeCaching: [],
         skipWaiting: false,
+        /*
+         * Raised from Workbox's 2 MiB default when the CHEAP landlord model was
+         * packaged: the Worker chunk is 2 569 883 B raw, so at the default the
+         * build does not merely warn, it fails.
+         *
+         * 3 MiB is bounded on purpose. It covers the largest asset with 22%
+         * headroom and still fires well before the next whole-model increment
+         * (packaging a second table of this size would be +76%), which is the
+         * difference between a limit that catches anomalous growth and one that
+         * is simply absent. It is also the reason no lazy-loading or
+         * split-chunk scheme was introduced: the product decision was to accept
+         * the confirmed model's bytes, and a bigger precache is the honest
+         * consequence of that.
+         */
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
       },
     }),
   ],

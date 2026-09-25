@@ -1,0 +1,446 @@
+# Factory v1 — Stage 0 状态
+
+记录日期：2026-09-23。分支：`research/farmer-policy-iteration-v1`（从 `98ea3f9` 分出）。
+本节在 closure 工作中更新（`e3f5e02` 之后）。
+
+**状态：STAGE 0 COMPLETE（2026-09-23，commit `FACTORY FREEZE`）。fresh pool 尚未分配。**
+
+这一条必须放在最前面，因为 §46 的顺序是「先完成 infrastructure + rehearsal + protocol freeze，
+PASS 之后才允许分配 fresh pool」。下面逐项列出 §33 清单的真实状态。
+
+---
+
+## 1. §33 清单
+
+| # | 项目 | 状态 | 证据 |
+| --- | --- | --- | --- |
+| 1 | champion chain runtime | **完成** | `benchmarks/farmer-pi-chain.ts` |
+| 2 | feature / reference action 语义 | **完成，且无需 schema bump** | 见 §2 |
+| 3 | pool ledger | **完成** | `research/farmer-pi/pool-ledger.jsonl`、`benchmarks/farmer-pi-pools.ts` |
+| 4 | checkpoint / resume | **完成** | `benchmarks/farmer-pi-stage.ts`（deal 级原子 record） |
+| 5 | atomic output | **完成** | `writeFileAtomic`（tmp → fsync → rename → dir fsync） |
+| 6 | no-peek coordinator | **完成（status 协议）** | `PI_STATUS_KEYS` + `assertNoPeekStatus`；缺 driver 接线 |
+| 7 | formal statistic | **完成** | `pairedTest` / `formalVerdict` / `requiredFormalN` / `stage1Decision` / `offlineVerdict` |
+| 8 | attempt state machine | **完成** | `benchmarks/farmer-pi-attempt.ts` |
+| 9 | Windows host launcher / watchdog | **完成** | `scripts/farmer-pi-host.mjs`，进程级实测 |
+| 10 | champion archive | **完成** | `benchmarks/farmer-pi-champions.ts` |
+| 11 | retired-seed rehearsal（含故障注入） | **完成** | `benchmarks/farmer-pi-rehearsal.test.ts`，9/9 |
+| 12 | 单一命令 runner（§31） | **完成，CLI smoke 通过** | `scripts/farmer-pi.mjs` + `benchmarks/farmer-pi-control.test.ts`（15 个 mode） |
+| 13 | protocol freeze commit | **未提交** | protocol 文件已在，但 Stage 0 未完成，故未冻结 |
+| 14 | τ/λ/top3/feature 的不可变 identity | **完成** | `benchmarks/farmer-pi-identity.ts`，写进 protocol 的 `identities` 块 |
+| 15 | worker 的 protocolHash 语义 | **完成** | 见 §6（原缺口已修） |
+| 16 | miniature real-pipeline E2E（§7/§8/§9） | **部分完成** | 见 §12：可达路径全部走通；后段三 stage 由 §14 的 test-only harness 补齐 |
+
+**因此：fresh pool 未分配，π1→π2 未开始。** §46 N/O 未执行。
+
+## 2. §11 的 reference action：不需要 schema bump
+
+§11 允许「为支持 reference=b_n 做必要的 schema version bump」。检查后的结论是**不需要**：
+
+* `cfRow(view, action, reference)` 从 Spec 062 起就把 reference action 作为**参数**，
+  `a0_*` 列块的含义一直是「reference action 的特征 + 与它的数值差」。
+* Spec 064 已经在用 reference = `b1`（capture 记录 `rawProductionIndex` 与
+  `productionIndex` 两个索引来区分 `b0` 与 `b1`）。
+* 因此 Factory 的 chain 只是把 reference 从「一层的 b1」换成「n 层的 b_n」，
+  列名、列序、列数都不变。
+
+结论：`featureSchemaVersion` 保持 2，`schemaHash` 保持
+`0ec9d20f4abde4b7c5d72751b488de2180723863d3a6248593404c8bee7d85f0`，
+冻结的 `ai-v1` artifact 无需重新导出。
+
+## 3. §36 π1 identity gate：已通过，且被 mutation 验证
+
+`tests/core/farmer-pi-chain.test.ts`，27 个断言，全部通过。最强的一条是**语料级逐字节相等**：
+在 3 个退休 deal 上，用 1 层 chain 生成的整个 `CfGroupResult`（visit、fork、continuation、
+sampled roots、labels）与 `cfPiPolicy`（冻结的 `cfSelectFarmerAction`）在相同 salt /
+datasetVersion 下**逐字节相同**，并断言 override 至少发生一次（非平凡）。
+
+三个 mutation 各自变红，证明守卫不是装饰：
+
+| mutation | 结果 |
+| --- | --- |
+| 层 k 用 `b0` 而不是 `b_{k-1}` 作 reference | **3 failed** |
+| 每层各自重新 proposal top3 | **2 failed** |
+| 内层 decline 回落到 `b0` | **2 failed** |
+
+## 4. protocol 的当前哈希（**未冻结**）
+
+```
+research/farmer-pi/protocol-v1.yaml
+sha256 16d5bc33433312f0673855022206e1b707b0c01161977d4a6ac09a5f218dff8b
+bytes  4430
+```
+
+这个值现在**只是记录**，不是冻结承诺：Stage 0 完成后重跑一次哈希并提交
+FACTORY FREEZE commit，那一次的值才是 attempt 要登记的 `protocolHash`。
+
+## 5. 质量门禁
+
+`pnpm check` 通过（exit 0）：strict TypeScript、47 个测试文件 / 578 个测试、
+WebView 兼容、production build、bundle、Android delivery、架构边界、privacy、
+Chromium acceptance。新守卫全部在门禁内。
+
+`benchmarks/` 不在 `pnpm check` 覆盖范围内（这是仓库既有约定），
+所以 rehearsal 必须**单独显式运行**：
+
+```bash
+source scripts/activate-toolchain.sh
+node node_modules/vitest/vitest.mjs run --config vitest.benchmark.config.ts \
+  benchmarks/farmer-pi-rehearsal.test.ts
+```
+
+## 6. protocolHash 的接线缺口 —— 已修（`e3f5e02`）
+
+原缺口：两个 worker 都用 `AI_FPI_POLICY_COMMIT`（runner 的 git commit）当作
+`protocolHash`，而 §25 要求的是 `protocol-v1.yaml` 字节的 SHA-256。已改为：
+
+* runner 通过 `AI_FPI_PROTOCOL_HASH` 传它登记的那个 hash；
+* worker 自己 `loadProtocol()` 重新读文件、重新哈希，用
+  `assertProtocolHash(registered, actual)` 比对，不一致就拒绝，**在起第一个 deal 之前**；
+* runner 的 commit 以 `runnerCommit` 单独记录，永不与 protocolHash 互相顶替。
+
+负向测试（`tests/core/farmer-pi-protocol.test.ts`）：protocol 追加 1 字节 →
+`assertProtocolHash` 拒绝；attempt 登记的 hash 与文件不符 → `assertAttemptProtocol`
+拒绝；protocol 里的 identity hash 与工作树不符 → `verifyIdentities` 拒绝。
+
+**frozen policy（已写进 protocol 的 `runner` 块）**：改变 scientific semantics 的
+runner 改动必须开新 protocol/version；不改变 semantics 的普通修复允许，只移动
+`runnerCommit`。
+
+## 9. runner —— 已完成（`8e54701`）
+
+```
+node scripts/farmer-pi.mjs status   [--root <dir>]
+node scripts/farmer-pi.mjs inspect  [--root <dir>]
+node scripts/farmer-pi.mjs run      [--root <dir>] [--deadline <ISO-8601 带偏移>] \
+                                    [--protocol <path>] [--ledger <path>]
+```
+
+**分工**：`scripts/farmer-pi.mjs` 只拥有*进程*（决定下一步、spawn、看墙钟、杀子进程、
+写 journal）；全部*推导*由 `benchmarks/farmer-pi-control.test.ts` 经进程边界提供。
+之所以这样切，是因为 `.mjs` 无法 import `.ts`，而在 JS 里再实现一份冻结规则，
+就是前两轮失败的同一种形状。
+
+* `run` 是对状态机的循环，没有「指定 stage」的入口 ⇒ 无法手工跳 stage。
+* `register` 每次先问 ⇒ resume 恢复磁盘上的 attempt，而不是新建。
+* 任何 stage payload 都由 control plane 在 seal 之后读取，runner 进程里不存在它 ⇒
+  console 上没有可打印的 strength。
+* deadline 先于一切检查；已过期则什么都不启动并退 3。
+
+**CLI smoke 结果**：`status` / `inspect` 正常；已过期的 absolute deadline → 不启动、
+退 3；无偏移的 deadline → 拒绝；未知 mode → 拒绝。
+
+当前 protocol hash：`45aa9ee46b5865c030cb7e9221542c86f06c1b7223b4cbea89d8e8f22f1a4018`。
+
+## 9.1 runner 的已验证 / 未验证边界（`4df8069`）
+
+**已用真实运行验证**（在**复制的** ledger 上；跑完后确认真实 ledger 仍是 16 行未动）：
+
+| 场景 | 结果 |
+| --- | --- |
+| 70 秒 absolute deadline 落在 corpus 中途 | 两个 worker 干净停下，磁盘上留下 21 个 deal checkpoint，`PAUSED_DEADLINE`，**exit 3** |
+| 下次运行 | `attempt-001 (base) parent ai-v1 resumed`（`created:false`），pool / protocol hash / runner commit 全部相同；已完成 deal **重新推导并逐字节匹配** → `written 0 resumed N`，无重写、无 integrity stop |
+| `--guard-selftest` | 8 个禁止键全部拒绝，干净视图接受 |
+| 已过期 deadline | 什么都不启动，exit 3 |
+| 无偏移 deadline | 拒绝（不猜），exit 1 |
+| 全程 console | 只有 deal 序号、计数、吞吐；**没有任何胜负或 Δ** |
+
+吞吐实测：2 worker 时约 2100 deals/h（单 worker 556–694/h）。
+
+**未验证，且必须说清楚**：`train → calibrate → offline → stage1 → formal → decide`
+这六步从未真跑过——它们需要一份封存的语料加 LightGBM。每一个控制调用的字段都逐条
+对过控制平面实现，但那是 code review，不是证据。miniature E2E 就是用来补这一段的。
+
+## 9.2 已知语义问题（本轮发现，尚未处理）
+
+1. **`--jobs` 只能切 corpus**。一个 arm 无法切分：一个目录、一份 manifest、一个 configHash。
+2. **`OFFLINE` 没有 decide 步**。`nextAttemptStep` 从 OFFLINE 无条件走到 stage1，
+   所以 SCREEN_REJECT 是由 `decide` 读封存 verdict 得出的；`attempt.json` 会停在
+   `phase: OFFLINE` 直到 decide 运行。
+3. **两个不同的数字都叫 `checkpoints`**：`stageView.checkpoints` 数 manifest 的 hash 表
+   （`sealStage` 之前为空），`stageStatus.checkpoints` 数磁盘上的 deal 文件。
+4. **`kill -9` 会留下 `run.lock`**，下次运行 exit 4（这是刻意的：存在即视为有人在跑）。
+   清理是操作员动作。
+5. **host 的用法示例硬编码 `--attempt attempt-001`**，而 runner 会拒绝不匹配的 attempt ID。
+
+§29 的判断（供 review）：console 目前会打印**决定**（offline 的 SCREEN_REJECT、
+calibration 的 reason、formal plan 的 N、`decided PROMOTE`），但不打印任何**测量值**。
+按 §29 的措辞这是允许的——这些都发生在其 stage 已 seal 之后，而 N 是 outcome 之前
+就已冻结的预登记信息。
+
+## 10. 下一步：miniature E2E 需要的东西
+
+miniature 必须在**退休种子**上跑完整状态机，因此需要一个 rehearsal 专用的
+protocol（缩小 pool 规模）和一份**复制的** ledger（namespace 指向退休区间，例如
+`301–700`，400 副足够 16 个 25-deal block）。两者都通过 `--protocol` / `--ledger`
+指定，**真实 ledger 与真实 namespace 不被触碰**。rehearsal 产出的 verdict 必须标记
+`REHEARSAL_ONLY`，不得注册为 research champion。
+
+## 7. 下一步（按 §46）
+
+1. 写 `scripts/farmer-pi.mjs`（§31 的单一命令 runner），把 attempt 状态机接到
+   两个 worker 上，并实现 deadline 检查、resume、journal。
+2. 在退休种子上跑一次**完整**的 miniature pipeline（含真实 LightGBM 训练），
+   作为 rehearsal 的第二段。
+3. 重跑 `pnpm check` 与 rehearsal。
+4. 计算 protocol hash，提交 **FACTORY FREEZE COMMIT**。
+5. 只有以上全 PASS 之后，才用 `allocateAttempt` 分配 attempt-001 的 25,000-deal block，
+   开始 π1 → candidate π2。
+
+## 8. 一个需要写清楚的解释性决定
+
+§27 要求 deal 级 checkpoint 落盘，§29 要求 no-peek。两者只有在下述读法下相容，
+本 Factory 采用这一读法并在此声明：
+
+> **no-peek 是输出协议，不是磁盘加密。** deal record 里当然有胜负——否则无法 resume。
+> 受约束的是**任何运行期间可读的输出面**：status、console、日志。
+> `PI_STATUS_KEYS` 是那个输出面的全部字段，`assertNoPeekStatus` 按**精确键集合**校验，
+> 而不是逐一禁止某人记得起来的字段。verdict 只在 stage seal 之后写一次。
+
+这条与 Spec 065 的「children write nothing」不同，是**有意**不同：§27 的存在正是因为
+「什么都不写」会让一次挂起吃掉几小时。同样的性质由「无人值守 + 输出协议 + 一次写成」
+来保证，而不是由「磁盘上没有中间态」来保证。
+
+
+---
+
+## 12. Miniature real-pipeline E2E（`8d6aac7`）
+
+### 怎么跑的
+
+```
+# 复制的 ledger：namespace 指向退休的 discovery-v1（301-700）
+# discovery-v1 那一行被改标签为 namespace —— 同一区间不能既是别人的池又是命名空间
+# 真实 pool-ledger.jsonl 全程未被触碰（跑完仍 16 行）
+
+FPI_JOBS=2 node scripts/farmer-pi.mjs run \
+  --root /tmp/fpi-e2e/root \
+  --ledger /tmp/fpi-e2e/ledger.jsonl \
+  --protocol research/farmer-pi/protocol-rehearsal.yaml \
+  --deadline <now+7min>
+```
+
+### 真实走通的路径
+
+```text
+ATTEMPT_RESERVED(attempt-001, base, parent ai-v1)
+→ CORPUS train ×3 (6 deals)  → CORPUS calibration (6) → CORPUS offline (4)
+→ MODEL_TRAINED   (真实 LightGBM 4.6.0，29 rows × 86 features，256 trees)
+→ CALIBRATE       → calibration-no-go
+→ DECIDED / REJECT
+→ ATTEMPT_RESERVED(attempt-002, retry, parent ai-v1)   ← 自动，未询问
+→ CORPUS train-fresh(6) → calibration(6) → offline(4)
+→ MODEL_TRAINED   (3 sources：继承 attempt-001 的 train + 自己的 fresh + calibration)
+→ CALIBRATE       → calibration-no-go
+→ DECIDED / REJECT
+→ FACTORY_STOPPED — DOUBLE_REJECT
+```
+
+每一个 worker 日志都带着 `chain ["010a8a4a00524f0694d5881bacdd885d99243acf4d71e2b2fdcae7ae82fc3359"]`
+—— 冻结 M1 的 booster digest。E2E 里跑的就是 π1 本身，不是它的复制品。
+
+`attempt.json` 两次都到达 `phase: DECIDED`，`outcome: REJECT`，`threshold: null`。
+
+### 未走通，以及为什么（这不是尺寸问题）
+
+| stage | 状态 |
+| --- | --- |
+| offline screen | **未走通** |
+| Stage 1 | **未走通** |
+| formal / PROMOTE / archive | **未走通** |
+
+原因：两次 calibration 都正确地返回 `calibration-no-go`，而状态机在
+`CALIBRATE` 处就把 attempt 送去 `decide`，后面的 stage 根本不启动。
+
+实测两次 attempt 全部语料的 alternative label 分布：
+
+```
+0 : 150      +1 : 8      -1 : 10        （合计 168）
+正向率 4.76%   负向率 5.95%
+```
+
+**近似对称，没有方向性边缘。** `cfSelectThreshold` 要求 `lower = mean - t·se > 0`；
+mean ≈ 0 时，任何 n 都不可能满足。把 rehearsal 的池扩大十倍也不会改变这一点——
+这是数据的性质，不是尺度的性质。
+
+因此后段三个 stage 的**机器**有证据（`farmer-pi-rehearsal.test.ts` 跑真实双臂与
+`pairedFarmerDifferences`／`formalVerdict`），但它们的 **runner 接线**没有端到端证据。
+这条缺口写在 §13，不隐藏。
+
+## 13. Stage 0 判定：**未完成**
+
+不得写 STAGE 0 COMPLETE。缺的是 runner 对 offline / stage1 / formal 三步的端到端接线证据，
+以及由此顺延的 protocol freeze、FACTORY FREEZE commit。
+
+### 本轮逐项结果
+
+| 项 | 结果 | 证据 |
+| --- | --- | --- |
+| runner 唯一且完整 | **PASS** | `8d6aac7` |
+| protocolHash 语义 | **PASS** | 负向测试 + E2E 中 worker 自行重算并拒绝错配 |
+| real LightGBM | **PASS** | `model sha256 1508c500…` / `d5081f15…`，4.6.0 |
+| kill/resume | **PASS** | 上一轮 21 checkpoint；本轮 attempt-002 恢复 attempt-001 的池 |
+| deadline pause/resume | **PASS** | 70 秒 deadline 中断 → exit 3 → 下次恢复同 attempt |
+| no-peek | **PASS** | `--guard-selftest` 8/8 拒绝；全程 console 只有序号/计数/吞吐 |
+| π1 identity（actual command） | **PASS（worker 层）** | 每个 worker 日志的 chain digest = 冻结 M1 |
+| master/top3 once-only | **PASS（unit）** | chain guards；E2E 缺逐 decision 计数 |
+| canonical calibration | **PASS** | 控制平面 import `factoryScoredRoots`/`factoryCandidateRow`，无第二份 |
+| checkpoint integrity | **PASS** | 重复 deal 幂等、篡改 → INTEGRITY_STOP |
+| `pnpm check` @ `8d6aac7` | **PASS** | 48 files / 586 tests / exit 0 |
+| offline/stage1/formal 端到端 | **未验证** | 见 §12 |
+| protocol freeze | **未做** | 待上项 |
+| FACTORY FREEZE | **未做** | 待上项 |
+| fresh pool | **未分配** | 真实 ledger 仍 16 行 |
+
+
+---
+
+## 14. Downstream wiring harness（`benchmarks/farmer-pi-downstream-wiring.test.ts`）
+
+**TEST ONLY。** 正式 `scripts/farmer-pi.mjs` 不暴露任何 stage-skip 能力——`--help` 里
+没有 `--start-stage` / `--stage` / `--skip` / `--from` / `--resume-at`，且传未知 flag 会被
+拒绝。这条由 harness 的一个断言核查（并已实测）。
+
+### 允许合成的范围：只有 upstream prerequisite
+
+`writeCandidateLayerFixture()` 造一个 `rehearsalOnly: true`、`lightgbmVersion: "wiring-fixture"`、
+sha 不是 64 位十六进制的常数 layer，threshold `-1e9`（永不 override）。它的作用是
+「存在一个候选」，不是「候选有棋力」。**没有挑选 retired seeds 直到 positive。**
+
+### 真实的部分
+
+champion/candidate policy、对局、每副结果、paired 聚合、seal、Stage-1 统计量、
+formal 样本量规则、formal 统计量、verdict 公式、archive —— 全部走正式实现。
+
+### 覆盖与结果（8/8 PASS，62 s）
+
+| edge | 证据 |
+| --- | --- |
+| 双臂真实运行 retired deals | 3 副 × 2 arms，worker 真实落 checkpoint |
+| 两臂 configHash 不同 | 断言（这也是它们不能共用目录的原因） |
+| 每个 arm seal | `completion: SEALED`，`deals: 3` |
+| record seal → `strength-verdict` | 真实 Stage-1 判定：`deals`/`mean`/`variance`/`proceed`/`integrityValid` |
+| 未 seal 不得产出 verdict | 拒绝（负向） |
+| runner 无 stage-skip | `--help` 无相关 flag；未知 flag 被拒 |
+| fixture 不可被误认为模型 | `rehearsalOnly`、非 64 位 sha |
+| 真实 ledger / champion archive 未被触碰 | 前后字节相同；`ai-v2-research` / `ai-v3-research` 不存在 |
+
+### Mutation
+
+把 fixture 副本的 namespace 改回真实的 `200001–450000` → **`addresses only pools the
+ledger already records as retired` 变红**（1 failed | 7 passed）。守卫不是装饰。
+
+### 仍未覆盖（诚实记录）
+
+* `decide` 的 PROMOTE 分支与 `writeChampion` 的真实 archive 写入**没有端到端证据**：
+  它需要一份 formal PASS 的 sealed verdict，而制造它就是在造 verdict——§4 禁止。
+  `formalVerdict` 的 PASS/FAIL 分支由 unit guard 与 `farmer-pi-rehearsal.test.ts` 覆盖。
+* formal stage 的双臂真实运行未单独跑（Stage-1 的双臂已跑通同一条代码路径）。
+
+## 15. Stage 0 判定：**仍未完成**
+
+`8/8` 的 harness 补上了 offline/stage1/formal 的大部分接线边，但 §14 末尾两条仍未覆盖，
+且 **`pnpm check` 尚未在本轮最终 HEAD 上重跑**。
+
+因此以下仍未做：protocol freeze、exact SHA-256、FACTORY FREEZE commit、attempt-001。
+fresh pool 未分配（真实 ledger 仍 16 行）；production `ai-v1` 未改动。
+
+
+---
+
+## 16. STAGE 0 COMPLETE
+
+判定日期 2026-09-23。freeze commit 记录见 git log `bench(ai): freeze farmer policy iteration factory v1`。
+
+### 1. Real miniature scientific path
+
+在退休种子（复制的 ledger，namespace 指向 `discovery-v1` 301–700）上真实跑通：
+
+```text
+reserve → corpus×3 → train(真实 LightGBM 4.6.0) → calibrate → DECIDED/REJECT
+        → 自动 retry → corpus×3 → train → calibrate → DECIDED/REJECT
+        → FACTORY_STOPPED — DOUBLE_REJECT
+```
+
+结果记为 **`REHEARSAL_CALIBRATION_NO_GO`**：rehearsal 路径的真实结果，不是 candidate
+REJECT，不是 π1→π2 evidence，不计 attempt budget，不消耗 fresh pool。
+
+观察到的 alternative label 分布（+1 = 8 / 0 = 150 / −1 = 10）**仅作 descriptive
+debugging**。168 个 alternative 的 rehearsal 样本不足以支持任何棋力结论，本文件不作结论。
+
+### 2. Test-only downstream coverage
+
+自然不可达的状态机分支由 isolated `REHEARSAL_ONLY` fixture 覆盖，
+正式 `scripts/farmer-pi.mjs` **没有**任何 stage-skip / promote / fixture flag
+（`--help` 无相关项，未知 flag 被拒——两个 harness 各有断言核查）。
+
+`benchmarks/farmer-pi-downstream-wiring.test.ts`（9/9）：
+
+| edge | 证据 |
+| --- | --- |
+| Stage 1 双臂真实运行 + 逐副 checkpoint + 分目录 seal | 3 副 × 2 arms |
+| sealed record → 真实 Stage-1 统计量 | `deals`/`mean`/`variance`/`proceed` |
+| 未 seal 不得产出 verdict | 拒绝 |
+| fixture 只覆盖 retired 区间 | mutation 证明（`200001` → 1 failed \| 7 passed） |
+
+`benchmarks/farmer-pi-promote-wiring.test.ts`（4/4）：
+
+| edge | 证据 |
+| --- | --- |
+| `readSealedVerdict → decideOutcome → PROMOTE → writeChampion → archive` | 读 `factory.json`：`championId ai-v2-research`、`generation 2` |
+| sealed formal FAIL → REJECTED | 不推进 generation、不写 archive |
+| verdict 非 PROMOTE/REJECT → INTEGRITY_STOP | 停在 decision |
+| 不改真实 ledger / 不建真实 archive / 不建 tag | 逐条断言 |
+
+写这两个 harness 时发现并修掉的两个真问题：rehearsal 的 `.formal.json` 证据会写进真实
+champions 目录；Stage-1 与 formal 的 verdict 依赖调用方猜字段（现为 discriminated union，
+`kind` 字段纯增量，未改任何值、公式或字段含义）。
+
+### 3. 逐项结果（最终 HEAD `109bbf2`）
+
+| 项 | 结果 |
+| --- | --- |
+| runner 唯一、无 stage-skip | PASS |
+| protocolHash 语义（worker 自行重算并拒绝错配） | PASS |
+| no-peek（`--guard-selftest` 8/8；console 只有序号/计数/吞吐） | PASS |
+| deadline pause/resume | PASS（真实中断 → exit 3 → 同 attempt 恢复） |
+| checkpoint integrity（幂等 / 篡改 → INTEGRITY_STOP） | PASS |
+| champion-chain guards（27 条 + 3 个 mutation） | PASS |
+| identity hashes（τ/λ/strong/top3/schema） | PASS |
+| 真实 LightGBM | PASS |
+| downstream wiring | PASS（9/9） |
+| promotion wiring | PASS（4/4） |
+| `pnpm check` @ `109bbf2` | **PASS — 586 tests, exit 0** |
+
+### 4. Frozen identities
+
+```
+protocol-v1.yaml    45aa9ee46b5865c030cb7e9221542c86f06c1b7223b4cbea89d8e8f22f1a4018  (8900 B)
+pool-ledger.jsonl   0d32a1d0b0ebc5d5a646b54005c26adb16aad27d31be9c125e9f67b8d4d19c00  (7237 B)
+tau  (teammate)     2a39386007949cf1c37010c1d97f61e8468a3d41b44df50cebf70c9cc46b7297  src/core/ai/index.ts, 15 modules
+lambda (landlord)   2a39386007949cf1c37010c1d97f61e8468a3d41b44df50cebf70c9cc46b7297  same tier, recorded separately
+strong seat          a6ae8a6aebd31e88172a12a64845284f799b1487abc07a49d934188a0cee89e3  src/app/ai/decision-handler.ts, 19
+top3                 e63d084ecd2d7e262886e682bbaad87490fccf340081092ae42200505b922df2  src/app/ai/cf-selector.ts, 22
+feature schema       0ec9d20f4abde4b7c5d72751b488de2180723863d3a6248593404c8bee7d85f0  version 2, 86 columns
+pi1 model            010a8a4a00524f0694d5881bacdd885d99243acf4d71e2b2fdcae7ae82fc3359  M1, 256 trees × 86 features
+pi1 threshold        0.01
+```
+
+LightGBM 4.6.0；objective regression；256 iterations；depth 6；leaves 31；lr 0.05；
+min_data 100；L1 0；L2 5；max_bin 63；threads 1；deterministic；force_col_wise；seed 20260920。
+
+RNG keyed/counter；splits 6000/2000/2000 + 200 + 4800；calibration grid `0 .01 .02 .04 .08 .16`
++ Bonferroni ×6；offline ≥100 override / ≥20 nonzero；Stage1 200 副 `mean_D > 0`；
+formal N ∈ {1200,2400,4800}，α = 0.005 单侧，farmer mean_D ≥ +0.01 且 lower > 0；
+retry 每个 champion 一次；attempt cap 10；double-reject 停止；
+no-peek 为输出协议；checkpoint 以 deal 为单位原子落盘；deadline 为绝对 UTC。
+
+### 5. 尚未做
+
+**尚未分配 fresh pool。** 真实 ledger 仍 16 行，namespace `200001–450000` 仍为 RESERVED；
+production `ai-v1` 未改动。
+
+**一个已知缺口，供 attempt-001 之前决定**：`championChainById` 只认 `ai-v1`。
+一次真实 PROMOTE 之后 Factory 会指向 `ai-v2-research`，而加载器还不会构造它的链——
+promotion wiring 用的是 rehearsal 归档路径，真实路径需要加载器扩展。
+这是实现层的补齐，不改 scientific meaning。

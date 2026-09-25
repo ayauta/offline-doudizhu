@@ -1,0 +1,80 @@
+--- a/src/core/ai/master-policy.ts
++++ b/src/core/ai/master-policy.ts
+@@ -295,6 +295,39 @@
+ }
+ 
+ /** One root candidate's rollout accumulation, in `rankMasterPlayActions` order. */
++/* ------------------------------------------------------------------------- *
++ * TEMPORARY H5 DIAGNOSTICS INSTRUMENTATION — not for commit.
++ * Observation only: it reads the gate's outcome, it cannot change a decision.
++ * Archived under docs/research/h5-v1/ and reverted after the E5-A diagnostic
++ * run. See docs/specs/060-terminal-evidence-gating/spec.md.
++ * ------------------------------------------------------------------------- */
++
++export type GateCandidateRecord = Readonly<{
++  verdict: TerminalVerdict;
++  terminalCount: number;
++  productionScore: number;
++  gatedScore: number;
++}>;
++
++export type GateDecisionRecord = Readonly<{
++  seat: Seat;
++  landlord: Seat;
++  legalActions: number;
++  completedWorlds: number;
++  candidates: readonly GateCandidateRecord[];
++  /** Top-1 index under production's own blend, and under the gated blend. */
++  productionChoice: number;
++  gatedChoice: number;
++}>;
++
++let gateSink: ((record: GateDecisionRecord) => void) | null = null;
++
++export function setGateSink(sink: ((record: GateDecisionRecord) => void) | null): void {
++  gateSink = sink;
++}
++
++/* ------------------------- end instrumentation --------------------------- */
++
+ export type CandidateRollout = Readonly<{
+   /** The expert ranking's score, before any rollout blend. */
+   expertScore: number;
+@@ -420,5 +453,37 @@
+     };
+   });
+   ranked.sort((left, right) => right.score - left.score || left.index - right.index);
++  if (gateSink !== null) {
++    const production = candidates.map((candidate, index) => {
++      const rollout = rollouts[index];
++      return rollout === undefined
++        ? candidate.score
++        : rolloutBlendedScore(rollout, context.view, completedWorlds, undefined);
++    });
++    const choiceOf = (scores: readonly number[]): number => scores
++      .map((score, index) => ({ score, index }))
++      .sort((left, right) => right.score - left.score || left.index - right.index)[0]?.index ?? -1;
++    gateSink(Object.freeze({
++      seat: context.view.seat,
++      landlord: context.view.landlord,
++      legalActions: context.legalActions.length,
++      completedWorlds,
++      candidates: Object.freeze(candidates.map((candidate, index) => {
++        const rollout = rollouts[index];
++        return Object.freeze({
++          verdict: terminalVerdict(
++            context.view.seat,
++            context.view.landlord,
++            rollout?.terminalWinners ?? [],
++          ),
++          terminalCount: rollout?.terminalWinners.length ?? 0,
++          productionScore: production[index] ?? candidate.score,
++          gatedScore: candidate.score,
++        });
++      })),
++      productionChoice: choiceOf(production),
++      gatedChoice: ranked[0]?.index ?? -1,
++    }));
++  }
+   return Object.freeze(ranked.map(({ action, score }) => Object.freeze({ action, score })));
+ }

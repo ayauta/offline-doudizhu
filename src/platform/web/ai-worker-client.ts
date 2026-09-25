@@ -105,6 +105,7 @@ export function createWebAiDecisionService(options: ClientOptions = {}): Enhance
       aiType: EnhancedAiType,
       context: AiDecisionContext,
       complete: (outcome: AiDecisionOutcome) => void,
+      options: Readonly<{ counterfactualFarmer?: boolean; cheapLandlord?: boolean }> = {},
     ) {
       const activeWorker = disposed ? null : ensureWorker();
       if (activeWorker === null) {
@@ -120,6 +121,8 @@ export function createWebAiDecisionService(options: ClientOptions = {}): Enhance
           aiType,
           context,
           seed: nextSeed(),
+          ...(options.counterfactualFarmer === true ? { counterfactualFarmer: true } : {}),
+          ...(options.cheapLandlord === true ? { cheapLandlord: true } : {}),
         }));
       } catch {
         pending.delete(requestId);

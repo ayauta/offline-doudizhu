@@ -1,0 +1,143 @@
+# AI 种子池 ledger（已用 / 已暴露 / 本轮新分配）
+
+状态：**记录性文档**。它不规定任何算法、门槛或下一步，只回答一个审计问题：
+**每一个牌局区间被哪些正式实验看过，现在还能不能再看。**
+
+建立日期：2026-09-21（Spec 064 / Phase 2 Night Lab 预登记时）。
+
+## 为什么需要这份文档
+
+单次预登记防的是「事后改协议」，防不住的是**几十个都合规的实验反复看同一批牌**。
+selection-on-discovery 的风险随暴露次数累积，而不是被预登记消掉。此前这条规则散落在
+[ai-experiment-results.md](ai-experiment-results.md) 的正文与各 spec 的「池」一节里；
+本次把它收拢成一张表，并在 Spec 064 开新池时**同时**记录新分配。
+
+规则不变：**一个新池只服务一条机制线。** 一条机制线的结论一旦被用来生成下一条假设，
+那个池就随之退休。**已退休的池可以回看错题，但新机制的考试必须换卷子。**
+
+## 1. 已用 / 已暴露（本轮不得使用）
+
+| 范围 | 身份 | 暴露计数 | 状态 | 证据 |
+| --- | --- | ---: | --- | --- |
+| `301–700` | Discovery V1（被 E1、E3 使用） | 2 | **已退休** 2026-09-19 | [results](ai-experiment-results.md) §种子池与暴露计数 |
+| `20001–20400` | Discovery V2（被 E4 使用） | 1 | **已退休** 2026-09-19 | 同上 |
+| `30001–30400` | Discovery V3（被 E5 / H5 v1 使用，判 REVERT） | 1 | **已退休** 2026-09-19 | [Spec 060](../specs/060-terminal-evidence-gating/experiment.md) |
+| `5001–5400` | 早期 calibration | — | **仅机械 prototype 与吞吐测量**，不进入任何正式 corpus | [Spec 062 §2](../specs/062-counterfactual-policy-improvement/spec.md) |
+| `10001–10400` | Phase 2 v1 final validation | 1 | **已消耗，永久 retire** 2026-09-21（FINAL KEEP） | [Spec 063 final-validation](../specs/063-counterfactual-farmer-selector-gate-b/final-validation.md) |
+| `40001–41200` | Gate B Discovery V4 | 1（0 → 1） | **已 retire**（结果被看到即退休） | [Spec 063 §8](../specs/063-counterfactual-farmer-selector-gate-b/spec.md)、[experiment](../specs/063-counterfactual-farmer-selector-gate-b/experiment.md) |
+| `50001–70000` | Phase 2 v1 dataset（20,000 groups） | 1 | **永久属于 Phase 2 v1**，不得再用于其它 Phase | [Spec 062 §2](../specs/062-counterfactual-policy-improvement/spec.md) |
+| `70001–78000` | Spec 062 test-only reserve（8,000 groups） | **0（从未生成）** | **仍不可用** | Spec 062 §2 / §23；`experiment.md` 记录「未生成 reserve」 |
+
+`20001–20400` 只被用过一次就退休，理由不是次数，而是**下一条机制必然受到它上面结果
+的启发**——再用同一批牌验证由这些结果催生的想法，selection-on-discovery 就已经开始。
+
+`70001–78000` 虽然从未生成，但它是 Spec 062 预登记里**留给那一轮**的 reserve。
+本轮是**另一条机制线**，不得征用它；它保持不可用。
+
+## 2. 本轮新分配（Spec 064 / Phase 2 Night Lab）
+
+| 范围 | 身份 | 规模 | 用途 |
+| --- | --- | ---: | --- |
+| **`100001–120000`** | **π1→π2 dataset** | 20,000 groups | train / calibration / held-out = 12,000 / 4,000 / 4,000 |
+| **`120001–120200`** | **Stage 1 screen** | **恰好 200 groups** | 固定 200 组 paired 整局筛选；**不能 KEEP**，永不与 Stage 2 合并 |
+| **`130001–131200`** | **Stage 2 confirmation** | **恰好 1,200 groups** | 唯一一次正式判定（NIGHT KEEP / REVERT） |
+| `120201–130000`、`131201` 起 | **未分配** | — | 本轮不得使用；也不得事后改判 |
+
+先例：Gate A/B 的 deal seed 就是绝对下标本身 —— `dealSeed = dealIndex`，
+tournament 侧 `seedBase = 0`（`AI_BENCH_SEED=0`）使
+`dealSeed = seedBase + dealIndex = dealIndex` 与 corpus 完全一致。
+本轮**沿用并显式断言**这条映射（Spec 064 §7 第 10 条）。
+
+Stage 1 与 Stage 2 **互不合并、互不补位**。Stage 1 不通过就不跑 Stage 2，也不扩样。
+
+### 2.1 暴露状态更新（2026-09-21 夜，Spec 064 Stage 1 就绪时）
+
+| 范围 | 暴露计数 | 状态 |
+| --- | ---: | --- |
+| `100001–120000` | **0 → 1** | **已生成**（20,000 groups，merged checksum `5a730edd…`）。这批数据就是本轮的 train / calibration / held-out，用毕随本轮退休 |
+| `120001–120200` | **0 → 1** | **已退休 2026-09-22**：Stage 1 在 `00:26:49` 被强制终止（no-peek 违规），**未跑完、无判定**。按 §12/§14 该池已暴露，不得再用于任何 KEEP / REVERT |
+| `130001–131200` | **0** | **未暴露**，且**本轮不得使用**（Stage 1 INVALID ⇒ 不进 Stage 2）。留待新池 + 重新预登记之后的另一轮 |
+
+生成物在 `.local/cf-pi-corpus/`（`train.json` / `calibration.json` / `heldout.sealed.json` /
+`manifest.json`）与 `.local/cf-pi-shards/`（15 个 shard，179 MiB），均为 ignored 产物。
+π2 模型 artifact 在 `.local/cf-pi-rows/pi2-model.json`，**benchmark-only，`src/` 零改动**。
+记录见 [Spec 064/corpus.md](../specs/064-phase2-night-policy-iteration/corpus.md)。
+
+**held-out 仍然封存**：生成、merge、审计都只报结构计数，`cfAuditStructure` 的返回记录里
+没有 label 字段。
+
+## 2.2 新分配（Spec 065 / 候选接口 top3→top5，2026-09-22）
+
+| 范围 | 身份 | 规模 | 用途 |
+| --- | --- | ---: | --- |
+| **`140001–160000`** | **top5 dataset** | 20,000 groups | train / calibration / held-out = 12,000 / 4,000 / 4,000 |
+| **`160001–160200`** | **Stage 1 screen** | **恰好 200 groups** | 固定 200 组 paired 整局筛选；**不能 KEEP** |
+| **`170001–171200`** | **Stage 2 confirmation** | **恰好 1,200 groups** | 唯一一次正式判定（NIGHT KEEP / REVERT） |
+| `160201–170000`、`171201` 起 | **未分配** | — | 本轮不得使用 |
+
+**Spec 064 的池对本机制线一律不可用**，包括 `100001–120000`（π2 dataset）、
+**`120001–120200`（Stage 1，已因 no-peek 违规退休，未跑完、无判定）**、
+`130001–131200`（Stage 2，未暴露但属于 064 的预登记）。
+详见 [Spec 065](../specs/065-candidate-width-top5/spec.md)。
+
+**暴露状态（2026-09-22 09:10，Spec 065 因越过 08:30 硬停而终止）**：
+
+| 范围 | 暴露计数 | 状态 |
+| --- | ---: | --- |
+| `140001–160000` | **0 → 1（退休）** | corpus 生成跑过约 75% 后被杀；**磁盘上零产出**、无结果被写出或读到。按 §14「被 INCOMPLETE 触及的池一律退休」处理 |
+| `160001–160200` | **0** | **未暴露**。Stage 1 从未启动 |
+| `170001–171200` | **0** | **未暴露**。Stage 2 从未启动 |
+
+Spec 065 **不得跨日续跑**（§14）。继续这条机制线需要**开新池 + 重新预登记**。
+记录见 [Spec 065/incomplete.md](../specs/065-candidate-width-top5/incomplete.md)。
+
+**预登记前的零重叠核验（2026-09-22）**：对 `.local/` 下 626 个 `.json`/`.txt`/`.log` 产物
+做字段级扫描（`dealIndex` / `dealStart` / `deal-<n>` / `variantId` / shard 文件名）：
+三个新池与两个 gap 的 **overlap 全部 = 0**，历史最大 deal index = **120000**。
+边界同 §3：字段级正则，不是语义解析。
+
+---
+
+## 3. 新池「未被触碰」的机械证据（2026-09-21）
+
+在写下 Spec 064 的当时，对 `.local/` 下全部 `.json` / `.txt` / `.log` 产物做了一次
+正则扫描，提取四类承载 deal index 的字段：
+
+```
+"dealStart": <n>      "dealIndex": <n>      "deal-<n>"      "variantId": "<n>:..."
+```
+
+结果（脚本一次性运行，未提交；可原样重跑）：
+
+```
+files scanned: 632
+  dealGroupId: n=20060  min=5001   max=70000
+  dealIndex:   n=20060  min=5001   max=70000
+  dealStart:   n=57     min=0      max=68572
+  variantId:   n=20000  min=50001  max=70000
+
+overlap with 100001–120000: 0
+overlap with 120001–120200: 0
+overlap with 130001–131200: 0
+```
+
+即：**历史上被生成过的最大 deal index 是 `70000`**（Spec 062 universe 的上界），
+三个新池在此之前**暴露计数 = 0**。
+
+同日（2026-09-21）Spec 064 补齐了 §7 的 legality / baseline identity / seed overlap /
+单次 proposal / candidate interface 五条门禁与 §14 的 `08:30` CST 硬停。**补写发生在
+任何生成、训练与对局之前**，因此本节的扫描结论不变：三个新池**至今暴露计数仍为 0**。
+
+**这条证据的边界要说清楚**：它是**字段级正则**，不是对全部 JSON 的语义解析；它证明的是
+「没有任何产物在 deal-index 字段上落进新池」，不是「这些数字从未以任何形式出现过」。
+它也不覆盖 `.local/` 之外的位置。作为「新池尚未被消费」的证据它足够，作为更强的声称不够。
+
+## 4. 使用规则（与 results 文档一致）
+
+1. 退休池**可以**继续做诊断、人工阅读、机制归因与 regression。
+2. 这些诊断**可以**用于生成下一条假设。
+3. 但由这些诊断启发的新算法，**正式判定不得再用退休池**。
+4. 新机制的第一次正式 paired A/B 必须用一个**未消耗的池**。
+5. 判定一旦做出，该池**用毕即退休**，不得再决定任何 KEEP / REVERT。
+
+一句话：**可以回看错题，但新机制的考试必须换卷子。**

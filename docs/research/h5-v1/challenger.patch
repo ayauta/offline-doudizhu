@@ -1,0 +1,240 @@
+diff --git a/src/app/ai/decision-handler.ts b/src/app/ai/decision-handler.ts
+index ab673d2..7c0bc90 100644
+--- a/src/app/ai/decision-handler.ts
++++ b/src/app/ai/decision-handler.ts
+@@ -41,6 +41,8 @@ export const ENHANCED_AI_SEARCH = Object.freeze({
+   maxWorlds: 8,
+   rolloutDepth: 3,
+   rootAnalyzerNodes: 220,
++  // TEMPORARY challenger leg: H5 v1 at its frozen W_gate.
++  terminalGateWeight: 1,
+ } as const);
+ 
+ export type EnhancedAiWorkerRequest = Readonly<{
+diff --git a/src/core/ai/enhanced.ts b/src/core/ai/enhanced.ts
+index ec567f0..caf2437 100644
+--- a/src/core/ai/enhanced.ts
++++ b/src/core/ai/enhanced.ts
+@@ -6,10 +6,16 @@ export {
+   type HandEvaluation,
+ } from "./hand-analyzer.js";
+ export {
++  ROLLOUT_BLEND_WEIGHT,
+   rankMasterPlayActions,
++  rolloutBlendedScore,
+   samplePossibleWorld,
++  terminalVerdict,
++  type CandidateRollout,
+   type MasterSearchOptions,
+   type PossibleWorld,
++  type RolloutOutcome,
++  type TerminalVerdict,
+ } from "./master-policy.js";
+ export {
+   EXPERT_AI_STRATEGY,
+diff --git a/src/core/ai/master-policy.ts b/src/core/ai/master-policy.ts
+index 96b388b..2d1bf4c 100644
+--- a/src/core/ai/master-policy.ts
++++ b/src/core/ai/master-policy.ts
+@@ -18,6 +18,19 @@ export type MasterSearchOptions = Readonly<{
+   rolloutDepth: 2 | 3 | 4;
+   rootAnalyzerNodes?: number;
+   shouldContinue?: () => boolean;
++  /**
++   * H5 v1 (docs/research/h5-terminal-evidence.md): the weight a candidate's
++   * *terminal* component is scored at when that candidate's terminal
++   * trajectories agree on the root side's outcome. Terminal utility then enters
++   * at `1.0`, its original design scale, instead of through production's
++   * `ROLLOUT_BLEND_WEIGHT` shrink.
++   *
++   * Absent means the shipped behaviour, and it is bit-for-bit production: the
++   * term is added only when a weight is given, and at `0.2` the added term is
++   * exactly zero. Nothing else about the candidate's rollout changes — the
++   * non-terminal component stays at `0.2` either way.
++   */
++  terminalGateWeight?: number;
+ }>;
+ 
+ type MutableSearchState = {
+@@ -215,12 +228,22 @@ function rootUtility(rootView: PlayingPlayerView, state: MutableSearchState): nu
+   return (enemyTurns - friendlyTurns) * 220 + (enemyCards - friendlyCards) * 24;
+ }
+ 
++/** Production's fixed rollout weight: the blend every candidate has always used. */
++export const ROLLOUT_BLEND_WEIGHT = 0.2;
++
++/** Terminal utilities are `rootUtility`'s win/loss values, so they are exact. */
++export type RolloutOutcome = Readonly<{
++  utility: number;
++  /** The seat that emptied its hand in this trajectory, or null if none did. */
++  winner: Seat | null;
++}>;
++
+ function rolloutCandidate(
+   rootView: PlayingPlayerView,
+   world: PossibleWorld,
+   action: ValidatedPlayAction,
+   depth: number,
+-): number {
++): RolloutOutcome {
+   const state = createSearchState(rootView, world);
+   applyAction(state, action);
+   for (let ply = 0; ply < depth && state.winner === null; ply += 1) {
+@@ -233,7 +256,88 @@ function rolloutCandidate(
+     }
+     applyAction(state, nextAction);
+   }
+-  return rootUtility(rootView, state);
++  return Object.freeze({ utility: rootUtility(rootView, state), winner: state.winner });
++}
++
++export type TerminalVerdict = "none" | "win" | "loss" | "conflicting";
++
++/**
++ * Which way one candidate's terminal trajectories point, read from the **root
++ * seat's side**. 斗地主 has two sides, and the seat acting inside a rollout is
++ * not the seat whose decision this is: resolving every winner against
++ * `rootSeat`/`landlord` is the only formulation that cannot invert the sign at
++ * a farmer seat. A `null` winner is a trajectory that cannot be attributed to
++ * either side, which the freeze also treats as no evidence.
++ *
++ * `"win"`/`"loss"` are the only verdicts that open the gate. `"none"` (no
++ * trajectory reached a decided position) and `"conflicting"` (sampled worlds
++ * disagree) both mean "the rollout did not settle the question".
++ */
++export function terminalVerdict(
++  rootSeat: Seat,
++  landlord: Seat,
++  terminalWinners: readonly (Seat | null)[],
++): TerminalVerdict {
++  const first = terminalWinners[0];
++  if (first === undefined) {
++    return "none";
++  }
++  if (first === null) {
++    return "conflicting";
++  }
++  const rootWon = isSameSide(rootSeat, first, landlord);
++  for (const winner of terminalWinners) {
++    if (winner === null || isSameSide(rootSeat, winner, landlord) !== rootWon) {
++      return "conflicting";
++    }
++  }
++  return rootWon ? "win" : "loss";
++}
++
++/** One root candidate's rollout accumulation, in `rankMasterPlayActions` order. */
++export type CandidateRollout = Readonly<{
++  /** The expert ranking's score, before any rollout blend. */
++  expertScore: number;
++  /** Σ utilities over the completed worlds — the terminal trajectories included. */
++  total: number;
++  /** Σ utilities over just the terminal trajectories among them. */
++  terminalTotal: number;
++  /** The winner of each terminal trajectory, in the order the worlds were sampled. */
++  terminalWinners: readonly (Seat | null)[];
++}>;
++
++/**
++ * One candidate's final score: production's blend, plus H5 v1's terminal term
++ * when the gate is open.
++ *
++ * The form is deliberately **incremental**, never component-wise. The
++ * mathematically equivalent `W×T + 0.2×N` sums the same evidence in a different
++ * order and lands on different last bits, which would force the identity check
++ * to compare with a tolerance and lose its teeth. Here `terminalGateWeight = 0.2`
++ * adds exactly `+0`, so the gated score is the production score bit for bit —
++ * and with the weight absent the term is not computed at all.
++ */
++export function rolloutBlendedScore(
++  candidate: CandidateRollout,
++  root: Readonly<{ seat: Seat; landlord: Seat }>,
++  completedWorlds: number,
++  terminalGateWeight: number | undefined,
++): number {
++  const blended = candidate.expertScore +
++    (completedWorlds === 0
++      ? 0
++      : (candidate.total / completedWorlds) * ROLLOUT_BLEND_WEIGHT);
++  // No completed world means no trajectory, hence no terminal evidence to gate
++  // on — and the terminal component's denominator would be zero.
++  if (terminalGateWeight === undefined || completedWorlds === 0) {
++    return blended;
++  }
++  const verdict = terminalVerdict(root.seat, root.landlord, candidate.terminalWinners);
++  if (verdict !== "win" && verdict !== "loss") {
++    return blended;
++  }
++  return blended + (terminalGateWeight - ROLLOUT_BLEND_WEIGHT) *
++    (candidate.terminalTotal / completedWorlds);
+ }
+ 
+ export function rankMasterPlayActions(
+@@ -258,7 +362,17 @@ export function rankMasterPlayActions(
+     return Object.freeze([]);
+   }
+ 
+-  const totals = candidates.map(() => 0);
++  const rollouts: Array<{
++    expertScore: number;
++    total: number;
++    terminalTotal: number;
++    terminalWinners: (Seat | null)[];
++  }> = candidates.map((candidate) => ({
++    expertScore: candidate.score,
++    total: 0,
++    terminalTotal: 0,
++    terminalWinners: [],
++  }));
+   const random = new SeededRandom(options.seed);
+   let completedWorlds = 0;
+   for (let worldIndex = 0; worldIndex < options.maxWorlds; worldIndex += 1) {
+@@ -273,23 +387,38 @@ export function rankMasterPlayActions(
+     }
+     for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
+       const candidate = candidates[candidateIndex];
+-      if (candidate !== undefined) {
+-        totals[candidateIndex] = (totals[candidateIndex] ?? 0) +
+-          rolloutCandidate(context.view, world, candidate.action, options.rolloutDepth);
++      const rollout = rollouts[candidateIndex];
++      if (candidate !== undefined && rollout !== undefined) {
++        const outcome = rolloutCandidate(
++          context.view,
++          world,
++          candidate.action,
++          options.rolloutDepth,
++        );
++        rollout.total += outcome.utility;
++        if (outcome.winner !== null) {
++          rollout.terminalTotal += outcome.utility;
++          rollout.terminalWinners.push(outcome.winner);
++        }
+       }
+     }
+     completedWorlds += 1;
+   }
+ 
+-  const ranked = candidates.map((candidate, index) => ({
+-    action: candidate.action,
+-    index,
+-    score: candidate.score +
++  const ranked = candidates.map((candidate, index) => {
++    const rollout = rollouts[index];
++    return {
++      action: candidate.action,
++      index,
+       // Determinization is deliberately advisory: shallow sampled worlds are
+       // noisy, so they may refine but should not casually overturn the stable
+-      // expert policy that produced this shortlist.
+-      (completedWorlds === 0 ? 0 : ((totals[index] ?? 0) / completedWorlds) * 0.2),
+-  }));
++      // expert policy that produced this shortlist. H5 keeps that weight for
++      // everything except a candidate whose terminal evidence is unanimous.
++      score: rollout === undefined
++        ? candidate.score
++        : rolloutBlendedScore(rollout, context.view, completedWorlds, options.terminalGateWeight),
++    };
++  });
+   ranked.sort((left, right) => right.score - left.score || left.index - right.index);
+   return Object.freeze(ranked.map(({ action, score }) => Object.freeze({ action, score })));
+ }

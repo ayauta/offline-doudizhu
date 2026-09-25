@@ -36,6 +36,7 @@ import { generateLegalActions } from "../src/core/rules/index.js";
 import {
   ENHANCED_AI_BUDGET_MS,
   decideEnhancedAi,
+  type PlayDecisionOverlay,
 } from "../src/app/ai/decision-handler.js";
 import type { EnhancedAiType } from "../src/app/ports/ai-decision-service.js";
 import { AI_TYPES, type AiType } from "../src/app/settings/ai-settings.js";
@@ -92,6 +93,22 @@ export type Recorder = Readonly<{
 export type BenchmarkConfig = Readonly<{
   deals: number;
   seedBase: number;
+  /**
+   * Absolute index of the first deal this process plays. Sharding shifts this
+   * window; it never changes how a deal is derived, because the seed stays
+   * `seedBase + dealIndex` with `dealIndex` absolute. A sharded run therefore
+   * reproduces the unsharded run deal for deal, which is what lets the same
+   * measurement be split across processes.
+   */
+  dealStart: number;
+  /**
+   * Run the pair tournaments with an infinite deadline. This is the designed
+   * workload, not the shipped one: it answers "what would this policy choose
+   * with all its work done", which is what a strength comparison wants, and it
+   * is byte-reproducible because no clock reaches the decision. Shipped
+   * performance numbers must never be taken from a designed run.
+   */
+  designed: boolean;
   secondsCap: number;
   probeDeals: number;
   controlDeals: number;
@@ -143,6 +160,8 @@ export function readConfig(): BenchmarkConfig {
   return Object.freeze({
     deals: Math.max(1, envInt("AI_BENCH_DEALS", 20)),
     seedBase: envInt("AI_BENCH_SEED", 301),
+    dealStart: Math.max(0, envInt("AI_BENCH_DEAL_START", 0)),
+    designed: process.env.AI_BENCH_DESIGNED === "1",
     secondsCap: Math.max(1, envInt("AI_BENCH_SECONDS", 240)),
     probeDeals: Math.max(1, envInt("AI_BENCH_PROBE_DEALS", 4)),
     controlDeals: Math.max(1, envInt("AI_BENCH_CONTROL_DEALS", 10)),
@@ -201,12 +220,29 @@ export function dealDeck(seed: number): readonly CardId[] {
 }
 
 /**
+ * The game seed for one (deal, strong seat, landlord) triple.
+ *
+ * Extracted rather than left inline at its two call sites because a corpus and
+ * a strength run must agree on it: `dealSeed = seedBase + dealIndex` picks the
+ * deck, and this picks which of the six schedule games is being played. A
+ * second copy of this arithmetic is how an offline corpus ends up describing
+ * games the benchmark never plays.
+ */
+export function dealGameSeed(dealSeed: number, strongSeat: Seat, landlord: Seat): number {
+  return dealSeed * 100 + SEAT_ORDER.indexOf(strongSeat) * 10 + SEAT_ORDER.indexOf(landlord);
+}
+
+/**
  * Wraps the runtime clock. `shouldContinue` is the only consumer of `now()` on
  * the play path, so "the clock was read at or past the deadline" is exactly
  * "this level's own budget check fired". This measures truncation without
  * adding a single byte to the shipped worker bundle.
  */
-function instrumentedRuntime(deadline: number, sink: { polls: number; reached: boolean }) {
+function instrumentedRuntime(
+  deadline: number,
+  sink: { polls: number; reached: boolean },
+  overlay?: PlayDecisionOverlay,
+) {
   return {
     deadline,
     now: () => {
@@ -217,6 +253,7 @@ function instrumentedRuntime(deadline: number, sink: { polls: number; reached: b
       }
       return value;
     },
+    ...(overlay === undefined ? {} : { overlay }),
   };
 }
 
@@ -228,7 +265,20 @@ function instrumentedRuntime(deadline: number, sink: { polls: number; reached: b
 export function createMeasuredStrategy(
   profile: Profile,
   recorder: Recorder,
-  options: Readonly<{ unboundedEvery: number; seed: number; designed?: boolean }>,
+  options: Readonly<{
+    unboundedEvery: number;
+    seed: number;
+    designed?: boolean;
+    /**
+     * Called with the frozen root context of every master play decision, before
+     * the decision is made. Pure observation, but it costs wall-clock — so it is
+     * only sound on a designed run, where no deadline can turn that cost into a
+     * different move.
+     */
+    masterProposal?: (context: AiDecisionContext) => void;
+    /** Installed inside the shipped handler, so the real deadline applies. */
+    phase2?: PlayDecisionOverlay;
+  }>,
 ): AiStrategy {
   let decisionIndex = 0;
 
@@ -256,6 +306,10 @@ export function createMeasuredStrategy(
         return command;
       }
 
+      if (profile === "master" && context.kind === "play") {
+        options.masterProposal?.(context);
+      }
+
       const sink = { polls: 0, reached: false };
       const started = performance.now();
       const budgetMs = options.designed === true ? null : ENHANCED_AI_BUDGET_MS[profile];
@@ -264,6 +318,7 @@ export function createMeasuredStrategy(
         instrumentedRuntime(
           budgetMs === null ? Number.POSITIVE_INFINITY : started + budgetMs,
           sink,
+          options.phase2,
         ),
       );
       const elapsedMs = performance.now() - started;
@@ -282,7 +337,7 @@ export function createMeasuredStrategy(
         const unboundedStarted = performance.now();
         const unboundedOutcome = decideEnhancedAi(
           Object.freeze({ requestId: decisionIndex, aiType: profile, context, seed }),
-          instrumentedRuntime(Number.POSITIVE_INFINITY, unboundedSink),
+          instrumentedRuntime(Number.POSITIVE_INFINITY, unboundedSink, options.phase2),
         );
         if (unboundedOutcome.ok) {
           unbounded = Object.freeze({
@@ -405,23 +460,37 @@ export function playGame(
   landlord: Seat,
   profiles: Readonly<Record<Seat, Profile>>,
   recorder: Recorder,
-  options: Readonly<{ unboundedEvery: number; seed: number; designed?: boolean }>,
+  options: Readonly<{
+    unboundedEvery: number;
+    seed: number;
+    designed?: boolean;
+    masterProposal?: (context: AiDecisionContext) => void;
+    /** Installed inside the shipped handler, so the real deadline applies. */
+    phase2?: PlayDecisionOverlay;
+    /**
+     * Wraps one seat's strategy. The Gate B challenger uses this to install its
+     * selector on a single seat — identity is bound by construction, because a
+     * decorator only ever sees the seat it was created for, so no global
+     * "is this a farmer" test can leak the change onto the other seats.
+     */
+    decorate?: (seat: Seat, strategy: AiStrategy) => AiStrategy;
+  }>,
 ): GameOutcome {
   let state = startWithLandlord(deck, landlord);
   const shared = {
     unboundedEvery: options.unboundedEvery,
     designed: options.designed === true,
+    ...(options.masterProposal === undefined ? {} : { masterProposal: options.masterProposal }),
+    ...(options.phase2 === undefined ? {} : { phase2: options.phase2 }),
+  };
+  const build = (seat: Seat, seed: number): AiStrategy => {
+    const strategy = createMeasuredStrategy(profiles[seat], recorder, { ...shared, seed });
+    return options.decorate === undefined ? strategy : options.decorate(seat, strategy);
   };
   const strategies: Record<Seat, AiStrategy> = {
-    human: createMeasuredStrategy(profiles.human, recorder, { ...shared, seed: options.seed + 1 }),
-    "ai-one": createMeasuredStrategy(profiles["ai-one"], recorder, {
-      ...shared,
-      seed: options.seed + 2,
-    }),
-    "ai-two": createMeasuredStrategy(profiles["ai-two"], recorder, {
-      ...shared,
-      seed: options.seed + 3,
-    }),
+    human: build("human", options.seed + 1),
+    "ai-one": build("ai-one", options.seed + 2),
+    "ai-two": build("ai-two", options.seed + 3),
   };
   for (let commandCount = 0; commandCount < 256; commandCount += 1) {
     if (state.phase === "finished") {
@@ -597,6 +666,12 @@ export type PairRun = Readonly<{
   requestedDeals: number;
   playedDeals: number;
   stoppedEarly: boolean;
+  /**
+   * Absolute index of `perDealA[0]` / `perDealB[0]`. A merge places each
+   * shard's arrays at this offset, so the joined arrays are indexed by the
+   * same deal index the unsharded run would have used.
+   */
+  dealStart: number;
   /** Wins out of 3 per deal, arm A (the strong level holds the landlord seat). */
   perDealA: readonly number[];
   /** Wins out of 3 per deal, arm B (the strong level holds one farmer seat). */
@@ -615,7 +690,25 @@ export function runPairTournament(
   stronger: Profile,
   weaker: Profile,
   recorder: Recorder,
-  options: Readonly<{ maxDeals?: number; quiet?: boolean }> = {},
+  options: Readonly<{
+    maxDeals?: number;
+    quiet?: boolean;
+    masterProposal?: (context: AiDecisionContext) => void;
+    /**
+     * Called once per game with the seat the strong level occupies, and returns
+     * the decorator to install on that seat — or undefined for no change. This
+     * is how the challenger arm differs from the baseline arm and nothing else:
+     * the same `playGame`, the same schedule, the same seeds.
+     */
+    decoratorFor?: (strongSeat: Seat) => ((strategy: AiStrategy) => AiStrategy) | undefined;
+    /**
+     * Installs an overlay inside the shipped handler for the strong seat only.
+     * Unlike `decoratorFor` this runs *inside* `decideEnhancedAi`, so the
+     * master budget, the deadline fallback and the try/catch that protects a
+     * legal move are the shipped ones rather than a re-implementation.
+     */
+    phase2For?: (strongSeat: Seat) => PlayDecisionOverlay | undefined;
+  }> = {},
 ): PairRun {
   const maxDeals = options.maxDeals ?? config.deals;
   const started = performance.now();
@@ -626,20 +719,35 @@ export function runPairTournament(
   let winsA = 0;
   let winsB = 0;
 
-  for (let dealIndex = 0; dealIndex < maxDeals; dealIndex += 1) {
+  for (let offset = 0; offset < maxDeals; offset += 1) {
     if ((performance.now() - started) / 1000 >= config.secondsCap) {
       stoppedEarly = true;
       break;
     }
+    // `dealIndex` is absolute: the shard window decides which deals this
+    // process plays, never how any of them is derived.
+    const dealIndex = config.dealStart + offset;
     const dealSeed = config.seedBase + dealIndex;
     const deck = dealDeck(dealSeed);
     let dealWinsA = 0;
     let dealWinsB = 0;
     for (const slot of armSchedule(dealIndex)) {
       const profiles = scheduleFor(stronger, weaker, slot.strongSeat);
+      const decorator = options.decoratorFor?.(slot.strongSeat);
+      const phase2 = options.phase2For?.(slot.strongSeat);
       const outcome = playGame(deck, slot.landlord, profiles, recorder, {
         unboundedEvery: config.unboundedEvery,
-        seed: dealSeed * 100 + SEAT_ORDER.indexOf(slot.strongSeat) * 10 + SEAT_ORDER.indexOf(slot.landlord),
+        seed: dealGameSeed(dealSeed, slot.strongSeat, slot.landlord),
+        designed: config.designed,
+        ...(options.masterProposal === undefined ? {} : { masterProposal: options.masterProposal }),
+        ...(decorator === undefined ? {} : {
+          // Only the strong seat. Passing the decorator through unconditionally
+          // would install the challenger on all three seats, which is a
+          // different experiment wearing the same name.
+          decorate: (seat: Seat, strategy: AiStrategy) =>
+            seat === slot.strongSeat ? decorator(strategy) : strategy,
+        }),
+        ...(phase2 === undefined ? {} : { phase2 }),
       });
       const strongIsLandlord = slot.strongSeat === slot.landlord;
       const strongerWon = strongIsLandlord
@@ -675,6 +783,7 @@ export function runPairTournament(
     requestedDeals: maxDeals,
     playedDeals,
     stoppedEarly,
+    dealStart: config.dealStart,
     perDealA: Object.freeze(perDealA),
     perDealB: Object.freeze(perDealB),
     elapsedMs: performance.now() - started,

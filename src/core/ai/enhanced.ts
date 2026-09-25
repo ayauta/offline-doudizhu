@@ -14,8 +14,11 @@ export {
 export {
   EXPERT_AI_STRATEGY,
   SCORING_CASUAL_AI_STRATEGY,
+  rankPlayActionsWithProposal,
   rankScoredPlayActions,
   scoreAction,
+  type PlayActionProposal,
   type RuleAiProfile,
+  type ScoredActionDetail,
   type ScoredPlayAction,
 } from "./scoring-policy.js";

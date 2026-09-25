@@ -56,8 +56,15 @@ class MemorySettingsStore implements SettingsStore {
   settings: AiSettings;
   readonly saves: AiSettings[] = [];
 
-  constructor(aiType: AiType) {
-    this.settings = Object.freeze({ aiType });
+  constructor(aiType: AiType, overrides: Partial<AiSettings> = {}) {
+    // Mirrors the product default, champion fields included, so the fixture
+    // exercises the shipped configuration rather than a pre-champion one.
+    this.settings = Object.freeze({
+      aiType,
+      counterfactualFarmer: true,
+      cheapLandlord: true,
+      ...overrides,
+    });
   }
 
   load(): AiSettings {
@@ -75,6 +82,7 @@ class ManualAiService implements EnhancedAiDecisionService {
     active: boolean;
     aiType: EnhancedAiType;
     context: AiDecisionContext;
+    options: Readonly<{ counterfactualFarmer?: boolean; cheapLandlord?: boolean }>;
     complete: (outcome: AiDecisionOutcome) => void;
   }> = [];
   disposed = false;
@@ -88,8 +96,9 @@ class ManualAiService implements EnhancedAiDecisionService {
     aiType: EnhancedAiType,
     context: AiDecisionContext,
     complete: (outcome: AiDecisionOutcome) => void,
+    options: Readonly<{ counterfactualFarmer?: boolean; cheapLandlord?: boolean }> = {},
   ): () => void {
-    const request = { active: true, aiType, context, complete };
+    const request = { active: true, aiType, context, options, complete };
     this.requests.push(request);
     return () => { request.active = false; };
   }
@@ -130,7 +139,9 @@ describe("production AI setting and worker integration", () => {
     expect(fixture.session.getView()).toEqual({ screen: "home", aiType: "master" });
     fixture.session.dispatch({ type: "set-ai-type", aiType: "casual" });
     expect(fixture.session.getView()).toEqual({ screen: "home", aiType: "casual" });
-    expect(fixture.settingsStore.saves).toEqual([{ aiType: "casual" }]);
+    expect(fixture.settingsStore.saves).toEqual([
+      { aiType: "casual", counterfactualFarmer: true, cheapLandlord: true },
+    ]);
 
     fixture.session.dispatch({ type: "start-game" });
     fixture.session.dispatch({ type: "set-ai-type", aiType: "master" });
@@ -245,5 +256,38 @@ describe("production AI setting and worker integration", () => {
 
     fixture.session.dispose();
     expect(fixture.aiDecisionService.disposed).toBe(true);
+  });
+
+  it("carries AI-v2 to the Worker, and lets a stored document pin it off", () => {
+    // The wiring the champion depends on: these two flags are what make the
+    // shipped Worker run CHEAP at the landlord and the π1 selector at the
+    // farmers. A field that is decoded but never sent would leave both
+    // policies as dead code while every settings test still passed.
+    const on = sessionWith("master");
+    on.session.dispatch({ type: "start-game" });
+    on.session.dispatch({ type: "bid", decision: "decline" });
+    expect(on.aiDecisionService.requests[0]?.options).toEqual({
+      counterfactualFarmer: true,
+      cheapLandlord: true,
+    });
+
+    const pinned = new MemorySettingsStore("master", {
+      counterfactualFarmer: false,
+      cheapLandlord: false,
+    });
+    const scheduler = new ManualScheduler();
+    const service = new ManualAiService();
+    const session = createProductionSession({
+      aiDecisionService: service,
+      deckSource: { nextDeck: () => createDeck() },
+      scheduler,
+      settingsStore: pinned,
+    });
+    session.dispatch({ type: "start-game" });
+    session.dispatch({ type: "bid", decision: "decline" });
+    expect(service.requests[0]?.options).toEqual({
+      counterfactualFarmer: false,
+      cheapLandlord: false,
+    });
   });
 });

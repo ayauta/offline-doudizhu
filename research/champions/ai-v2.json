@@ -1,0 +1,135 @@
+{
+  "generation": "ai-v2",
+  "champion": true,
+  "parentChampion": "ai-v1",
+  "promotedAt": "2026-09-25T14:02:49.943Z",
+  "releaseTag": "ai-v2",
+  "productVersion": "0.5.0",
+  "summary": "Landlord upgraded to the full-action CHEAP policy; farmers continue on the pi1 counterfactual selector. Active on the master tier.",
+  "policy": {
+    "landlord": {
+      "name": "CHEAP (full-action LightGBM, 403-column state-action schema)",
+      "modelSha256": "070f5b0b728176a8fb11d6a79e585b1315b847e053a23821830e17394faac26b",
+      "packagedFile": "src/app/ai/cheap-landlord-model.ts",
+      "packagedFileBytes": 2028939,
+      "numTrees": 512,
+      "numFeatures": 403
+    },
+    "farmers": {
+      "name": "pi1 (frozen counterfactual selector)",
+      "modelSha256": "010a8a4a00524f0694d5881bacdd885d99243acf4d71e2b2fdcae7ae82fc3359",
+      "threshold": 0.01
+    }
+  },
+  "schema": {
+    "module": "src/core/ai/fa-features.ts",
+    "fileSha256": "e987824856a584cc15ea6046881baf290114270081190cd3cc986801f3c50259",
+    "datasetVersion": "fas-dataset-v1",
+    "featureSchemaVersion": 1,
+    "historyLength": 12,
+    "columns": 403,
+    "columnsMatchNames": true,
+    "schemaHash": "502946fd7e880422dd13dde49fcb25afdb63e16269a2ef56357432f72aa509cf"
+  },
+  "identities": {
+    "strongSeat": {
+      "entry": "src/app/ai/decision-handler.ts",
+      "current": "62f513726701b1c0034caf97382d7104810c9e7e2ed86186a81ef13ce822ba5e",
+      "frozenInProtocol": "a6ae8a6aebd31e88172a12a64845284f799b1487abc07a49d934188a0cee89e3",
+      "changedBecause": "decision-handler.ts was edited by the landlord integration"
+    },
+    "orderedTopThree": {
+      "entry": "src/app/ai/cf-selector.ts",
+      "current": "dc92715b8fb4fca0b4530327f8624063e10b525006e210dfda7dc7a7cb275b3f",
+      "frozenInProtocol": "e63d084ecd2d7e262886e682bbaad87490fccf340081092ae42200505b922df2",
+      "changedBecause": "cf-selector.ts imports ENHANCED_AI_SEARCH from decision-handler.ts"
+    },
+    "legalActionEnumerator": {
+      "entry": "src/core/rules/generate-legal-actions.ts",
+      "current": "7f1645eee455c4bcfcb6e9a984286e830005f83c7afc8a45a4b4667f5ede3c18",
+      "frozenInProtocol": "7f1645eee455c4bcfcb6e9a984286e830005f83c7afc8a45a4b4667f5ede3c18",
+      "changedBecause": null
+    },
+    "treeEvaluator": {
+      "entry": "src/core/ai/cf-model.ts",
+      "current": "43bc62798482e234fbaf6148e1e62a08b912876503d261451c3f5b089084a77f",
+      "frozenInProtocol": "43bc62798482e234fbaf6148e1e62a08b912876503d261451c3f5b089084a77f",
+      "changedBecause": null
+    },
+    "defaultTier": {
+      "entry": "src/core/ai/index.ts",
+      "current": "2a39386007949cf1c37010c1d97f61e8468a3d41b44df50cebf70c9cc46b7297",
+      "frozenInProtocol": "2a39386007949cf1c37010c1d97f61e8468a3d41b44df50cebf70c9cc46b7297",
+      "changedBecause": null
+    }
+  },
+  "deadline": {
+    "responseWindowMs": 480,
+    "masterBudgetMs": 120,
+    "casualBudgetMs": 16,
+    "landlordPolicyReadsMasterBudget": false,
+    "fallback": "decline -> production path (model unavailable, empty legal set, schema mismatch, scoring failure); otherwise the client's response budget expires and the turn falls back to the casual strategy"
+  },
+  "bundle": {
+    "worker": {
+      "asset": "assets/ai-worker-k7BbEMss.js",
+      "rawBytes": 2569883,
+      "gzipBytes": 575787
+    },
+    "workerGzipBudgetBytes": 650000,
+    "workboxMaximumFileSizeToCacheInBytes": 3145728
+  },
+  "platformQualification": {
+    "desktopChromium": "measured (in-process and real Worker)",
+    "android": {
+      "package": "io.github.ayauta.offlinedoudizhu.debug",
+      "variant": "debug (assembleDebug, AGP 9.4.0 / Gradle 9.6.0 / JDK 17)",
+      "apkSha256": "9745ac9bdfaa38a2210754cbdfe4581feffb886a2f9c16615706e8eee796a543",
+      "packagedWorkerPath": "assets/assets/ai-worker-k7BbEMss.js",
+      "packagedWorkerSha256": "57a0b30b8cf41004a2128d6e0f41de0d2222fe8d0bac098f314c7b22be3e7361",
+      "packagedWorkerMatchesDist": true,
+      "device": {
+        "model": "Xiaomi 10S (M2102J2SC)",
+        "androidRelease": "11",
+        "sdk": 30
+      },
+      "measuredThrough": "the shipped Worker (appassets.androidplatform.net/assets/assets/ai-worker-*.js)"
+    }
+  },
+  "evidence": {
+    "strength": {
+      "landlordIndependentConfirmation": {
+        "pool": "952401-958400 (retired)",
+        "groups": 6000,
+        "vsPi1Farmers": {
+          "deltaPp": 9.4,
+          "ci95": [
+            8.038,
+            10.762
+          ]
+        },
+        "vsDefaultFarmers": {
+          "deltaPp": 3.45,
+          "ci95": [
+            2.059,
+            4.841
+          ]
+        },
+        "verdict": "JOINT RESEARCH PASS",
+        "report": "research/full-action-selfplay-v1/landlord-robust-confirmation-report.md",
+        "protocolSha256": "81fbd4f647ac3e404892fddc603889f7538daa586112e960c32e0cf6a10ae7b7"
+      },
+      "farmerPi1": {
+        "note": "Spec 063 final validation; farmer +10.583pp, combined +5.292pp"
+      }
+    },
+    "releaseEquivalence": {
+      "note": "Implementation regression only, not strength evidence. Research reference vs the final production Worker, on retired development deals.",
+      "report": "research/full-action-selfplay-v1/cheap-release-candidate-report.md"
+    }
+  },
+  "build": {
+    "commit": "f6f5b7e66f161611b8de09848e37b311806cfaac",
+    "branch": "research/full-action-selfplay-v1"
+  }
+}

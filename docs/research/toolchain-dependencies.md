@@ -64,3 +64,32 @@ lockfile changes, run the full quality gate, compare production file inventory
 and sizes, verify no new remote/network behavior, and retest offline install and
 non-disruptive update behavior. Do not add a direct package solely for a small
 utility that can remain clear project-owned code.
+
+## Offline research training tool (not shipped)
+
+Gate A v1 of the counterfactual farmer model is fitted offline by
+`scripts/cf-train.py`. Nothing in this section reaches `src/`, the web bundle,
+the worker, or the Android package: the trained model has no online wiring and
+the corpus it is fitted from lives in the gitignored `.local/` workspace.
+
+| Tool | Exact version | License | Boundary and purpose |
+| --- | ---: | --- | --- |
+| `lightgbm` | `4.6.0` | MIT | Offline fitting and scoring only, invoked by `scripts/cf-train.py`. Fits one frozen configuration once; no hyperparameter search. |
+
+Installed into the project-local `.local/pylibs` directory (`python3 -m pip
+install --target`) rather than a committed lockfile, because it is a research
+tool rather than part of the product's build or test path.
+
+**Alternatives considered.** A JavaScript gradient-boosting implementation would
+keep the tree in one language and avoid a second toolchain, but there is no
+maintained CPU implementation with LightGBM's missing-value handling, which the
+feature schema depends on (`NaN` is the frozen encoding for an absent rank). A
+hand-written model was rejected outright: the point of Gate A is to measure
+whether a *standard* learner can extract the signal, and a bespoke one would
+make a negative result uninterpretable.
+
+**Maintenance cost.** One optional, gitignored, offline toolchain. It is not
+built, installed, audited, or shipped by `pnpm check`, CI, or the release path.
+The evaluation statistics deliberately do **not** depend on it — the t-quantile
+is project-owned code (`benchmarks/cf-tquantile.ts`) checked against scipy's
+published values once, so the frozen decision can be re-run with only Node.

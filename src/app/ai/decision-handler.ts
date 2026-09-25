@@ -9,6 +9,16 @@ import type {
   AiStrategy,
 } from "../../core/ai/index.js";
 import type { GameCommand } from "../../core/game/index.js";
+/*
+ * Type-only, and deliberately so. The landlord policy's *implementation* is
+ * supplied by the caller, not imported here: a runtime import would put the
+ * whole 403-column schema into this module's import closure, which is the
+ * closure the frozen `master` and `ordered top three` identities are hashes
+ * over. Injecting the function instead keeps the integration from rewriting a
+ * closed research line's frozen identities — and under
+ * `verbatimModuleSyntax` an `import type` is elided, so it adds no edge.
+ */
+import type { CheapLandlordDecision } from "./cheap-landlord.js";
 import type {
   AiDecisionOutcome,
   EnhancedAiType,
@@ -48,6 +58,17 @@ export type EnhancedAiWorkerRequest = Readonly<{
   aiType: EnhancedAiType;
   context: AiDecisionContext;
   seed: number;
+  /**
+   * Experimental. Asks the worker to install the frozen counterfactual farmer
+   * selector as a post-decision overlay. Absent means production behaviour.
+   */
+  counterfactualFarmer?: boolean;
+  /**
+   * Experimental. Asks the worker to hand the landlord seat to the frozen
+   * full-action policy instead of running master's rollout. Absent means
+   * production behaviour.
+   */
+  cheapLandlord?: boolean;
 }>;
 
 export type EnhancedAiWorkerResponse = Readonly<{
@@ -55,9 +76,51 @@ export type EnhancedAiWorkerResponse = Readonly<{
   outcome: AiDecisionOutcome;
 }>;
 
+/**
+ * An optional post-decision overlay for a master play decision.
+ *
+ * It is handed the command production master actually chose — including the
+ * deadline fallback — and returns the command to play. The shipped worker never
+ * provides one, so production behaviour is unchanged by construction: the seam
+ * is part of the runtime, exactly like the clock, and the worker's runtime has
+ * only a clock.
+ *
+ * Anything the overlay throws is caught here and the production command is
+ * played. A selector that cannot answer must never be able to block a legal
+ * move.
+ */
+export type PlayDecisionOverlay = (
+  context: Extract<AiDecisionContext, { readonly kind: "play" }>,
+  productionCommand: GameCommand,
+) => GameCommand;
+
+/**
+ * The landlord policy, as the runtime sees it.
+ *
+ * `observe` is a measurement seam, not a decision input: it is called with the
+ * decision that was already made, and the policy never reads anything back. A
+ * shipped Worker passes none, so the seam costs one undefined check.
+ */
+export type CheapLandlordRuntime = Readonly<{
+  /**
+   * Carried so a caller can assert it is the confirmed policy. It is never a
+   * feature and never reaches a score.
+   */
+  modelSha256: string;
+  /** The policy itself. Supplied by the Worker, never imported by this module. */
+  decide: (
+    context: Extract<AiDecisionContext, { readonly kind: "play" }>,
+  ) => CheapLandlordDecision;
+  observe?: (context: Extract<AiDecisionContext, { readonly kind: "play" }>, decision: CheapLandlordDecision) => void;
+}>;
+
 export type AiDecisionRuntime = Readonly<{
   deadline: number;
   now: () => number;
+  /** Absent in production. Present only when an experiment installs one. */
+  overlay?: PlayDecisionOverlay;
+  /** Absent in production. Present only when the landlord policy is installed. */
+  landlord?: CheapLandlordRuntime;
 }>;
 
 function actionCommand(
@@ -95,6 +158,23 @@ export function expertFallbackPlayCommand(
   );
 }
 
+function overlayed(
+  runtime: AiDecisionRuntime,
+  context: Extract<AiDecisionContext, { readonly kind: "play" }>,
+  productionCommand: GameCommand,
+): GameCommand {
+  const overlay = runtime.overlay;
+  if (overlay === undefined) {
+    return productionCommand;
+  }
+  try {
+    return overlay(context, productionCommand);
+  } catch {
+    // A selector that cannot answer plays production's move. It never blocks.
+    return productionCommand;
+  }
+}
+
 export function decideEnhancedAi(
   request: EnhancedAiWorkerRequest,
   runtime: AiDecisionRuntime,
@@ -116,6 +196,31 @@ export function decideEnhancedAi(
       return Object.freeze({ ok: true, command: strategyCommand(context, strategy) });
     }
 
+    /*
+     * The landlord branch runs *before* master's rollout, not after it. An
+     * overlay would have to let master spend its whole budget and then throw the
+     * answer away, which measures a product that does not exist. When the
+     * policy is installed the rollout is never started, so `rankMasterPlayActions`
+     * is not merely ignored — it is not called.
+     *
+     * Master only: `casual` is a deliberately weaker product tier and the
+     * confirmation's baseline was the master tier. Widening this to casual would
+     * be a product decision about that tier's difficulty, not an integration.
+     *
+     * A refusal falls through to the production path, so a landlord whose model
+     * failed to load plays master's move rather than losing its turn. The
+     * refusal is reported through `observe`, so it is counted rather than
+     * inferred from a command that happens to look reasonable.
+     */
+    if (request.aiType === "master" && runtime.landlord !== undefined) {
+      const landlord = runtime.landlord;
+      const decision = landlord.decide(context);
+      landlord.observe?.(context, decision);
+      if (decision.kind === "cheap") {
+        return Object.freeze({ ok: true, command: decision.command });
+      }
+    }
+
     if (request.aiType === "casual") {
       return Object.freeze({
         ok: true,
@@ -129,7 +234,10 @@ export function decideEnhancedAi(
       });
     }
     if (runtime.now() >= runtime.deadline) {
-      return Object.freeze({ ok: true, command: expertFallbackPlayCommand(context) });
+      return Object.freeze({
+        ok: true,
+        command: overlayed(runtime, context, expertFallbackPlayCommand(context)),
+      });
     }
 
     const ranked = rankMasterPlayActions(context, {
@@ -139,7 +247,7 @@ export function decideEnhancedAi(
     });
     return Object.freeze({
       ok: true,
-      command: actionCommand(context, ranked[0]?.action),
+      command: overlayed(runtime, context, actionCommand(context, ranked[0]?.action)),
     });
   } catch {
     return Object.freeze({ ok: false, reason: "failed" });

@@ -114,9 +114,30 @@ const gzipBudgets = [
     pattern: /^assets\/main-[^/]+\.css$/,
   },
   {
-    // 8 355 B baseline + 2 587 B (one enhanced policy module) / 3.
+    /*
+     * 575 787 B measured + 74 213 B headroom.
+     *
+     * The anchor rule the other two limits use — baseline plus a third of the
+     * smallest regression worth catching — stops working once one frozen
+     * artifact dominates the asset. The worker is now 450 401 B of packaged
+     * CHEAP landlord model beside roughly 125 KB of code, so a share-of-total
+     * rule would size the allowance from the model, while what can actually
+     * drift is the code next to it. The headroom is therefore measured against
+     * the glue: 74 213 B is about 28x the 2 598 B of gzip the whole landlord
+     * integration added, so ordinary glue churn cannot red this, while a second
+     * packaged table (+76%) or comparable bloat still does.
+     *
+     * History, as provenance rather than as a live limit: 9 217 B until the
+     * frozen counterfactual farmer model was packaged; 123 575 B after that,
+     * which the CHEAP landlord model takes to 4.66x. The product owner accepted
+     * the ~450 KB increment for the confirmed strength gain, so exceeding the
+     * old number is no longer an automatic no-go — but the old number is kept
+     * here, because the next reviewer deserves to see what the asset used to
+     * cost. ADR 0018 asked for an evidence-based replacement rather than a
+     * bypassed check; this remains that replacement.
+     */
     label: "enhanced AI worker",
-    limitBytes: 9_217,
+    limitBytes: 650_000,
     pattern: /^assets\/ai-worker-[^/]+\.js$/,
   },
 ];

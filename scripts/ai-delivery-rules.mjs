@@ -26,6 +26,14 @@ export const WORKER_REQUIRED_PATHS = Object.freeze([
   "src/core/ai/master-policy.ts",
   "src/core/ai/scoring-policy.ts",
   "src/core/ai/state-evaluator.ts",
+  /*
+   * The full-action landlord policy and the 403-column schema it scores. These
+   * are required rather than merely permitted so the gate fails if a later
+   * change routes the landlord branch but drops the schema it reads — the
+   * failure mode being a policy that silently scores the wrong columns.
+   */
+  "src/app/ai/cheap-landlord.ts",
+  "src/core/ai/fa-features.ts",
 ]);
 
 /** Paths the main delivery closures must never reach. */
