@@ -255,6 +255,20 @@ describe("brute-force oracle against the engine enumerator", () => {
     },
   ];
 
+  /*
+   * Full-subset enumeration, so the budget has to match the work.
+   *
+   * The oracle walks every subset of the hand through `validatePlay`. The
+   * largest lead case is a 20-card hand -- 2^20 subsets, over a million
+   * validations -- which takes about 7.7 s here and timed out on a CI runner
+   * while asserting nothing different. Vitest's 5 s default is sized for an
+   * ordinary unit test, not for this.
+   *
+   * The timeout is raised rather than the case dropped, because that case is
+   * the point: a 20-card hand is exactly where an enumerator bug hides.
+   */
+  const BRUTE_FORCE_TIMEOUT_MS = 120_000;
+
   it.each(LEAD_CASES)("matches on a lead for $name", ({ hand }) => {
     const context: PlayContext = { hand, currentPlay: null };
     const generated = generateLegalActions(context);
@@ -263,7 +277,7 @@ describe("brute-force oracle against the engine enumerator", () => {
       onlyInLeft: [],
       onlyInRight: [],
     });
-  });
+  }, BRUTE_FORCE_TIMEOUT_MS);
 
   const RESPONSE_CASES: readonly {
     readonly name: string;
@@ -309,7 +323,7 @@ describe("brute-force oracle against the engine enumerator", () => {
       onlyInLeft: [],
       onlyInRight: [],
     });
-  });
+  }, BRUTE_FORCE_TIMEOUT_MS);
 
   it("matches on randomized small hands, leading and responding", () => {
     const random = seededRandom(0x5eed_0001);
