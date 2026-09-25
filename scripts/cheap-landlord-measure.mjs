@@ -46,15 +46,20 @@ function walk(directory) {
   return files;
 }
 
-/** Flips `cheap-landlord-model.ts` between the stub and the frozen table. */
-function embed(on) {
-  const result = spawnSync(process.execPath, [join(ROOT, "scripts/cheap-landlord-embed.mjs"), ...(on ? ["--embed"] : [])], {
-    cwd: ROOT,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+/**
+ * Writes the model file in one of its two states. `stub` is measurement-only:
+ * the released tree carries the table, because a `pnpm build` that proved the
+ * budget green against a stubbed worker would say nothing about what ships.
+ */
+function embed(stub) {
+  const result = spawnSync(
+    process.execPath,
+    [join(ROOT, "scripts/cheap-landlord-embed.mjs"), ...(stub ? ["--stub"] : [])],
+    { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] },
+  );
   if (result.status !== 0) {
     process.stderr.write(result.stderr?.toString() ?? "");
-    throw new Error(`cheap-landlord-embed.mjs ${on ? "--embed" : ""} failed`);
+    throw new Error(`cheap-landlord-embed.mjs ${stub ? "--stub" : ""} failed`);
   }
 }
 
@@ -62,8 +67,8 @@ function embed(on) {
  * `config` names a Vite config; the prototype needs the measurement-only one
  * because Workbox refuses to precache a chunk over its default 2 MiB limit.
  */
-function build(prototype, config) {
-  embed(prototype);
+function build(stub, config) {
+  embed(stub);
   const result = spawnSync(
     process.execPath,
     [
@@ -76,7 +81,7 @@ function build(prototype, config) {
   if (result.status !== 0) {
     process.stderr.write(result.stdout?.toString() ?? "");
     process.stderr.write(result.stderr?.toString() ?? "");
-    throw new Error(`vite build failed (prototype=${prototype}) with status ${result.status}`);
+    throw new Error(`vite build failed (stub=${stub}) with status ${result.status}`);
   }
 }
 
@@ -111,8 +116,8 @@ function measure(label) {
 
 const kib = (value) => (value / 1024).toFixed(2);
 
-console.log("[clm] building the default product…");
-build(false);
+console.log("[clm] building the glue-only baseline (model stubbed)…");
+build(true);
 const baseline = measure("baseline");
 
 /*
@@ -121,7 +126,7 @@ const baseline = measure("baseline");
  * they ever do not, the prototype numbers below are not about this product.
  */
 console.log("[clm] checking the measurement config produces the same baseline…");
-build(false, PROTOTYPE_CONFIG);
+build(true, PROTOTYPE_CONFIG);
 const baselineViaMeasurementConfig = measure("baseline-measurement-config");
 if (baselineViaMeasurementConfig.workerRawBytes !== baseline.workerRawBytes) {
   throw new Error(
@@ -131,11 +136,11 @@ if (baselineViaMeasurementConfig.workerRawBytes !== baseline.workerRawBytes) {
   );
 }
 
-console.log("[clm] building the CHEAP landlord prototype…");
-build(true, PROTOTYPE_CONFIG);
+console.log("[clm] building the release candidate…");
+build(false, PROTOTYPE_CONFIG);
 const prototype = measure("prototype");
 
-console.log("[clm] restoring the default build…");
+console.log("[clm] restoring the released build…");
 build(false);
 const restored = measure("restored");
 

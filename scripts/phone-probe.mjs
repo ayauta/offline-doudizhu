@@ -144,7 +144,7 @@ async function cdp(port) {
         () => reject(new Error("Device evaluation timed out.")),
         timeoutMs,
       );
-      send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true })
+      send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true }, timeoutMs)
         .then((result) => {
           clearTimeout(timer);
           const details = result.result?.exceptionDetails;
@@ -347,11 +347,23 @@ try {
     // order preserves the probe's deliberate cold-first ordering.
     const run = await client.evaluate(`globalThis.__probe.run(${deals})`);
     for (const [tier, modes] of Object.entries(run)) {
+      if (tier === "cheapLandlord") {
+        continue;
+      }
       console.log(`${tier}:`);
       for (const [mode, summary] of Object.entries(modes)) {
         report(mode, summary);
       }
     }
+    /*
+     * The CHEAP landlord arm, printed as JSON. It is reported separately from
+     * the tier table because its shape is different — it carries retention,
+     * fallback counts and the model's own parse and init stages — and because
+     * `__probe.landlord` is a dedicated entry point: a memory reading taken
+     * around it is not polluted by the tier measurements above.
+     */
+    const landlord = await client.evaluate(`globalThis.__probe.landlord(${deals})`);
+    console.log(`CHEAP_LANDLORD_JSON ${JSON.stringify(landlord)}`);
   }
 } finally {
   client?.close();

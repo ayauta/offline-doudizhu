@@ -2,9 +2,15 @@
 /**
  * Switch `src/app/ai/cheap-landlord-model.ts` between its two states.
  *
- *     node scripts/cheap-landlord-embed.mjs            # restore the stub (default)
- *     node scripts/cheap-landlord-embed.mjs --embed    # write the frozen table
- *     node scripts/cheap-landlord-run.mjs <cmd…>       # embed, run, always restore
+ *     node scripts/cheap-landlord-embed.mjs            # write the frozen table (default)
+ *     node scripts/cheap-landlord-embed.mjs --stub     # write the empty stub
+ *
+ * The default is the **embedded** table, because the release candidate has to
+ * be a build that actually packages the confirmed model: a green `pnpm build`
+ * against a stubbed table would prove nothing about what ships. `--stub` exists
+ * only to reproduce the pre-integration baseline for a size measurement, and
+ * `scripts/cheap-landlord-run.mjs` still wraps a command so a measurement
+ * cannot leave the stub behind in a tracked file.
  *
  * The file is **tracked**, and this script owns it. That is deliberate, and it
  * is the third design tried:
@@ -46,12 +52,11 @@ const HEADER = `/**
  * **Generated. Do not edit.** \`scripts/cheap-landlord-embed.mjs\` owns this file
  * and switches it between two states:
  *
- *   - **stub** (committed, default): the table is \`null\`, so the landlord
- *     branch is never installed and the shipped build packages no part of the
- *     candidate. This is why "production did not change" is a property of the
- *     build rather than a claim about it.
- *   - **embedded** (\`--embed\`, for the prototype build and the integration
- *     harness): the frozen 2.0 MB table, byte for byte as confirmed.
+ *   - **embedded** (default): the frozen 2.0 MB table, byte for byte as the
+ *     joint dual-environment confirmation measured it. This is what ships.
+ *   - **stub** (\`--stub\`): the table is \`null\`, so the landlord branch is
+ *     never installed. It exists only for measurement — the pre-integration
+ *     build size is taken with it — and never for a release.
  *
  * The digest is not a placeholder in either state. It is the value the joint
  * dual-environment confirmation froze, and the Worker refuses a table that does
@@ -98,8 +103,8 @@ function writeEmbedded() {
   );
 }
 
-if (process.argv.includes("--embed")) {
-  writeEmbedded();
-} else {
+if (process.argv.includes("--stub")) {
   writeStub();
+} else {
+  writeEmbedded();
 }

@@ -58,7 +58,9 @@ const ROOT = fileURLToPath(new URL("../", import.meta.url));
 
 /** §7: development and retired pools only. No fresh pool is allocated. */
 const START = Number(process.env.AI_CHEAP_INTEGRATION_START ?? 915_001);
-const DEALS = Number(process.env.AI_CHEAP_INTEGRATION_DEALS ?? 120);
+const DEALS = Number(process.env.AI_CHEAP_INTEGRATION_DEALS ?? 300);
+/** Farmer sample for the regression arm; independent of the deal count. */
+const FARMER_SAMPLE = Number(process.env.AI_CHEAP_INTEGRATION_FARMERS ?? 1000);
 
 /** §1: the confirmed candidate. */
 const CHEAP_SHA256 = "070f5b0b728176a8fb11d6a79e585b1315b847e053a23821830e17394faac26b";
@@ -308,7 +310,11 @@ describe.skipIf(!ENABLED)("CHEAP landlord integration prototype", () => {
       const fresh = generateLegalActions({ hand: state.view.hand, currentPlay: state.view.currentPlay });
       expect(fresh.length).toBe(state.legal.length);
     }
-  });
+    // Playing 300 deals takes about 1300 s, and the config's 900 s backstop is
+    // sized for the tuning harness, not for this. Without an explicit timeout
+    // the collection is marked failed *after* it has already produced every
+    // number the run reports -- a red tick that says nothing about the data.
+  }, 3_600_000);
 
   it("matches the research evaluator on the executed action, on every state", async () => {
     expect(states.length).toBeGreaterThan(0);
@@ -425,7 +431,7 @@ describe.skipIf(!ENABLED)("CHEAP landlord integration prototype", () => {
   });
 
   it("does not change a farmer decision, and never runs for casual", () => {
-    const farmerStates = all.filter((state) => state.seatRole === "farmer").slice(0, 200);
+    const farmerStates = all.filter((state) => state.seatRole === "farmer").slice(0, FARMER_SAMPLE);
     expect(farmerStates.length).toBeGreaterThan(0);
     let divergences = 0;
     let casualTouched = 0;

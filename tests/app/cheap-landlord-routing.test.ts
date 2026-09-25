@@ -16,6 +16,8 @@
  * failure this guard exists for: `scoreTrees` walks whatever width it is handed
  * and would otherwise read the wrong columns and return a confident number.
  */
+import { createHash } from "node:crypto";
+
 import { describe, expect, it } from "vitest";
 
 import { SEAT_ORDER, transition, type GameState, type Seat } from "../../src/core/game/index.js";
@@ -129,10 +131,21 @@ describe("landlordArgmax", () => {
   });
 });
 
-describe("the shipped default build carries no candidate", () => {
-  it("stubs the table but not the digest", () => {
-    expect(CHEAP_LANDLORD_MODEL_JSON).toBeNull();
+describe("the release candidate packages the confirmed table", () => {
+  it("carries the frozen bytes under the frozen digest", () => {
+    // The released tree ships the model: a green build against a stubbed table
+    // would say nothing about what leaves the door. `--stub` still exists for a
+    // size measurement, so the guard checks the bytes rather than trusting the
+    // file's name.
+    expect(CHEAP_LANDLORD_MODEL_JSON).not.toBeNull();
     expect(CHEAP_LANDLORD_MODEL_SHA256).toBe(FROZEN_SHA256);
+    const table = CHEAP_LANDLORD_MODEL_JSON ?? "";
+    expect(
+      createHash("sha256").update(Buffer.from(table, "utf8")).digest("hex"),
+    ).toBe(FROZEN_SHA256);
+    const parsed = JSON.parse(table) as { numTrees: number; numFeatures: number };
+    expect(parsed.numFeatures).toBe(403);
+    expect(parsed.numTrees).toBe(512);
   });
 });
 
