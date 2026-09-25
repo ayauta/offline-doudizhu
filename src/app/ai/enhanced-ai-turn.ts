@@ -29,7 +29,7 @@ export interface EnhancedAiTurnRunner {
     aiType: EnhancedAiType,
     context: AiDecisionContext,
     complete: (resolution: EnhancedAiTurnResolution) => void,
-    options?: Readonly<{ counterfactualFarmer?: boolean }>,
+    options?: Readonly<{ counterfactualFarmer?: boolean; cheapLandlord?: boolean }>,
   ) => () => void;
   readonly dispose: () => void;
 }
@@ -90,7 +90,7 @@ export function createEnhancedAiTurnRunner(options: Readonly<{
       aiType: EnhancedAiType,
       context: AiDecisionContext,
       complete: (resolution: EnhancedAiTurnResolution) => void,
-      turnOptions: Readonly<{ counterfactualFarmer?: boolean }> = {},
+      turnOptions: Readonly<{ counterfactualFarmer?: boolean; cheapLandlord?: boolean }> = {},
     ) {
       let active = true;
       let beatReady = false;

@@ -278,7 +278,9 @@ test("chooses and restores computer level through a compact inline segmented con
 
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("offline-doudizhu.settings")!))).toEqual({
     schemaVersion: 1,
-    data: { aiType: "master", counterfactualFarmer: false },
+    // The tier is what this control changes; the champion fields ride along at
+    // their product default, which is on.
+    data: { aiType: "master", counterfactualFarmer: true, cheapLandlord: true },
   });
   await page.reload();
   await expect(page.getByRole("radio", { name: "高手" })).toBeChecked();

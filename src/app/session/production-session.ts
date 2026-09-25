@@ -107,20 +107,24 @@ export function createProductionSession(options: Readonly<{
 }>): ProductionSession {
   let selectedAiType: AiType = DEFAULT_AI_SETTINGS.aiType;
   let counterfactualFarmer = DEFAULT_AI_SETTINGS.counterfactualFarmer;
+  let cheapLandlord = DEFAULT_AI_SETTINGS.cheapLandlord;
   try {
     const loaded = options.settingsStore?.load();
     if (loaded !== undefined && (AI_TYPES as readonly string[]).includes(loaded.aiType)) {
       selectedAiType = loaded.aiType;
       counterfactualFarmer = loaded.counterfactualFarmer === true;
+      cheapLandlord = loaded.cheapLandlord === true;
     }
   } catch {
     selectedAiType = DEFAULT_AI_SETTINGS.aiType;
     counterfactualFarmer = DEFAULT_AI_SETTINGS.counterfactualFarmer;
+    cheapLandlord = DEFAULT_AI_SETTINGS.cheapLandlord;
   }
   let state: GameState = INITIAL_GAME_STATE;
   let inMatch = false;
   let matchAiType: AiType = selectedAiType;
   let matchCounterfactualFarmer: boolean = counterfactualFarmer;
+  let matchCheapLandlord: boolean = cheapLandlord;
   let disposed = false;
   let resultVisible = false;
   let exitConfirmation = false;
@@ -396,7 +400,7 @@ export function createProductionSession(options: Readonly<{
         }
         applyAiResult(result);
       },
-      { counterfactualFarmer: matchCounterfactualFarmer }
+      { counterfactualFarmer: matchCounterfactualFarmer, cheapLandlord: matchCheapLandlord }
     );
   }
 
@@ -616,6 +620,7 @@ export function createProductionSession(options: Readonly<{
         if (!inMatch) {
           matchAiType = selectedAiType;
           matchCounterfactualFarmer = counterfactualFarmer;
+    matchCheapLandlord = cheapLandlord;
     matchCounterfactualFarmer = counterfactualFarmer;
           if (matchAiType !== "default") {
             enhancedAiTurns.beginMatch();
@@ -634,6 +639,7 @@ export function createProductionSession(options: Readonly<{
           options.settingsStore?.save(Object.freeze({
             aiType: selectedAiType,
             counterfactualFarmer,
+            cheapLandlord,
           }));
         } catch {
           // The in-memory setting remains usable when optional storage fails.

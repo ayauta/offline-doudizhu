@@ -38,6 +38,25 @@ import { assertChainShape, type ChainLayer, type ChampionChain } from "./farmer-
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 export const PI1_CHAMPION_ID = "ai-v1";
+
+/**
+ * Production champions, oldest first.
+ *
+ * `ai-v2` was added when the CHEAP landlord policy and the π1 farmer selector
+ * were promoted together: the two mechanisms that had each passed their own
+ * independent validation became the shipped configuration at the master tier.
+ * It is a production champion in its own right, not a research one, which is
+ * why it carries no `-research` suffix and why `researchChampionId` still
+ * refuses to mint a bare `ai-v2` for an experiment.
+ *
+ * Nothing here writes this file. The list is what the archivist accepts, not
+ * what the Factory may produce.
+ */
+export const PRODUCTION_CHAMPION_IDS: readonly string[] = Object.freeze([
+  PI1_CHAMPION_ID,
+  "ai-v2",
+]);
+
 export const CHAMPION_DIR = join(ROOT, "research", "farmer-pi", "champions");
 
 /** The frozen master and candidate-width identities this Factory builds on. */
@@ -136,10 +155,11 @@ export function parseChampionArchive(text: string): ChampionArchive {
   if (!Array.isArray(parsed.layers) || parsed.layers.length < 1) {
     throw new Error(`Champion ${parsed.championId} has no layers.`);
   }
-  if (parsed.researchOnly !== true && parsed.championId !== PI1_CHAMPION_ID) {
+  if (parsed.researchOnly !== true && !PRODUCTION_CHAMPION_IDS.includes(parsed.championId)) {
     throw new Error(
-      `Champion ${parsed.championId} is not marked research-only. Only ${PI1_CHAMPION_ID} ` +
-      "may be a production champion, and this Factory never writes one.",
+      `Champion ${parsed.championId} is not marked research-only, and it is not one of the ` +
+        `production champions (${PRODUCTION_CHAMPION_IDS.join(", ")}). This Factory never ` +
+        "writes a production champion.",
     );
   }
   if (parsed.researchOnly === true && !parsed.championId.endsWith("-research")) {

@@ -654,7 +654,7 @@ describe("champion archive rules", () => {
     expect(() => researchChampionId(1)).toThrow();
   }, 300000);
 
-  it("refuses an archive that claims production without being ai-v1", () => {
+  it("still refuses a research archive that drops the -research suffix", () => {
     expect(() => parseChampionArchive(JSON.stringify({
       championId: "ai-v2", parentChampionId: "ai-v1", generation: 2, researchOnly: true,
       layers: [{ modelSha256: "a", threshold: 0.01, artifact: "x", modelBytes: 1 }],
@@ -664,6 +664,26 @@ describe("champion archive rules", () => {
       cumulativeModelBytes: 1, createdAt: "2026-09-23T00:00:00.000Z", immutableGitTag: null,
       sourceCommit: "x",
     }))).toThrow(/-research/);
+  }, 300000);
+
+  it("accepts a promoted ai-v2 but not an arbitrary bare generation", () => {
+    // The rule was widened when AI-v2 was promoted: the CHEAP landlord policy
+    // and the π1 farmer selector became the shipped configuration together, so
+    // `ai-v2` is a production champion rather than an experiment. Widening a
+    // rule is how a hole gets opened, so both halves are asserted -- the newly
+    // allowed id, and an id that is still not a production champion.
+    const archiveFor = (championId: string): string => JSON.stringify({
+      championId, parentChampionId: "ai-v1", generation: 2, researchOnly: false,
+      layers: [{ modelSha256: "a", threshold: 0.01, artifact: "x", modelBytes: 1 },
+        { modelSha256: "b", threshold: 0.01, artifact: "y", modelBytes: 1 }],
+      schemaVersion: 2, schemaHash: "s", baseMasterVersion: "m", top3Version: "t",
+      pools: {}, attemptId: "attempt-001", formalN: 1200, alpha: 0.005,
+      farmerDelta: 0.02, lowerBound99: 0.01, decision: "PROMOTE", runtimeCost: {},
+      cumulativeModelBytes: 1, createdAt: "2026-09-23T00:00:00.000Z", immutableGitTag: null,
+      sourceCommit: "x",
+    });
+    expect(parseChampionArchive(archiveFor("ai-v2")).championId).toBe("ai-v2");
+    expect(() => parseChampionArchive(archiveFor("ai-v9"))).toThrow(/production champions/);
   }, 300000);
 
   it("refuses an archive whose depth and generation disagree", () => {

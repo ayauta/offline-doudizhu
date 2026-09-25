@@ -32,9 +32,25 @@ describe("AI settings document", () => {
         futureEnvelopeField: 2,
       })),
     ).toEqual({
-      settings: Object.freeze({ aiType: "master", counterfactualFarmer: false }),
+      // An absent champion field now means **on**, not off: a document written
+      // before the field existed records that the player never chose, and the
+      // product default is AI-v2. The tier the player did choose is preserved.
+      settings: Object.freeze({ aiType: "master", counterfactualFarmer: true, cheapLandlord: true }),
       writable: true,
     });
+  });
+
+  it("lets a document pin the champion off, and only an explicit false does", () => {
+    const decode = (data: Record<string, unknown>) =>
+      decodeAiSettingsDocument(JSON.stringify({ schemaVersion: 1, data })).settings;
+    expect(decode({ aiType: "master", cheapLandlord: false }).cheapLandlord).toBe(false);
+    expect(decode({ aiType: "master", counterfactualFarmer: false }).counterfactualFarmer).toBe(false);
+    // Anything that is not the literal `false` -- absent, null, a stray string
+    // -- is the default. A truthiness test here would let `0` or `""` silently
+    // disable the production champion.
+    expect(decode({ aiType: "master", cheapLandlord: null }).cheapLandlord).toBe(true);
+    expect(decode({ aiType: "master", cheapLandlord: 0 }).cheapLandlord).toBe(true);
+    expect(decode({ aiType: "master", cheapLandlord: "false" }).cheapLandlord).toBe(true);
   });
 
   it("defaults every unknown tier, inherited object keys included", () => {
@@ -55,15 +71,17 @@ describe("AI settings document", () => {
     expect(
       decodeAiSettingsDocument(JSON.stringify({
         schemaVersion: 99,
-        data: { aiType: "master", counterfactualFarmer: false },
+        data: { aiType: "master", counterfactualFarmer: false, cheapLandlord: false },
       })),
     ).toEqual({ settings: DEFAULT_AI_SETTINGS, writable: false });
   });
 
   it("encodes a small versioned document independently of the app version", () => {
-    expect(JSON.parse(encodeAiSettingsDocument({ aiType: "casual", counterfactualFarmer: false }))).toEqual({
+    expect(
+      JSON.parse(encodeAiSettingsDocument({ aiType: "casual", counterfactualFarmer: false, cheapLandlord: true })),
+    ).toEqual({
       schemaVersion: 1,
-      data: { aiType: "casual", counterfactualFarmer: false },
+      data: { aiType: "casual", counterfactualFarmer: false, cheapLandlord: true },
     });
   });
 });
