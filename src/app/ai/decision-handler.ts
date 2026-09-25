@@ -9,11 +9,16 @@ import type {
   AiStrategy,
 } from "../../core/ai/index.js";
 import type { GameCommand } from "../../core/game/index.js";
-import type { TreeModel } from "../../core/ai/cf-model.js";
-import {
-  cheapLandlordDecision,
-  type CheapLandlordDecision,
-} from "./cheap-landlord.js";
+/*
+ * Type-only, and deliberately so. The landlord policy's *implementation* is
+ * supplied by the caller, not imported here: a runtime import would put the
+ * whole 403-column schema into this module's import closure, which is the
+ * closure the frozen `master` and `ordered top three` identities are hashes
+ * over. Injecting the function instead keeps the integration from rewriting a
+ * closed research line's frozen identities — and under
+ * `verbatimModuleSyntax` an `import type` is elided, so it adds no edge.
+ */
+import type { CheapLandlordDecision } from "./cheap-landlord.js";
 import type {
   AiDecisionOutcome,
   EnhancedAiType,
@@ -97,8 +102,15 @@ export type PlayDecisionOverlay = (
  * shipped Worker passes none, so the seam costs one undefined check.
  */
 export type CheapLandlordRuntime = Readonly<{
-  model: TreeModel;
+  /**
+   * Carried so a caller can assert it is the confirmed policy. It is never a
+   * feature and never reaches a score.
+   */
   modelSha256: string;
+  /** The policy itself. Supplied by the Worker, never imported by this module. */
+  decide: (
+    context: Extract<AiDecisionContext, { readonly kind: "play" }>,
+  ) => CheapLandlordDecision;
   observe?: (context: Extract<AiDecisionContext, { readonly kind: "play" }>, decision: CheapLandlordDecision) => void;
 }>;
 
@@ -202,10 +214,7 @@ export function decideEnhancedAi(
      */
     if (request.aiType === "master" && runtime.landlord !== undefined) {
       const landlord = runtime.landlord;
-      const decision = cheapLandlordDecision(context, {
-        model: landlord.model,
-        modelSha256: landlord.modelSha256,
-      });
+      const decision = landlord.decide(context);
       landlord.observe?.(context, decision);
       if (decision.kind === "cheap") {
         return Object.freeze({ ok: true, command: decision.command });

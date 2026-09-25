@@ -16,6 +16,7 @@ import {
   CHEAP_LANDLORD_MODEL_SHA256,
 } from "../../app/ai/cheap-landlord-model.js";
 import type { CheapLandlordRuntime } from "../../app/ai/decision-handler.js";
+import { cheapLandlordDecision } from "../../app/ai/cheap-landlord.js";
 
 type WorkerScope = {
   onmessage: ((event: MessageEvent<EnhancedAiWorkerRequest>) => void) | null;
@@ -103,7 +104,10 @@ function landlordRuntimeFor(request: EnhancedAiWorkerRequest): CheapLandlordRunt
   if (model === null) {
     return undefined;
   }
-  return Object.freeze({ model, modelSha256: CHEAP_LANDLORD_MODEL_SHA256 });
+  return Object.freeze({
+    modelSha256: CHEAP_LANDLORD_MODEL_SHA256,
+    decide: (context) => cheapLandlordDecision(context, { model, modelSha256: CHEAP_LANDLORD_MODEL_SHA256 }),
+  });
 }
 
 workerScope.onmessage = (event) => {
