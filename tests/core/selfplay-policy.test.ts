@@ -340,3 +340,44 @@ describe("full-action scoring", () => {
     expect(checked).toBe(9);
   });
 });
+
+describe("tie and near-tie behaviour", () => {
+  it("resolves an exact tie to the earliest canonical position, deterministically", () => {
+    const context = wideContextAt(5007, "human", "human", 8);
+    const flat = constantModel(0.5);
+    const scored = scoreLegalActions(context.view, flat, context.legalActions);
+    expect(new Set(scored.scores).size).toBe(1);
+    expect(scored.chosenIndex).toBe(0);
+    // The same rule, applied twice, is the same answer — ties are not luck.
+    expect(scoreLegalActions(context.view, flat, context.legalActions).chosenIndex).toBe(0);
+  });
+
+  it("breaks a near-tie by the score, not by the position", () => {
+    // A stump whose two leaves differ by 1e-9: far below any practical
+    // precision, but strictly ordered, so the larger score must win even when it
+    // sits at a later position than its rival.
+    const passColumn = SELFPLAY_FEATURE_NAMES.indexOf("act_isPass");
+    let context: PlayDecisionContext | null = null;
+    for (let seed = 5001; seed < 5060 && context === null; seed += 1) {
+      for (const landlord of SEAT_ORDER) {
+        try {
+          const candidate = wideContextAt(seed, landlord, "human", 8, true);
+          if (candidate.legalActions.findIndex((action) => action.type === "pass") > 0) {
+            context = candidate;
+            break;
+          }
+        } catch {
+          continue;
+        }
+      }
+    }
+    if (context === null) {
+      throw new Error("No responding root with a pass was found.");
+    }
+    const passIndex = context.legalActions.findIndex((action) => action.type === "pass");
+    const near = scoreLegalActions(context.view, stumpOn(passColumn, 0.5, 0, 1e-9), context.legalActions);
+    expect(near.scores[passIndex]).toBeGreaterThan(near.scores[0]!);
+    expect(near.chosenIndex).toBe(passIndex);
+    expect(near.chosenIndex).not.toBe(0);
+  });
+});

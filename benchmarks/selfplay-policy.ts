@@ -189,9 +189,23 @@ export function scoreLegalActions(
   const legal =
     actions ?? generateLegalActions({ hand: view.hand, currentPlay: view.currentPlay });
   const state = stateFeaturesOf(view);
-  const scores = legal.map((action) =>
-    scoreTrees(model, selfplayRowFromState(view, state, action)),
-  );
+  const scores = legal.map((action) => {
+    const row = selfplayRowFromState(view, state, action);
+    /*
+     * `scoreTrees` walks whatever numbers it is handed; it does not know how
+     * wide a row should be. A model built on a different schema would therefore
+     * not fail — it would read the wrong columns and return a confident number.
+     * This is the one place a full-action policy can catch that, so it does:
+     * a width mismatch is a hard error, never a fallback to the incumbent.
+     */
+    if (row.length !== model.numFeatures) {
+      throw new Error(
+        `Row width ${row.length} does not match the model's ${model.numFeatures} features; ` +
+          "the model was not built on this schema.",
+      );
+    }
+    return scoreTrees(model, row);
+  });
   return Object.freeze({
     actions: legal,
     scores: Object.freeze(scores),
