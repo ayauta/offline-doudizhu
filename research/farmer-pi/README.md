@@ -1,3 +1,9 @@
+> **ARCHIVE — 这条线已经结束，不再是 active research 入口。**
+> 它产出的是 **AI-v1**（π1 农民），其结果已经并入现行的 **AI-v2**。
+> 从这里开始读研究，请回到 [`../README.md`](../README.md)。
+> 本目录中的 `protocol-v1.yaml`、`pool-ledger.jsonl`、`protocol-rehearsal.yaml`
+> **仍被代码读取**，不要移动。
+
 # Farmer Policy Iteration Factory v1
 
 这一目录是 Factory 的**状态与事实来源**。代码在 `benchmarks/farmer-pi-*.ts` 与

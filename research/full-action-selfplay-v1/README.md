@@ -1,3 +1,11 @@
+> **ARCHIVE — 这条线已经结束，不再是 active research 入口。**
+> 它产出的是 **AI-v2** 的地主策略（研究代号 CHEAP），已于 v0.5.0 发布。
+> 现行 champion 见 [`../champions/ai-v2.json`](../champions/ai-v2.json)；
+> 从这里开始读研究，请回到 [`../README.md`](../README.md)。
+> 本目录中的 `cheap-integration-protocol.md`、`landlord-validation-protocol.md`、
+> `rehearsal-protocol.md`、`development-pool.md` 与
+> `ai-v2-release-candidate-manifest.json` **仍被代码或记录引用**，不要移动。
+
 # Full-action self-play v1 — research line
 
 状态：**可行性阶段（feasibility stage）**。尚无正式 corpus，尚无正式判定，
